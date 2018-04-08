@@ -45,6 +45,7 @@ _NEUTRAL_MINERAL_FIELD = 341
 
 _NOT_QUEUED = [0]
 _QUEUED = [1]
+_SELECT_SINGLE = [1]
 _SELECT_ALL = [2]
 
 DATA_FILE = 'sparse_agent_data'
@@ -74,7 +75,14 @@ class QLearningTable:
         self.lr = learning_rate
         self.gamma = reward_decay
         self.epsilon = e_greedy
-        self.q_table = pd.DataFrame(columns=self.actions, dtype=np.float64)
+        self.q_table = pd.DataFrame(columns=self.actions, dtype=np.float)
+        
+        self.TrialsData = "TrialsData"
+        self.NumRunsTotalSlot = 0
+        self.NumWinsTotalSlot = 1
+        self.NumLossTotalSlot = 2
+        self.check_state_exist(self.TrialsData)
+       # self.q_table = pd.DataFrame(columns=self.actions, dtype=np.float64)
 
     def choose_action(self, observation):
         self.check_state_exist(observation)
@@ -103,6 +111,12 @@ class QLearningTable:
             q_target = r + self.gamma * self.q_table.ix[s_, :].max()
         else:
             q_target = r  # next state is terminal
+
+            self.q_table.ix[self.TrialsData, self.NumRunsTotalSlot] += 1
+            if (r > 0):
+                self.q_table.ix[self.TrialsData, self.NumWinsTotalSlot] += 1
+            elif (r < 0):
+                self.q_table.ix[self.TrialsData, self.NumLossTotalSlot] += 1
             
         # update
         self.q_table.ix[s, a] += self.lr * (q_target - q_predict)
@@ -187,10 +201,12 @@ class SparseAgent(base_agent.BaseAgent):
     def step(self, obs):
         super(SparseAgent, self).step(obs)
         self.step_num += 1
-        print(obs.observation.to_string())
+        
+        
         #print('**** step -  {}  current state - {}'.format(self.step_num, self.current_state_for_decision_making))
         #print('**** step -  {}  observation - {}'.format(self.step_num, obs))
-        #time.sleep(0.25)
+        
+        
         try:
             if obs.last():
                 reward = obs.reward
@@ -276,31 +292,31 @@ class SparseAgent(base_agent.BaseAgent):
                     self.qlearn.learn(str(self.previous_state), self.previous_action, 0, str(current_state))
             
                 #mcts_action = self.sendToDecisionMaker(current_state.tobytes())
-                mcts_action = -1
-                if(self.sentToDecisionMakerAsync == None or not self.sentToDecisionMakerAsync.isAlive()):
-                    if(self.returned_action_from_decision_maker != -1):
-                        mcts_action =  self.returned_action_from_decision_maker
-                        print('mcts_action - {}'.format(mcts_action))
-                        if(mcts_action >= 0 and mcts_action < 22):
-                            print('mcts_action - {}'.format(smart_actions[mcts_action]))
-                        else:
-                            print('mcts_action - {}'.format(mcts_action))
-                    else:
-                        print('mcts = {}'.format(-1))
-                    self.returned_action_from_decision_maker = -1
+                # mcts_action = -1
+                # if(self.sentToDecisionMakerAsync == None or not self.sentToDecisionMakerAsync.isAlive()):
+                #     if(self.returned_action_from_decision_maker != -1):
+                #         mcts_action =  self.returned_action_from_decision_maker
+                #         print('mcts_action - {}'.format(mcts_action))
+                #         if(mcts_action >= 0 and mcts_action < 22):
+                #             print('mcts_action - {}'.format(smart_actions[mcts_action]))
+                #         else:
+                #             print('mcts_action - {}'.format(mcts_action))
+                #     else:
+                #         print('mcts = {}'.format(-1))
+                #     self.returned_action_from_decision_maker = -1
 
-                    self.sentToDecisionMakerAsync = threading.Thread(target=self.sendToDecisionMaker)
+                #     self.sentToDecisionMakerAsync = threading.Thread(target=self.sendToDecisionMaker)
 
-                    self.current_state_for_decision_making = current_state
+                #     self.current_state_for_decision_making = current_state
 
-                    self.sentToDecisionMakerAsync.start()
+                #     self.sentToDecisionMakerAsync.start()
 
                 rl_action = self.qlearn.choose_action(str(current_state))
 
                 # print('rl_action - {}'.format(smart_actions[rl_action]))
 
                 self.previous_state = current_state
-                self.previous_action = rl_action if mcts_action < 0  and mcts_action < 5 else mcts_action
+                self.previous_action = rl_action
             
                 #print('state - {}    action - {}'.format(self.previous_state, self.previous_action))
                 smart_action, x, y = self.splitAction(self.previous_action)
