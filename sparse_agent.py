@@ -45,7 +45,6 @@ _NEUTRAL_MINERAL_FIELD = 341
 
 _NOT_QUEUED = [0]
 _QUEUED = [1]
-_SELECT_SINGLE = [1]
 _SELECT_ALL = [2]
 
 DATA_FILE = 'sparse_agent_data'
