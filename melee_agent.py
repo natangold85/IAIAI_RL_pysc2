@@ -155,10 +155,10 @@ class Attack(base_agent.BaseAgent):
         # tables:
         if SMART_EXPLORATION in sys.argv:
             qTableParams = QTableParamsWithChangeInExploration()
-            self.tables = TableMngr(NUM_ACTIONS, Q_TABLE_SMART_EXPLORATION, qTableParams, T_TABLE_SMART_EXPLORATION, RESULT_SMART_EXPLORATION)           
+            self.tables = TableMngr(NUM_ACTIONS, Q_TABLE_SMART_EXPLORATION, qTableParams, "", RESULT_SMART_EXPLORATION)           
         elif NAIVE_EXPLORATION in sys.argv:
             qTableParams = QTableParamsWOChangeInExploration()
-            self.tables = TableMngr(NUM_ACTIONS, Q_TABLE_NAIVE_EXPLORATION, qTableParams, T_TABLE_NAIVE_EXPLORATION, RESULT_NAIVE_EXPLORATION)
+            self.tables = TableMngr(NUM_ACTIONS, Q_TABLE_NAIVE_EXPLORATION, qTableParams, "", RESULT_NAIVE_EXPLORATION)
         else:
             print("Error: Enter typeof exploration!!")
             exit(1)            

@@ -10,6 +10,9 @@ class SC2_Actions:
     # general actions
     NO_OP = actions.FUNCTIONS.no_op.id
     SELECT_POINT = actions.FUNCTIONS.select_point.id
+    SELECT_RECTANGLE = actions.FUNCTIONS.select_rect.id
+    STOP = actions.FUNCTIONS.Stop_quick.id
+
     MOVE_CAMERA = actions.FUNCTIONS.move_camera.id
     HARVEST_GATHER = actions.FUNCTIONS.Harvest_Gather_screen.id
     SELECT_IDLE_WORKER = actions.FUNCTIONS.select_idle_worker.id
@@ -52,7 +55,8 @@ class SC2_Params:
     UNIT_DENSITY = features.SCREEN_FEATURES.unit_density.index
     UNIT_TYPE = features.SCREEN_FEATURES.unit_type.index
     PLAYER_ID = features.SCREEN_FEATURES.player_id.index
-
+    SELECTED_IN_SCREEN = features.SCREEN_FEATURES.selected.index
+    
     PLAYER_SELF = 1
     PLAYER_HOSTILE = 4
     ARMY_SUPPLY = 5
@@ -107,6 +111,7 @@ class TerranUnit:
     # army specific:
     MARINE = 48
     MARINE_SCREEN_SIZE_ONE_AXIS = 3
+    MARINE_SCREEN_NUM_PIXELS = 9
     # lut:
 
     BUILDING_NAMES = {}

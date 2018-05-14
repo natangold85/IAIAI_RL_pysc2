@@ -170,8 +170,8 @@ def PlotExplorationChange(numTrials):
     naiveArray[1] = naive.explorationProb
     naiveTrialNum[1] = numTrials
 
-    plt.plot(trialNum, smartArray)
     plt.plot(naiveTrialNum, naiveArray)
+    plt.plot(trialNum, smartArray)
 
 def PlotResultsFromTable(tableName, ax, newGrouping = -1):
     numSlots = 1
