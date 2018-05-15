@@ -96,37 +96,40 @@ class Play(base_agent.BaseAgent):
         sc2Action = DO_NOTHING_SC2_ACTION
         sc2Action = actions.FunctionCall(SC2_Actions.STOP, [SC2_Params.NOT_QUEUED])
         
-        # if self.move_action == 0:
-        #     self.CreateState(obs)
-        #     a = input("enter action ")
-        #     self.current_action = int (a)
-        #     # self.PrintState()
+        if self.move_action == 0:
+            self.move_action += 1
+            self.CreateState(obs)
+            a = input("enter action ")
+            self.current_action = int (a)
+            # self.PrintState()
 
-        #     if self.current_action < DO_NOTHING_ACTION:
-        #         sc2Action = DO_NOTHING_SC2_ACTION
-        #     elif self.current_action < SELECT_ALL_ACTION:
-        #         if SC2_Actions.SELECT_ARMY in obs.observation['available_actions']:
-        #             sc2Action = actions.FunctionCall(SC2_Actions.SELECT_ARMY, [SC2_Params.NOT_QUEUED])
+            if self.current_action < DO_NOTHING_ACTION:
+                sc2Action = DO_NOTHING_SC2_ACTION
+            elif self.current_action < SELECT_ALL_ACTION:
+                if SC2_Actions.SELECT_ARMY in obs.observation['available_actions']:
+                    sc2Action = actions.FunctionCall(SC2_Actions.SELECT_ARMY, [SC2_Params.NOT_QUEUED])
                     
-        #     elif self.current_action < SELECT_ACTIONS:
-        #         idx = self.current_action - SELECT_ALL_ACTION
-        #         startPoint = self.coordStartLocation[idx]
-        #         endPoint = []
-        #         for i in range(0,2):
-        #             endPoint.append(startPoint[i] + self.regionSize[i]) 
+            elif self.current_action < SELECT_ACTIONS:
+                idx = self.current_action - SELECT_ALL_ACTION
+                startPoint = self.coordStartLocation[idx]
+                endPoint = []
+                for i in range(0,2):
+                    endPoint.append(startPoint[i] + self.regionSize[i]) 
 
-        #         if SC2_Actions.SELECT_RECTANGLE in obs.observation['available_actions']:
-        #             sc2Action = actions.FunctionCall(SC2_Actions.SELECT_RECTANGLE, [SC2_Params.NOT_QUEUED, SwapPnt(startPoint), SwapPnt(endPoint)])
+                if SC2_Actions.SELECT_RECTANGLE in obs.observation['available_actions']:
+                    sc2Action = actions.FunctionCall(SC2_Actions.SELECT_RECTANGLE, [SC2_Params.NOT_QUEUED, SwapPnt(startPoint), SwapPnt(endPoint)])
 
-        #     elif self.current_action < MOVE_ACTIONS:
-        #         idx = self.current_action - SELECT_ACTIONS
-        #         goTo = self.coordStartLocation[idx]
-        #         if SC2_Actions.MOVE_IN_SCREEN in obs.observation['available_actions']:
-        #             sc2Action = actions.FunctionCall(SC2_Actions.MOVE_IN_SCREEN, [SC2_Params.NOT_QUEUED, SwapPnt(goTo)])
+            elif self.current_action < MOVE_ACTIONS:
+                idx = self.current_action - SELECT_ACTIONS
+                goTo = self.coordStartLocation[idx]
+                if SC2_Actions.MOVE_IN_SCREEN in obs.observation['available_actions']:
+                    sc2Action = actions.FunctionCall(SC2_Actions.MOVE_IN_SCREEN, [SC2_Params.NOT_QUEUED, SwapPnt(goTo)])
+        
+        elif self.move_action == 1:
+            self.move_action = 0
+            if SC2_Actions.STOP in obs.observation['available_actions']:
+                sc2Action = actions.FunctionCall(SC2_Actions.STOP, [SC2_Params.NOT_QUEUED])
 
-        # self.move_action += 1
-        # if self.move_action == 10:
-        self.move_action = 0
         return sc2Action
 
     def FirstStep(self, obs):
@@ -150,20 +153,20 @@ class Play(base_agent.BaseAgent):
         self.CreateSelfHotZoneMat(obs, SC2_Params.PLAYER_SELF , armySize)
         self.CreateEnemyHotZoneMat(obs, SC2_Params.PLAYER_HOSTILE)
         
-        selfIdx = 0
-        enemyIdx = GRID_SIZE * GRID_SIZE
-        for y in range(0, GRID_SIZE):
-            for x in range(0, GRID_SIZE):
-                print(self.current_state[selfIdx], end = ' ')
-                selfIdx += 1
+        # selfIdx = 0
+        # enemyIdx = GRID_SIZE * GRID_SIZE
+        # for y in range(0, GRID_SIZE):
+        #     for x in range(0, GRID_SIZE):
+        #         print(self.current_state[selfIdx], end = ' ')
+        #         selfIdx += 1
 
-            print ("|    ", end = " ")
-            for x in range(0, GRID_SIZE):
-                print(self.current_state[enemyIdx], end = ' ')
-                enemyIdx += 1
+        #     print ("|    ", end = " ")
+        #     for x in range(0, GRID_SIZE):
+        #         print(self.current_state[enemyIdx], end = ' ')
+        #         enemyIdx += 1
 
 
-            print ("|")
+        #     print ("|")
 
     def CreateSelfHotZoneMat(self, obs, playerType, armySize):
         for i in range (0, GRID_SIZE * GRID_SIZE):

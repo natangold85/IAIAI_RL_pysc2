@@ -415,12 +415,98 @@ try:
         #     q_table.to_pickle(Q_TABLE_TEST_NAME + '.gz', 'gzip') 
 
     elif tableType == "ttable":
-        if len(sys.argv) < 5:
+        if len(sys.argv) < 4:
+            print("Error: missing arguments")
+            exit(1)
+        else:
+            tableName = sys.argv[2]
+            numActions = int(sys.argv[3])
+
+        t_table = pd.DataFrame(columns=list(range(numActions)), dtype=np.float)
+        t_table = pd.read_pickle(tableName + '.gz', compression='gzip')
+
+        f = open(tableName + '.txt', 'w')
+
+        names = list(t_table.index)
+        numWins = 0
+        numLoss = 0
+
+        for name in names[:]:
+            if name != "TrialsData":
+                name1 = name.replace("]", "")
+                name1 = name1.replace("[", "")
+                states = name1.split("__")
+                s = GetState(states[0])
+                numStateVals = len(s)
+                break
+    
+        actionsTransition = []
+        for a in range (0, numActions):
+            actionT = []
+            for stateVal in range(0, numStateVals):
+                actionT.append([0,0,0])
+            actionsTransition.append(actionT) 
+
+        for name in names[:]:
+            line = name
+            
+            insert2Calc = False
+            if name != "TrialsData":
+                name1 = name.replace("]", "")
+                name1 = name1.replace("[", "")
+                states = name1.split("__")
+
+                if states[1] == "win":
+                    numWins += sum(t_table.ix[name, :])
+                elif states[1] == "loss":
+                    numLoss += sum(t_table.ix[name, :])
+                else:
+                    s = GetState(states[0])
+                    s_ = GetState(states[1])
+                    insert2Calc = True
+
+            for a in range (0, numActions):
+                val = t_table.ix[name, a]
+                line += "   " + str(val)
+                if insert2Calc and val > 0:
+                    for stateVal in range(0, numStateVals):
+                        actionsTransition[a][stateVal][0] += s[stateVal] * val
+                        actionsTransition[a][stateVal][1] += s_[stateVal] * val
+                        actionsTransition[a][stateVal][2] += val
+
+            line += "\n"
+
+            f.write(line)
+        f.close()
+
+        for a in range (0, numActions):
+            print("for action = ", a, ":\n")
+            for stateVal in range(0, numStateVals):
+                print(actionsTransition[a][stateVal][0] / actionsTransition[a][stateVal][2], actionsTransition[a][stateVal][1] / actionsTransition[a][stateVal][2])
+
+    elif tableType == "rtable":
+        if len(sys.argv) < 3:
+            print("Error: missing arguments")
+            exit(1)
+        else:
+            tableName = sys.argv[2]
+
+        numSlots = 1
+        r_table = pd.DataFrame(columns=list(range(numSlots)), dtype=np.int)
+        r_table = pd.read_pickle(tableName + '.gz', compression='gzip')
+
+        f = open(tableName + '.txt', 'w')
+        f.write(r_table.to_string())
+        f.close()
+
+    elif tableType == "unite_ttable":
+        if len(sys.argv) < 3:
             print("Error: missing arguments")
             exit(1)
 
         tableNames = []
 
+        output = ""
         for i in range(2, len(sys.argv)):
             if not sys.argv[i].isdigit():
                 tableName = sys.argv[i]
@@ -428,12 +514,17 @@ try:
                     tableNames.append(tableName)
                 else:
                     output = tableName
+                    print("output = ", output)
             else:
                 numActions = int(sys.argv[i])
 
+        if output == "":
+            output = tableNames[0] + ".txt"
+            print("output = ", output)
+
+
         print("tables:\n", tableNames)
         print("\nnumAction = ", numActions)
-        print("output = ", output)
         print("\n")
 
         output_table = pd.DataFrame(columns=list(range(numActions)), dtype=np.int)

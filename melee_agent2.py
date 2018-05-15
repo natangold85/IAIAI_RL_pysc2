@@ -109,10 +109,10 @@ class Attack(base_agent.BaseAgent):
         # tables:
         if SMART_EXPLORATION in sys.argv:
             qTableParams = QTableParamsWithChangeInExploration()
-            self.tables = TableMngr(NUM_ACTIONS, Q_TABLE_SMART_EXPLORATION, qTableParams, T_TABLE_SMART_EXPLORATION, RESULT_SMART_EXPLORATION)           
+            self.tables = TableMngr(NUM_ACTIONS, Q_TABLE_SMART_EXPLORATION, qTableParams, "", RESULT_SMART_EXPLORATION)           
         elif NAIVE_EXPLORATION in sys.argv:
             qTableParams = QTableParamsWOChangeInExploration()
-            self.tables = TableMngr(NUM_ACTIONS, Q_TABLE_NAIVE_EXPLORATION, qTableParams, T_TABLE_NAIVE_EXPLORATION, RESULT_NAIVE_EXPLORATION)
+            self.tables = TableMngr(NUM_ACTIONS, Q_TABLE_NAIVE_EXPLORATION, qTableParams, "", RESULT_NAIVE_EXPLORATION)
         else:
             print("Error: Enter typeof exploration!!")
             exit(1)        
@@ -219,19 +219,6 @@ class Attack(base_agent.BaseAgent):
     def Learn(self):
         if self.current_action is not None:
             self.tables.learn(str(self.previous_scaled_state), self.current_action, self.currReward, str(self.current_scaled_state))
-            # if self.current_action < SELECT_ACTIONS and self.current_action >= DO_NOTHING_ACTION and self.currReward == 0:
-            #     if self.current_action < SELECT_ALL_ACTION:
-            #         print("\nselect all, prev select val =" , self.previous_scaled_state[STATE_SELECTED_START_IDX], "current select val =", self.current_scaled_state[STATE_SELECTED_START_IDX])
-            #     else:
-            #         print("prev select val =" , self.previous_scaled_state[STATE_SELECTED_START_IDX], "current select val =", self.current_scaled_state[STATE_SELECTED_START_IDX])
-                
-            #     num = self.current_scaled_state[STATE_SELECTED_START_IDX]
-            #     for i in range (STATE_SELF_START_IDX, STATE_SELF_START_IDX + GRID_SIZE * GRID_SIZE):
-            #         if self.current_scaled_state[i] > 0:
-            #             num = num >> 1
-            #     if num > 0:
-            #         print ("Error in num")
-            #         time.sleep(5)
 
 
         self.currReward = 0
