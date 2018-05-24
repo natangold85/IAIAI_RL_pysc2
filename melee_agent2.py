@@ -156,7 +156,7 @@ class Attack(base_agent.BaseAgent):
         if SMART_EXPLORATION_GRID_SIZE_2 in sys.argv:
             changeModelParams(2, 4)
             qTableParams = QTableParamsWithChangeInExploration()
-            self.tables = TableMngr(ACTIONS.NUM_ACTIONS, Q_TABLE_SMART_EXPLORATION, qTableParams, T_TABLE_SMART_EXPLORATION, RESULT_SMART_EXPLORATION)           
+            self.tables = TableMngr(ACTIONS.NUM_ACTIONS, Q_TABLE_SMART_EXPLORATION, qTableParams, "", RESULT_SMART_EXPLORATION)           
         elif NAIVE_EXPLORATION_GRID_SIZE_2 in sys.argv:
             changeModelParams(2, 4)
             qTableParams = QTableParamsWOChangeInExploration()

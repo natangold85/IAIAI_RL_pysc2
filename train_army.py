@@ -11,7 +11,7 @@ from pysc2.lib import actions
 from utils import TerranUnit
 from utils import SC2_Params
 from utils import SC2_Actions
-from utils import QLearningTable
+from utils_tables import QLearningTable
 
 from utils import SwapPnt
 from utils import FindMiddle

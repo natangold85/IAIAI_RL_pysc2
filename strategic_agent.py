@@ -18,9 +18,11 @@ from pysc2.lib import actions
 from utils import TerranUnit
 from utils import SC2_Params
 from utils import SC2_Actions
-from utils import QLearningTable
 
 from utils import SwapPnt
+
+from utils_tables import QLearningTable
+from utils_tables import QTableParamsWOChangeInExploration
 
 from build_base import BuildBaseSubAgent
 from train_army import TrainArmySubAgent
@@ -79,7 +81,8 @@ class Strategic(base_agent.BaseAgent):
         self.m_attackSubAgent = AttackSubAgent(Q_TABLE_ATTACK_FILE)
 
         # qtables:
-        self.qTable = QLearningTable(actions=list(range(NUM_ACTIONS)))
+        qTableParams = QTableParamsWOChangeInExploration()
+        self.qTable = QLearningTable(NUM_ACTIONS, Q_TABLE_STRATEGIC_FILE, qTableParams)
         if os.path.isfile(Q_TABLE_STRATEGIC_FILE + '.gz'):
             self.qTable.q_table = pd.read_pickle(Q_TABLE_STRATEGIC_FILE + '.gz', compression='gzip')
 
@@ -207,7 +210,7 @@ class Strategic(base_agent.BaseAgent):
     def EndRunQTable(self, obs):
         reward = obs.reward
         self.qTable.learn(str(self.previous_scaled_state), self.current_action, reward, 'terminal')
-        self.qTable.end_run(reward)
+        self.qTable.end_run(reward,True)
         self.qTable.q_table.to_pickle(Q_TABLE_STRATEGIC_FILE + '.gz', 'gzip') 
 
        

@@ -14,8 +14,10 @@ from train_army import TrainArmySubAgent
 from utils import TerranUnit
 from utils import SC2_Params
 from utils import SC2_Actions
-from utils import QLearningTable
-from utils import TransitionTable
+from utils_tables import QLearningTable
+from utils_tables import TransitionTable
+
+from utils_tables import QTableParamsWOChangeInExploration
 
 from utils import SwapPnt
 from utils import FindMiddle
@@ -109,11 +111,12 @@ class BuildBaseSubAgent:
             self.trainArmySubAgent = TrainArmySubAgent()
 
         # qtables:
-        self.qTable = QLearningTable(qTableName, self.num_Actions)
+        qTableParams = QTableParamsWOChangeInExploration()
+        self.qTable = QLearningTable(self.num_Actions, qTableName, qTableParams)
 
         if tTableName != '':
             self.use_tTable = True
-            self.tTable = TransitionTable(tTableName, self.num_Actions)
+            self.tTable = TransitionTable(self.num_Actions, tTableName)
         else:
             self.use_tTable = False
 
@@ -215,23 +218,13 @@ class BuildBaseSubAgent:
         self.CommandCenterLoc = [miniMapLoc]
 
     def LastStep(self, obs, reward):
-        self.qTable.learn(str(self.previous_scaled_state), self.current_action, reward, 'terminal')
-        self.qTable.end_run(reward)
-        if self.use_tTable:
-            if reward > 0:
-                terminalState = 'win'
-            elif reward < 0:
-                terminalState = 'loss'
-            else:
-                terminalState = 'tie'
-            self.tTable.insert(str(self.previous_scaled_state), self.current_action, terminalState)
-            self.tTable.end_run()
+        if self.current_action != None:
+            self.qTable.learn(str(self.previous_scaled_state), self.current_action, reward, 'terminal')
+        self.qTable.end_run(reward, True)
 
     def Learn(self, obs, reward = 0):
         if self.current_action is not None:
             self.qTable.learn(str(self.previous_scaled_state), self.current_action, reward, str(self.current_scaled_state))
-            if self.use_tTable:
-                self.tTable.insert(str(self.previous_scaled_state), self.current_action, str(self.current_scaled_state))
             self.current_action = None
 
         self.previous_state[:] = self.current_state[:]
