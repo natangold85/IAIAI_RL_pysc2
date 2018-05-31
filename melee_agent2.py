@@ -24,30 +24,89 @@ from utils import DistForCmp
 
 from utils_tables import UserPlay
 from utils_tables import TableMngr
+from utils_tables import TestTableMngr
+
 from utils_tables import QTableParamsWOChangeInExploration
 from utils_tables import QTableParamsWithChangeInExploration
 
+# possible types of play
 SMART_EXPLORATION_GRID_SIZE_2 = 'smartExploration2'
 NAIVE_EXPLORATION_GRID_SIZE_2 = 'naiveExploration2'
-NAIVE_EXPLORATION_GRID_SIZE_4 = 'naiveExploration4'
+NAIVE_EXPLORATION_1_BUCKET_FULL = 'naiveExploration1Full'
+NAIVE_EXPLORATION_1_BUCKET_EMPTY = 'naiveExploration1Empty'
+TEST_WO_HALLUCINATION = "testClean"
+TEST_WITH_HALLUCINATION = "testHallucination"
+TEST_WITH_HALLUCINATION_SINGLE = "testHallucinationSingle"
 USER_PLAY = 'play'
 
+ALL_TYPES = set([SMART_EXPLORATION_GRID_SIZE_2, NAIVE_EXPLORATION_GRID_SIZE_2, 
+            NAIVE_EXPLORATION_1_BUCKET_FULL, NAIVE_EXPLORATION_1_BUCKET_EMPTY, 
+            TEST_WO_HALLUCINATION, TEST_WITH_HALLUCINATION, TEST_WITH_HALLUCINATION_SINGLE, USER_PLAY])
 
-Q_TABLE_SMART_EXPLORATION = "melee_attack_2_qtable_smartExploration"
-T_TABLE_SMART_EXPLORATION = "melee_attack_2_ttable_smartExploration"
-R_TABLE_SMART_EXPLORATION = "melee_attack_2_rtable_smartExploration"
-RESULT_SMART_EXPLORATION = "melee_attack_2_result_smartExploration"
+# table type
+TYPE = "type"
+Q_TABLE = "q"
+T_TABLE = "t"
+R_TABLE = "r"
+RESULTS = "results"
+PARAMS = 'params'
 
-Q_TABLE_NAIVE_EXPLORATION = "melee_attack_2_qtable_naiveExploration"
-T_TABLE_NAIVE_EXPLORATION = "melee_attack_2_ttable_naiveExploration"
-R_TABLE_NAIVE_EXPLORATION = "melee_attack_2_rtable_naiveExploration"
-RESULT_NAIVE_EXPLORATION = "melee_attack_2_result_naiveExploration"
+# table names
+RUN_TYPES = {}
+RUN_TYPES[SMART_EXPLORATION_GRID_SIZE_2] = {}
+RUN_TYPES[SMART_EXPLORATION_GRID_SIZE_2][TYPE] = "all"
+RUN_TYPES[SMART_EXPLORATION_GRID_SIZE_2][PARAMS] = [2, 4, QTableParamsWithChangeInExploration()]
+RUN_TYPES[SMART_EXPLORATION_GRID_SIZE_2][Q_TABLE] = "melee_attack_2_qtable_smartExploration"
+RUN_TYPES[SMART_EXPLORATION_GRID_SIZE_2][T_TABLE] = "melee_attack_2_ttable_smartExploration"
+RUN_TYPES[SMART_EXPLORATION_GRID_SIZE_2][R_TABLE] = "melee_attack_2_rtable_smartExploration"
+RUN_TYPES[SMART_EXPLORATION_GRID_SIZE_2][RESULTS] = "melee_attack_2_result_smartExploration"
 
-Q_TABLE_NAIVE_EXPLORATION4 = "melee_attack_4_qtable_naiveExploration"
-T_TABLE_NAIVE_EXPLORATION4 = "melee_attack_4_ttable_naiveExploration"
-R_TABLE_NAIVE_EXPLORATION4 = "melee_attack_4_rtable_naiveExploration"
-RESULT_NAIVE_EXPLORATION4 = "melee_attack_4_result_naiveExploration"
+RUN_TYPES[NAIVE_EXPLORATION_GRID_SIZE_2] = {}
+RUN_TYPES[NAIVE_EXPLORATION_GRID_SIZE_2][TYPE] = "all"
+RUN_TYPES[NAIVE_EXPLORATION_GRID_SIZE_2][PARAMS] = [2, 1, QTableParamsWOChangeInExploration()]
+RUN_TYPES[NAIVE_EXPLORATION_GRID_SIZE_2][Q_TABLE] = "melee_attack_2_qtable_naiveExploration"
+RUN_TYPES[NAIVE_EXPLORATION_GRID_SIZE_2][T_TABLE] = "melee_attack_2_ttable_naiveExploration"
+RUN_TYPES[NAIVE_EXPLORATION_GRID_SIZE_2][R_TABLE] = "melee_attack_2_rtable_naiveExploration"
+RUN_TYPES[NAIVE_EXPLORATION_GRID_SIZE_2][RESULTS] = "melee_attack_2_result_naiveExploration"
 
+RUN_TYPES[NAIVE_EXPLORATION_1_BUCKET_FULL] = {}
+RUN_TYPES[NAIVE_EXPLORATION_1_BUCKET_FULL][TYPE] = "all"
+RUN_TYPES[NAIVE_EXPLORATION_1_BUCKET_FULL][PARAMS] = [2, 1, QTableParamsWOChangeInExploration()]
+RUN_TYPES[NAIVE_EXPLORATION_1_BUCKET_FULL][Q_TABLE] = "melee_attack_qtable_naiveExploration1Full"
+RUN_TYPES[NAIVE_EXPLORATION_1_BUCKET_FULL][T_TABLE] = "melee_attack_ttable_naiveExploration1Full"
+RUN_TYPES[NAIVE_EXPLORATION_1_BUCKET_FULL][R_TABLE] = "melee_attack_rtable_naiveExploration1Full"
+RUN_TYPES[NAIVE_EXPLORATION_1_BUCKET_FULL][RESULTS] = "melee_attack_result_naiveExploration1Full"
+
+RUN_TYPES[NAIVE_EXPLORATION_1_BUCKET_EMPTY] = {}
+RUN_TYPES[NAIVE_EXPLORATION_1_BUCKET_EMPTY][TYPE] = "all"
+RUN_TYPES[NAIVE_EXPLORATION_1_BUCKET_EMPTY][PARAMS] = [2, 4, QTableParamsWOChangeInExploration()]
+RUN_TYPES[NAIVE_EXPLORATION_1_BUCKET_EMPTY][Q_TABLE] = "melee_attack_qtable_naiveExploration1Empty"
+RUN_TYPES[NAIVE_EXPLORATION_1_BUCKET_EMPTY][T_TABLE] = "melee_attack_ttable_naiveExploration1Empty"
+RUN_TYPES[NAIVE_EXPLORATION_1_BUCKET_EMPTY][R_TABLE] = "melee_attack_rtable_naiveExploration1Empty"
+RUN_TYPES[NAIVE_EXPLORATION_1_BUCKET_EMPTY][RESULTS] = "melee_attack_result_naiveExploration1Empty"
+
+RUN_TYPES[TEST_WO_HALLUCINATION] = {}
+RUN_TYPES[TEST_WO_HALLUCINATION][TYPE] = "test"
+RUN_TYPES[TEST_WO_HALLUCINATION][PARAMS] = [2, 4]
+RUN_TYPES[TEST_WO_HALLUCINATION][Q_TABLE] = "melee_attack_2_test_simple_qtable"
+RUN_TYPES[TEST_WO_HALLUCINATION][RESULTS] = "melee_attack_2_test_simple_results"
+
+RUN_TYPES[TEST_WITH_HALLUCINATION] = {}
+RUN_TYPES[TEST_WITH_HALLUCINATION][PARAMS] = [2, 4]
+RUN_TYPES[TEST_WITH_HALLUCINATION][TYPE] = "test"
+RUN_TYPES[TEST_WITH_HALLUCINATION][Q_TABLE] = "melee_attack_2_test_hallucination_qtable"
+RUN_TYPES[TEST_WITH_HALLUCINATION][RESULTS] = "melee_attack_2_test_hallucination_results"
+
+RUN_TYPES[TEST_WITH_HALLUCINATION_SINGLE] = {}
+RUN_TYPES[TEST_WITH_HALLUCINATION_SINGLE][PARAMS] = [2, 4]
+RUN_TYPES[TEST_WITH_HALLUCINATION_SINGLE][TYPE] = "test"
+RUN_TYPES[TEST_WITH_HALLUCINATION_SINGLE][Q_TABLE] = "melee_attack_2_test_hallucinationSingle_qtable"
+RUN_TYPES[TEST_WITH_HALLUCINATION_SINGLE][RESULTS] = "melee_attack_2_test_hallucinationSingle_results"
+
+RUN_TYPES[USER_PLAY] = {}
+RUN_TYPES[USER_PLAY] = {}
+RUN_TYPES[USER_PLAY][TYPE] = "play"
+RUN_TYPES[USER_PLAY][PARAMS] = [2, 1]
 
 
 NON_VALID_NUM = -1
@@ -66,6 +125,7 @@ class STATE:
     SELECTED_START_IDX = 2 * GRID_SIZE * GRID_SIZE
     STEP_IDX = 2 * GRID_SIZE * GRID_SIZE + 1
 
+    ORIGINAL_POWER_BUCKETING = 4
     POWER_BUCKETING = 1
 
     SCALED_NON_SELECT = 0
@@ -87,8 +147,8 @@ STEP_DURATION = 0
 UNIT_IN_MAP = 0
 NUM_UNIT_SCREEN_PIXELS = 0
 
-def changeModelParams(newGridSize, powerBucketing):
-    STATE.GRID_SIZE = newGridSize
+def changeModelParams(gridSize = STATE.GRID_SIZE, powerBucketing = STATE.POWER_BUCKETING, origPowerBucketing = STATE.ORIGINAL_POWER_BUCKETING):
+    STATE.GRID_SIZE = gridSize
     ACTIONS.SELECT = STATE.GRID_SIZE * STATE.GRID_SIZE + ACTIONS.SELECT_ALL
     ACTIONS.MOVE = STATE.GRID_SIZE * STATE.GRID_SIZE + ACTIONS.SELECT
     ACTIONS.NUM_ACTIONS = ACTIONS.MOVE
@@ -102,6 +162,7 @@ def changeModelParams(newGridSize, powerBucketing):
     STATE.STEP_IDX = 2 * STATE.GRID_SIZE * STATE.GRID_SIZE + 1
 
     STATE.POWER_BUCKETING = powerBucketing
+    STATE.ORIGINAL_POWER_BUCKETING = origPowerBucketing
 
 for key,value in TerranUnit.UNIT_SPEC.items():
     if value.name == "marine":
@@ -152,24 +213,29 @@ class Attack(base_agent.BaseAgent):
     def __init__(self):        
         super(Attack, self).__init__()
 
+        self.useBucketingValues = False
         # tables:
-        if SMART_EXPLORATION_GRID_SIZE_2 in sys.argv:
-            changeModelParams(2, 4)
-            qTableParams = QTableParamsWithChangeInExploration()
-            self.tables = TableMngr(ACTIONS.NUM_ACTIONS, Q_TABLE_SMART_EXPLORATION, qTableParams, "", RESULT_SMART_EXPLORATION)           
-        elif NAIVE_EXPLORATION_GRID_SIZE_2 in sys.argv:
-            changeModelParams(2, 4)
-            qTableParams = QTableParamsWOChangeInExploration()
-            self.tables = TableMngr(ACTIONS.NUM_ACTIONS, Q_TABLE_NAIVE_EXPLORATION, qTableParams,T_TABLE_NAIVE_EXPLORATION, RESULT_NAIVE_EXPLORATION)
-        elif NAIVE_EXPLORATION_GRID_SIZE_4 in sys.argv:
-            changeModelParams(4, 4)
-            qTableParams = QTableParamsWOChangeInExploration()
-            self.tables = TableMngr(ACTIONS.NUM_ACTIONS, Q_TABLE_NAIVE_EXPLORATION4, qTableParams, T_TABLE_NAIVE_EXPLORATION4, RESULT_NAIVE_EXPLORATION4)
-        elif USER_PLAY in sys.argv:
-            self.tables = UserPlay()
-        else:
-            print("Error: Enter typeof exploration!!")
+        runTypeArg = ALL_TYPES.intersection(sys.argv)
+        if len(runTypeArg) != 1:
+            print("play type not entered correctly")
             exit(1) 
+
+
+        print(RUN_TYPES)
+        runType = RUN_TYPES[runTypeArg.pop()]
+
+        if runType[TYPE] == 'all':
+            params = runType[PARAMS]
+            changeModelParams(params[0], params[1])
+            self.tables = TableMngr(ACTIONS.NUM_ACTIONS, runType[Q_TABLE], params[2], runType[T_TABLE], runType[RESULTS])   
+        elif runType[TYPE] == 'test':
+            params = runType[PARAMS]
+            changeModelParams(params[0], params[1])
+            self.tables = TestTableMngr(ACTIONS.NUM_ACTIONS, runType[Q_TABLE], runType[RESULTS])
+        elif runType[TYPE] == 'play':
+            params = runType[PARAMS]
+            changeModelParams(params[0], params[1])
+            self.tables = UserPlay()
                
     
         # states and action:
@@ -179,6 +245,14 @@ class Attack(base_agent.BaseAgent):
         
         self.current_scaled_state = np.zeros(STATE.SCALED_SIZE, dtype=np.int32, order='C')
         self.previous_scaled_state = np.zeros(STATE.SCALED_SIZE, dtype=np.int32, order='C')
+
+        if self.useBucketingValues:
+            self.current_bucketing_state = np.zeros(STATE.SCALED_SIZE, dtype=np.int32, order='C')
+            self.previous_bucketing_state = np.zeros(STATE.SCALED_SIZE, dtype=np.int32, order='C')
+        else:
+            self.current_bucketing_state = None
+            self.previous_bucketing_state = None
+           
 
         # model params
         self.screenStart = [0,0]
@@ -258,6 +332,10 @@ class Attack(base_agent.BaseAgent):
         self.current_scaled_state = np.zeros(STATE.SCALED_SIZE, dtype=np.int32, order='C')
         self.previous_scaled_state = np.zeros(STATE.SCALED_SIZE, dtype=np.int32, order='C')
 
+        if self.useBucketingValues:
+            self.current_bucketing_state = np.zeros(STATE.SCALED_SIZE, dtype=np.int32, order='C')
+            self.previous_bucketing_state = np.zeros(STATE.SCALED_SIZE, dtype=np.int32, order='C')
+
         self.startTime = datetime.datetime.now()
 
         self.screenStart = [0,0]
@@ -302,14 +380,17 @@ class Attack(base_agent.BaseAgent):
             reward = -1
             s_ = "loss"
         else:
-            reward = -1
-            s_ = "loss"
+            reward = 0
+            s_ = "tie"
 
         currentDT = datetime.datetime.now()
         print("experiment terminated in " , self.numStep, "steps, duration =", currentDT - self.startTime,", in", str(currentDT))
         
         # self.CreateState(obs)
-        if self.tables.end_run(str(self.previous_scaled_state), self.current_action, reward, s_):
+        if self.current_action is not None:
+            self.tables.learn(str(self.previous_scaled_state), self.current_action, reward, s_, str(self.previous_bucketing_state))
+
+        if self.tables.end_run(reward):
             afterDT = datetime.datetime.now()
             print("\ttable saved!! (duration =", str(afterDT - currentDT))
         # self.currReward = reward
@@ -317,17 +398,17 @@ class Attack(base_agent.BaseAgent):
 
     def Learn(self):
         if self.current_action is not None:
-            self.tables.learn(str(self.previous_scaled_state), self.current_action, self.currReward, str(self.current_scaled_state))
+            self.tables.learn(str(self.previous_scaled_state), self.current_action, self.currReward, str(self.current_scaled_state), str(self.current_bucketing_state), str(self.previous_bucketing_state))
             
         self.currReward = 0
         self.previous_scaled_state[:] = self.current_scaled_state[:]
-
+        if self.useBucketingValues:
+            self.previous_bucketing_state[:] = self.current_bucketing_state[:]
     def CreateState(self, obs):
         self.CreateSelfHotZoneMat(obs)
         self.CreateEnemyHotZoneMat(obs)
 
         self.ScaleState(obs)
-
 
     def ScaleState(self, obs):
         self.ScaleSelfState(obs)
@@ -338,7 +419,16 @@ class Attack(base_agent.BaseAgent):
             self.current_scaled_state[i] = afterBucketing * STATE.POWER_BUCKETING
         
         self.current_scaled_state[STATE.STEP_IDX] = int(self.numStep / STATE.STEP_BUCKETING)
- 
+        
+        if self.useBucketingValues:
+            self.current_bucketing_state[:] = self.current_scaled_state[:]
+            for i in range (STATE.SELF_START_IDX, STATE.SELF_START_IDX + STATE.GRID_SIZE * STATE.GRID_SIZE):
+                afterBucketing = int(math.ceil(self.current_scaled_state[i] / STATE.ORIGINAL_POWER_BUCKETING))
+                self.current_bucketing_state[i] = afterBucketing * STATE.ORIGINAL_POWER_BUCKETING                 
+            for i in range (STATE.ENEMY_START_IDX, STATE.ENEMY_START_IDX + STATE.GRID_SIZE * STATE.GRID_SIZE):
+                afterBucketing = int(math.ceil(self.current_scaled_state[i] / STATE.ORIGINAL_POWER_BUCKETING))
+                self.current_bucketing_state[i] = afterBucketing * STATE.ORIGINAL_POWER_BUCKETING   
+
     def ScaleSelfState(self, obs):
 
         idxSelected = self.SelectedUnitsVal()

@@ -43,19 +43,15 @@ def GetAllPermutationStates(allPermutation, idxVec, state, currIdx = 0):
     if currIdx == len(allPermutation):
         modState = []
         for p in range(0, len(idxVec)):
-            for val in allPermutation[p][idxVec[p]]:
-                modState.append(val)
-        modState.append(GetSelectedVal(modState, state))
+            modState.append(allPermutation[p][idxVec[p]])
         return [modState] 
     
     allStates = []
     for idx in range(0, len(allPermutation[currIdx])):
         idxVec[currIdx] = idx
-        
         modStates = GetAllPermutationStates(allPermutation, idxVec, state, currIdx + 1)
         for s in modStates:
             allStates.append(s)
-
     return allStates
 
 
@@ -343,55 +339,90 @@ try:
         print("num states =" , numStates, "num positive values =", sumPositive, "num negative values =", sumNegative, "num zero values =", sumZero)
         print("num runs =", numRuns, "num experiment runs =", numExpRuns, "avg reward =", avgReward, "avg experiment reward =", avgExpReward)        
 
-        table = q_table[q_table.index != "TrialsData"]
-        print(table.describe())
         if len(sys.argv) >= 3 and "ungroup" in sys.argv:
             outTableName = sys.argv[4]
-
             orgGridSize = 2
-            newGridSize = 4
+            newGridSize = 2
             scaleRatio = newGridSize / orgGridSize
             bucketing = 4
             numActions = list(range(2 + newGridSize * newGridSize * 2))
             outTable = pd.DataFrame(columns = numActions, dtype=np.float)
 
+            names = list(q_table.index)
+            toPrint = []
+            for i in range(0,100):
+                toPrint.append(i)
+
+            allSize = len(names)
+            currIdx = 0
+
             for name in names[:]:
+                currIdx += 1
+                pct = ((currIdx * 100) / allSize)
+                print(name)
+                if pct in toPrint:
+                    print("passed", pct, "%")
                 if name != 'TrialsData':
                     nameStr = name.replace("]", "")
                     nameStr = nameStr.replace("[", "")
                     state = GetState(nameStr)
-                    if len(state) > 9:
-                        continue
 
-                    print(name)
                     offset = 0
                     allPermutation = []
 
-                    for side in range(0, 2):
-                        for loc in range(0, orgGridSize * orgGridSize):
-                            powerGroup = state[offset]
-                            if powerGroup > 0:
-                                start = (powerGroup - 1) * bucketing + 1
-                                end = powerGroup * bucketing + 1
-                                for power in range(start, end):
-                                    perm = AllPermutationsOfLoc(power, scaleRatio * scaleRatio)
-                            else:
-                                perm = [[]]
-                                for i in range(0, int(scaleRatio * scaleRatio)):
-                                    perm[0].append(0)
+                    for loc in range(0, 2 * orgGridSize * orgGridSize):
+                        powerGroup = state[loc]
+                        perm = []
+                        if powerGroup > 0:
+                            start = powerGroup - bucketing + 1
+                            end = powerGroup + 1
+                            for power in range(start, end):
+                                perm.append(power)
+                        else:
+                            perm.append(powerGroup)
+                        
+                        allPermutation.append(perm)
 
-                            allPermutation.append(perm)
-                            offset += 1
+                    allPermutation.append([state[offset + 1]])
+                    allPermutation.append([state[offset + 2]])
+
+
+
+
+                    # for side in range(0, 2):
+                    #     for loc in range(0, orgGridSize * orgGridSize):
+                    #         powerGroup = state[offset]
+                    #         if powerGroup > 0:
+                    #             start = (powerGroup - 1) * bucketing + 1
+                    #             end = powerGroup * bucketing + 1
+                    #             for power in range(start, end):
+                    #                 perm = AllPermutationsOfLoc(power, scaleRatio * scaleRatio)
+                    #         else:
+                    #             perm = [[]]
+                    #             for i in range(0, int(scaleRatio * scaleRatio)):
+                    #                 perm[0].append(0)
+
+                    #         allPermutation.append(perm)
+                    #         offset += 1
                     
                     idxVec = []
                     for i in range(0, len(allPermutation)):
                         idxVec.append(0)
-                        allPermutation[i]
-                    
-                    print("\n\nstate =", name)
+                                    
                     allStates = GetAllPermutationStates(allPermutation, idxVec, state)
+                    for s in allStates:
+                        outTable = outTable.append(pd.Series([0] * len(numActions), index=outTable.columns, name=str(s)))
+                        for a in range (0, len(numActions)):
+                            val = q_table.ix[name, a]
+                            outTable.ix[str(s), a] = val
+                else:
+                    outTable = outTable.append(pd.Series([0] * len(numActions), index=outTable.columns, name=name))
+                    for a in range (0, len(numActions)):
+                        val = q_table.ix[name, a]
+                        outTable.ix[name, a] = val
 
-            q_table.to_pickle(outTableName + '.gz', 'gzip') 
+            print(outTable.to_string())
+            outTable.to_pickle(outTableName + '.gz', 'gzip') 
 
     elif tableType == "ttable":
         if len(sys.argv) < 4:
@@ -494,91 +525,6 @@ try:
         #     print("for action = ", a, ":\n")
         #     for stateVal in range(0, numStateVals):
         #         print(actionsTransition[a][stateVal][0] / actionsTransition[a][stateVal][2], actionsTransition[a][stateVal][1] / actionsTransition[a][stateVal][2])
-    elif tableType == "ttable_clean":
-        if len(sys.argv) < 4:
-            print("Error: missing arguments")
-            exit(1)
-        else:
-            tableName = sys.argv[2]
-            numActions = int(sys.argv[3])
-
-        t_table = pd.DataFrame(columns=list(range(numActions)), dtype=np.float)
-        t_table = pd.read_pickle(tableName + '.gz', compression='gzip')
-
-        t_tableOut = {}
-
-        c = 0
-        for key, val in t_table.items():
-            newVal = val
-            if key != "TrialsData":
-                key1 = key.replace("]", "")
-                key1 = key1.replace("[", "")
-                orgState = GetState(key1)
-                toPrint = False
-                t_states = newVal[0]
-                counts = newVal[1]
-                names = list(t_states.index)
-                for name in names:
-                    if name == "loss" or name == "tie" or name == "win":
-                        continue
-                    name1 = name.replace("]", "")
-                    name1 = name1.replace("[", "")
-                    nextState = GetState(name1)
-                    if nextState[9] < orgState[9]:
-                        for a in range(0, numActions):
-                            counts[a] -= t_states.ix[name,a]
-                        newVal[0] = newVal[0][newVal[0].index != name]
-                        c += 1
-
-
-            t_tableOut[key] = newVal
-        
-        print("num to clean", c)
-        pd.to_pickle(t_tableOut, tableName + "_" + '.gz', 'gzip') 
-
-    elif tableType == "ttable2d_2_3d":
-        if len(sys.argv) < 5:
-            print("Error: missing arguments")
-            exit(1)
-        else:
-            tableName = sys.argv[2]
-            outTableName = sys.argv[4]         
-            numActions = int(sys.argv[3])
-        
-        actionList = list(range(numActions))
-        t_table = pd.DataFrame(columns=actionList, dtype=np.float)
-        t_table = pd.read_pickle(tableName + '.gz', compression='gzip')
-        
-        names = list(t_table.index)
-        outputDictionary = {}
-        for name in names[:]:
-            if name == 'TrialsData':
-                numRuns = t_table.ix[name, 0]
-                outputDictionary['TrialsData'] = [0]
-                outputDictionary['TrialsData'][0] = numRuns
-            else:
-                name1 = name.replace("]", "")
-                name1 = name1.replace("[", "")
-                strSplit = name1.split(' ')
-
-
-                name1 = name.replace("]", "")
-                name1 = name1.replace("[", "")
-                states = name1.split("__")
-
-                s = states[0]
-                s_ = states[1]
-
-                if s not in outputDictionary:
-                    outputDictionary[s] = pd.DataFrame(columns=actionList, dtype=np.float)
-                
-                if s_ not in outputDictionary[s]:
-                    outputDictionary[s] = outputDictionary[s].append(pd.Series([0] * len(actionList), index = outputDictionary[s].columns, name=s_))  
-
-                for a in range (0, numActions):
-                    outputDictionary[s].ix[s_, a] = t_table.ix[name,a]
-        print(outputDictionary['TrialsData'][0])
-        pd.to_pickle(outputDictionary, outTableName + '.gz', 'gzip') 
 
     elif tableType == "rtable":
         if len(sys.argv) < 3:
@@ -608,8 +554,8 @@ try:
                 tableNames.append(sys.argv[i])
 
         
-        plt.figure(1)
-        PlotExplorationChange(30000)
+        # plt.figure(1)
+        # PlotExplorationChange(30000)
 
         fig, ax = plt.subplots()  
         fileName = ""
@@ -630,6 +576,38 @@ try:
         plt.legend(tableNames, loc='upper left')
 
         plt.show()
+
+    elif tableType == "paste_results":
+        tableName = sys.argv[2]
+        outTableName = sys.argv[4]
+        part2Include = int(sys.argv[3])
+        numSlots = 1
+        table = pd.DataFrame(columns=list(range(numSlots)), dtype=np.int)
+        table = pd.read_pickle(tableName + '.gz', compression='gzip')
+
+        num2Write = table.ix['prevNumToWrite',0]
+        end =  int(table.ix['countComplete',0])
+        print("before:")
+        print(table.to_string())
+
+    
+        start2Drop = int(math.floor(part2Include / num2Write))
+        
+        leftOver = int(part2Include % num2Write)
+        table.ix['middleCalculationCount',0] = leftOver
+        table.ix['middleCalculationVal',0] = table.ix[str(start2Drop),0]
+
+        namesToDrop = []
+        for toDrop in range(start2Drop, end):
+            namesToDrop.append(str(toDrop))
+            table = table[table.index != str(toDrop)]
+        
+        table.ix['countComplete',0] = start2Drop
+
+        print("\n\n\n\nafter:")
+        print(table.to_string())
+
+        table.to_pickle(outTableName + '.gz', 'gzip') 
     else:
         print("ERROR : non valid table type!!")
 

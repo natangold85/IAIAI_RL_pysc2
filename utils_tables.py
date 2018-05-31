@@ -3,6 +3,8 @@ import pandas as pd
 import pickle
 import os.path
 
+import tensorflow as tf
+
 class QTableParamsWOChangeInExploration:
     def __init__(self, learning_rate=0.01, reward_decay=0.9, explorationProb=0.1):
         self.isExplorationDecay = False
@@ -23,11 +25,29 @@ class UserPlay:
     def choose_action(self, observation):
         a = input("insert action: ")
         return int(a)
-    def learn(self, s, a, r, s_):
+    def learn(self, s, a, r, s_, initValuesState = None):
         return False
-    def end_run(self, s, a, r, s_):
+    def end_run(self, r):
         return False
+
+class TestTableMngr:        
+    def __init__(self, numActions, qTableName, resultFileName, numToWriteResult = 100):
         
+        self.qTable = QLearningTable(numActions, qTableName)
+        self.resultFile = ResultFile(resultFileName, numToWriteResult)
+
+
+    def choose_action(self, observation):
+        return self.qTable.choose_action(observation)
+
+    def learn(self, s, a, r, s_, sToInitValues = None, s_ToInitValues = None):
+        return 
+
+    def end_run(self, r):
+        self.resultFile.end_run(r, True)
+
+        return True
+
 class TableMngr:
     def __init__(self, numActions, qTableName, QTableParams, transitionTableName = '', resultFileName = '', rewardTableName = '', numTrials2SaveTable = 20, numToWriteResult = 100):
         self.qTable = QLearningTable(numActions, qTableName, QTableParams)
@@ -57,8 +77,8 @@ class TableMngr:
     def choose_action(self, observation):
         return self.qTable.choose_action(observation)
 
-    def learn(self, s, a, r, s_):
-        self.qTable.learn(s, a, r, s_)
+    def learn(self, s, a, r, s_, sToInitValues = None, s_ToInitValues = None):
+        self.qTable.learn(s, a, r, s_, sToInitValues, s_ToInitValues)
 
         if self.createTransitionTable:
             self.tTable.learn(s, a, s_)
@@ -66,23 +86,19 @@ class TableMngr:
         if self.createRewardTable:
             self.rTable.learn(s_, r)
 
-    def end_run(self, s, a, r, s_):
+    def end_run(self, r):
         saveTable = False
         self.numTrials += 1
         if self.numTrials == self.numTrials2Save:
             saveTable = True
             self.numTrials = 0
 
-        self.qTable.learn(s, a, r, 'terminal')
         self.qTable.end_run(r, saveTable)
 
-
         if self.createTransitionTable:
-            self.tTable.learn(s, a, s_)  
             self.tTable.end_run(saveTable)
 
         if self.createRewardTable:
-            self.rTable.learn(s_, r)
             self.rTable.end_run(saveTable)
 
         if self.createResultFile:
@@ -90,10 +106,9 @@ class TableMngr:
 
         return saveTable
 
-        
 
 class QLearningTable:
-    def __init__(self, numActions, qTableName, qTableParams):
+    def __init__(self, numActions, qTableName, qTableParams = QTableParamsWOChangeInExploration()):
         self.qTableName = qTableName
         self.actions = list(range(numActions))  # a list
         self.q_table = pd.DataFrame(columns=self.actions, dtype=np.float)
@@ -118,6 +133,8 @@ class QLearningTable:
 
         self.q_table.ix[self.TrialsData, self.AvgRewardExperimentSlot] = 0
         self.q_table.ix[self.TrialsData, self.NumRunsExperimentSlot] = 0
+
+        self.terminalStates = ['terminal', 'win', 'loss', 'tie']
 
         # if self.params.propogateBackward:
         #     self.history = []
@@ -144,12 +161,12 @@ class QLearningTable:
             
         return action
 
-    def learn(self, s, a, r, s_):
-        self.check_state_exist(s)
+    def learn(self, s, a, r, s_, sToInitValues, s_ToInitValues):
+        self.check_state_exist(s, sToInitValues)
         q_predict = self.q_table.ix[s, a]
         
-        if s_ != 'terminal':
-            self.check_state_exist(s_)
+        if s_ not in self.terminalStates:
+            self.check_state_exist(s_, s_ToInitValues)
             q_target = r + self.params.rewardDecay * self.q_table.ix[s_, :].max()
         else:
             q_target = r  # next state is terminal
@@ -186,10 +203,13 @@ class QLearningTable:
         if saveTable:
             self.q_table.to_pickle(self.qTableName + '.gz', 'gzip') 
 
-    def check_state_exist(self, state):
+    def check_state_exist(self, state, stateToInitValues = None):
         if state not in self.q_table.index:
             # append new state to q table
             self.q_table = self.q_table.append(pd.Series([0] * len(self.actions), index=self.q_table.columns, name=state))
+            
+            if stateToInitValues in self.q_table.index:
+                self.q_table.ix[state,:] = self.q_table.ix[stateToInitValues, :]
 
 class TransitionTable:
     def __init__(self, numActions, tableName):
