@@ -28,19 +28,22 @@ from utils_tables import TestTableMngr
 
 from utils_tables import QTableParamsWOChangeInExploration
 from utils_tables import QTableParamsWithChangeInExploration
+from utils_tables import QTablePropogation
 
 # possible types of play
 SMART_EXPLORATION_GRID_SIZE_2 = 'smartExploration2'
 NAIVE_EXPLORATION_GRID_SIZE_2 = 'naiveExploration2'
-NAIVE_EXPLORATION_1_BUCKET_FULL = 'naiveExploration1Full'
-NAIVE_EXPLORATION_1_BUCKET_EMPTY = 'naiveExploration1Empty'
+ONLINE_HALLUCINATION = 'onlineHallucination'
+REWARD_PROPAGATION = 'rewardPropogation'
+
 TEST_WO_HALLUCINATION = "testClean"
 TEST_WITH_HALLUCINATION = "testHallucination"
 TEST_WITH_HALLUCINATION_SINGLE = "testHallucinationSingle"
+
 USER_PLAY = 'play'
 
 ALL_TYPES = set([SMART_EXPLORATION_GRID_SIZE_2, NAIVE_EXPLORATION_GRID_SIZE_2, 
-            NAIVE_EXPLORATION_1_BUCKET_FULL, NAIVE_EXPLORATION_1_BUCKET_EMPTY, 
+            ONLINE_HALLUCINATION, REWARD_PROPAGATION,
             TEST_WO_HALLUCINATION, TEST_WITH_HALLUCINATION, TEST_WITH_HALLUCINATION_SINGLE, USER_PLAY])
 
 # table type
@@ -63,27 +66,27 @@ RUN_TYPES[SMART_EXPLORATION_GRID_SIZE_2][RESULTS] = "melee_attack_2_result_smart
 
 RUN_TYPES[NAIVE_EXPLORATION_GRID_SIZE_2] = {}
 RUN_TYPES[NAIVE_EXPLORATION_GRID_SIZE_2][TYPE] = "all"
-RUN_TYPES[NAIVE_EXPLORATION_GRID_SIZE_2][PARAMS] = [2, 1, QTableParamsWOChangeInExploration()]
-RUN_TYPES[NAIVE_EXPLORATION_GRID_SIZE_2][Q_TABLE] = "melee_attack_2_qtable_naiveExploration"
-RUN_TYPES[NAIVE_EXPLORATION_GRID_SIZE_2][T_TABLE] = "melee_attack_2_ttable_naiveExploration"
-RUN_TYPES[NAIVE_EXPLORATION_GRID_SIZE_2][R_TABLE] = "melee_attack_2_rtable_naiveExploration"
-RUN_TYPES[NAIVE_EXPLORATION_GRID_SIZE_2][RESULTS] = "melee_attack_2_result_naiveExploration"
+RUN_TYPES[NAIVE_EXPLORATION_GRID_SIZE_2][PARAMS] = [2, 4, QTableParamsWOChangeInExploration()]
+RUN_TYPES[NAIVE_EXPLORATION_GRID_SIZE_2][Q_TABLE] = "melee_attack_2FullSelect_qtable_naiveExploration"
+RUN_TYPES[NAIVE_EXPLORATION_GRID_SIZE_2][T_TABLE] = ""
+RUN_TYPES[NAIVE_EXPLORATION_GRID_SIZE_2][R_TABLE] = ""
+RUN_TYPES[NAIVE_EXPLORATION_GRID_SIZE_2][RESULTS] = "melee_attack_2FullSelect_result_naiveExploration"
 
-RUN_TYPES[NAIVE_EXPLORATION_1_BUCKET_FULL] = {}
-RUN_TYPES[NAIVE_EXPLORATION_1_BUCKET_FULL][TYPE] = "all"
-RUN_TYPES[NAIVE_EXPLORATION_1_BUCKET_FULL][PARAMS] = [2, 1, QTableParamsWOChangeInExploration()]
-RUN_TYPES[NAIVE_EXPLORATION_1_BUCKET_FULL][Q_TABLE] = "melee_attack_qtable_naiveExploration1Full"
-RUN_TYPES[NAIVE_EXPLORATION_1_BUCKET_FULL][T_TABLE] = "melee_attack_ttable_naiveExploration1Full"
-RUN_TYPES[NAIVE_EXPLORATION_1_BUCKET_FULL][R_TABLE] = "melee_attack_rtable_naiveExploration1Full"
-RUN_TYPES[NAIVE_EXPLORATION_1_BUCKET_FULL][RESULTS] = "melee_attack_result_naiveExploration1Full"
+RUN_TYPES[ONLINE_HALLUCINATION] = {}
+RUN_TYPES[ONLINE_HALLUCINATION][TYPE] = "hallucination"
+RUN_TYPES[ONLINE_HALLUCINATION][PARAMS] = [2, 1, QTableParamsWOChangeInExploration()]
+RUN_TYPES[ONLINE_HALLUCINATION][Q_TABLE] = "melee_attack_2FullSelect_qtable_onlineHallucination"
+RUN_TYPES[ONLINE_HALLUCINATION][T_TABLE] = "melee_attack_2FullSelect_ttable_onlineHallucination"
+RUN_TYPES[ONLINE_HALLUCINATION][R_TABLE] = ""
+RUN_TYPES[ONLINE_HALLUCINATION][RESULTS] = "melee_attack_2FullSelect_result_onlineHallucination"
 
-RUN_TYPES[NAIVE_EXPLORATION_1_BUCKET_EMPTY] = {}
-RUN_TYPES[NAIVE_EXPLORATION_1_BUCKET_EMPTY][TYPE] = "all"
-RUN_TYPES[NAIVE_EXPLORATION_1_BUCKET_EMPTY][PARAMS] = [2, 4, QTableParamsWOChangeInExploration()]
-RUN_TYPES[NAIVE_EXPLORATION_1_BUCKET_EMPTY][Q_TABLE] = "melee_attack_qtable_naiveExploration1Empty"
-RUN_TYPES[NAIVE_EXPLORATION_1_BUCKET_EMPTY][T_TABLE] = "melee_attack_ttable_naiveExploration1Empty"
-RUN_TYPES[NAIVE_EXPLORATION_1_BUCKET_EMPTY][R_TABLE] = "melee_attack_rtable_naiveExploration1Empty"
-RUN_TYPES[NAIVE_EXPLORATION_1_BUCKET_EMPTY][RESULTS] = "melee_attack_result_naiveExploration1Empty"
+RUN_TYPES[REWARD_PROPAGATION] = {}
+RUN_TYPES[REWARD_PROPAGATION][TYPE] = "all"
+RUN_TYPES[REWARD_PROPAGATION][PARAMS] = [2, 4, QTablePropogation()]
+RUN_TYPES[REWARD_PROPAGATION][Q_TABLE] = "melee_attack_2_qtable_rewardPropogation"
+RUN_TYPES[REWARD_PROPAGATION][T_TABLE] = ""
+RUN_TYPES[REWARD_PROPAGATION][R_TABLE] = ""
+RUN_TYPES[REWARD_PROPAGATION][RESULTS] = "melee_attack_2_result_rewardPropogation"
 
 RUN_TYPES[TEST_WO_HALLUCINATION] = {}
 RUN_TYPES[TEST_WO_HALLUCINATION][TYPE] = "test"
@@ -116,14 +119,16 @@ class STATE:
 
     # non-scaled state details
     SIZE = 3 * GRID_SIZE * GRID_SIZE
-    SCALED_SIZE = 2 * GRID_SIZE * GRID_SIZE + 2
-
+    #SCALED_SIZE = 2 * GRID_SIZE * GRID_SIZE + 2
+    SCALED_SIZE = 3 * GRID_SIZE * GRID_SIZE + 1
     STEP_BUCKETING = 30 
 
     SELF_START_IDX = 0
     ENEMY_START_IDX = GRID_SIZE * GRID_SIZE
     SELECTED_START_IDX = 2 * GRID_SIZE * GRID_SIZE
-    STEP_IDX = 2 * GRID_SIZE * GRID_SIZE + 1
+    #STEP_IDX = 2 * GRID_SIZE * GRID_SIZE + 1
+
+    STEP_IDX = 3 * GRID_SIZE * GRID_SIZE
 
     ORIGINAL_POWER_BUCKETING = 4
     POWER_BUCKETING = 1
@@ -154,12 +159,14 @@ def changeModelParams(gridSize = STATE.GRID_SIZE, powerBucketing = STATE.POWER_B
     ACTIONS.NUM_ACTIONS = ACTIONS.MOVE
 
     STATE.SIZE = 3 * STATE.GRID_SIZE * STATE.GRID_SIZE
-    STATE.SCALED_SIZE = 2 * STATE.GRID_SIZE * STATE.GRID_SIZE + 2
+    # STATE.SCALED_SIZE = 2 * STATE.GRID_SIZE * STATE.GRID_SIZE + 2
+    STATE.SCALED_SIZE = 3 * STATE.GRID_SIZE * STATE.GRID_SIZE + 1
 
     STATE.SELF_START_IDX = 0
     STATE.ENEMY_START_IDX = STATE.GRID_SIZE * STATE.GRID_SIZE
     STATE.SELECTED_START_IDX = 2 * STATE.GRID_SIZE * STATE.GRID_SIZE
-    STATE.STEP_IDX = 2 * STATE.GRID_SIZE * STATE.GRID_SIZE + 1
+    # STATE.STEP_IDX = 2 * STATE.GRID_SIZE * STATE.GRID_SIZE + 1
+    STATE.STEP_IDX = 3 * STATE.GRID_SIZE * STATE.GRID_SIZE
 
     STATE.POWER_BUCKETING = powerBucketing
     STATE.ORIGINAL_POWER_BUCKETING = origPowerBucketing
@@ -221,13 +228,16 @@ class Attack(base_agent.BaseAgent):
             exit(1) 
 
 
-        print(RUN_TYPES)
         runType = RUN_TYPES[runTypeArg.pop()]
-
         if runType[TYPE] == 'all':
             params = runType[PARAMS]
             changeModelParams(params[0], params[1])
-            self.tables = TableMngr(ACTIONS.NUM_ACTIONS, runType[Q_TABLE], params[2], runType[T_TABLE], runType[RESULTS])   
+            self.tables = TableMngr(ACTIONS.NUM_ACTIONS, STATE.SCALED_SIZE, runType[Q_TABLE], runType[RESULTS], params[2])   
+        elif runType[TYPE] == 'hallucination':
+            params = runType[PARAMS]
+            changeModelParams(params[0], params[1])
+            self.tables = TableMngr(ACTIONS.NUM_ACTIONS, STATE.SCALED_SIZE, runType[Q_TABLE], runType[RESULTS], params[2], runType[T_TABLE], True)   
+
         elif runType[TYPE] == 'test':
             params = runType[PARAMS]
             changeModelParams(params[0], params[1])
@@ -380,11 +390,12 @@ class Attack(base_agent.BaseAgent):
             reward = -1
             s_ = "loss"
         else:
-            reward = 0
+            reward = -1
             s_ = "tie"
 
         currentDT = datetime.datetime.now()
-        print("experiment terminated in " , self.numStep, "steps, duration =", currentDT - self.startTime,", in", str(currentDT))
+        durSec = (currentDT - self.startTime).total_seconds()
+        print("experiment terminated in " , self.numStep, "steps, duration =", durSec,", in", str(currentDT), "avg duration for step(ms) =", durSec * 1000 / self.numStep )
         
         # self.CreateState(obs)
         if self.current_action is not None:
@@ -456,22 +467,25 @@ class Attack(base_agent.BaseAgent):
             afterBucketing = int(math.ceil(self.current_scaled_state[i] / STATE.POWER_BUCKETING))
             self.current_scaled_state[i] = afterBucketing * STATE.POWER_BUCKETING
 
-        filteredSelected = []
         occupyIdx = 0
         for i in range(0, STATE.GRID_SIZE * STATE.GRID_SIZE):
+            # if self.current_scaled_state[i + STATE.SELF_START_IDX] > 0: 
+            #     if i in idxSelected:
+            #         self.current_scaled_state[i + STATE.SELF_START_IDX]
+            self.current_scaled_state[i + STATE.SELECTED_START_IDX] = 0
             if self.current_scaled_state[i + STATE.SELF_START_IDX] > 0: 
                 if i in idxSelected:
-                    filteredSelected.append(occupyIdx)
+                    self.current_scaled_state[i + STATE.SELECTED_START_IDX] = 1
                 
                 occupyIdx += 1
         
-        if len(filteredSelected) == 0:
-            self.current_scaled_state[STATE.SELECTED_START_IDX] = STATE.SCALED_NON_SELECT
-        else:
-            num = 0
-            for bit in filteredSelected[:]:
-                num = num | (1 << bit)
-            self.current_scaled_state[STATE.SELECTED_START_IDX] = num
+        # if len(filteredSelected) == 0:
+        #     self.current_scaled_state[STATE.SELECTED_START_IDX] = STATE.SCALED_NON_SELECT
+        # else:
+        #     num = 0
+        #     for bit in filteredSelected[:]:
+        #         num = num | (1 << bit)
+        #     self.current_scaled_state[STATE.SELECTED_START_IDX] = num
 
     def SelectedUnitsVal(self):
         idxSelected = []

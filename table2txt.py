@@ -9,6 +9,8 @@ import os
 import matplotlib
 import matplotlib.pyplot as plt
 
+import cProfile
+
 from utils_tables import QTableParamsWOChangeInExploration
 from utils_tables import QTableParamsWithChangeInExploration
 
@@ -195,7 +197,7 @@ def PlotExplorationChange(numTrials):
     plt.plot(naiveTrialNum, naiveArray)
     plt.plot(trialNum, smartArray)
 
-def PlotResultsFromTable(tableName, ax, newGrouping = -1):
+def ResultsFromTable(tableName, newGrouping = -1):
     numSlots = 1
     table = pd.DataFrame(columns=list(range(numSlots)), dtype=np.int)
     table = pd.read_pickle(tableName + '.gz', compression='gzip')
@@ -258,9 +260,7 @@ def PlotResultsFromTable(tableName, ax, newGrouping = -1):
         results[key] = value
         t[key] = key * newGrouping
 
-    ax.plot(t, results)
-
-    return newGrouping
+    return results
 
 try:
     if len(sys.argv) < 2:
@@ -560,9 +560,19 @@ try:
         fig, ax = plt.subplots()  
         fileName = ""
 
-        
+        allMean = []
+        allStd = []
         for table in tableNames[:]:
-            newGrouping = PlotResultsFromTable(table, ax, newGrouping)  
+            results = ResultsFromTable(table, newGrouping) 
+
+            t = np.zeros(len(results), dtype=np.float, order='C')
+            for i in range(0, len(results)):
+                t[i] = i * newGrouping
+
+            ax.plot(t, results)
+            resultsForBar = ResultsFromTable(table, 500)         
+            allMean.append(np.mean(resultsForBar))
+            allStd.append(np.std(resultsForBar))
             fileName += table + "_"
 
         fileName += ".png"
@@ -572,8 +582,26 @@ try:
 
         ax.grid()
 
-        fig.savefig(fileName)
+        fileNamePlot = fileName + "_plot.png"
         plt.legend(tableNames, loc='upper left')
+        fig.savefig(fileNamePlot)
+
+        plt.figure(1)
+        fig2, ax2 = plt.subplots()  
+
+        width = 0.35
+        ind = np.arange(len(allMean))
+        rects1 = ax2.bar(ind, allMean, width, yerr=allStd)
+
+        yLabel = 'avg reward for ' + str(newGrouping) + ' trials'
+        ax2.set(xlabel='trials', ylabel=yLabel,
+            title = 'avg reward for results tables:\n')
+
+        ax2.set_xticks(ind + width / 2)
+        ax2.set_xticklabels(tableNames)
+
+        fileNameBar = fileName + "_bar.png"
+        fig2.savefig(fileNameBar)
 
         plt.show()
 

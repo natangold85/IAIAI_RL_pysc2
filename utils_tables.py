@@ -2,25 +2,54 @@ import numpy as np
 import pandas as pd
 import pickle
 import os.path
+import time
 
 import tensorflow as tf
 
+from hallucination import HallucinationMngrPSFunc
+
+from multiprocessing import Process, Lock, Value, Array, Manager
+
+
+#qtable types
 class QTableParamsWOChangeInExploration:
     def __init__(self, learning_rate=0.01, reward_decay=0.9, explorationProb=0.1):
-        self.isExplorationDecay = False
         self.learningRate = learning_rate
         self.rewardDecay = reward_decay
         self.explorationProb = explorationProb
+    
+    def ExploreProb(self, numRuns):
+        return self.explorationProb
+
+    def LearnAtEnd(self):
+        return False
 
 class QTableParamsWithChangeInExploration:
     def __init__(self, exploreRate = 0.0001, exploreStart = 1, exploreStop = 0.01, learning_rate=0.01, reward_decay=0.9):
-        self.isExplorationDecay = True
         self.learningRate = learning_rate
         self.rewardDecay = reward_decay
         self.exploreStart = exploreStart
         self.exploreStop = exploreStop
         self.exploreRate = exploreRate
-        
+
+    def exploreProb(self, numRuns):
+        return self.exploreStop + (self.exploreStart - self.exploreStop) * np.exp(-self.exploreRate * numRuns)
+
+    def LearnAtEnd(self):
+        return False
+
+class QTablePropogation:
+    def __init__(self, learning_rate=0.01, reward_decay=0.95, explorationProb=0.1):
+        self.learningRate = learning_rate
+        self.rewardDecay = reward_decay
+        self.explorationProb = explorationProb
+
+    def ExploreProb(self, numRuns):
+        return self.explorationProb
+
+    def LearnAtEnd(self):
+        return True
+
 class UserPlay:
     def choose_action(self, observation):
         a = input("insert action: ")
@@ -46,18 +75,22 @@ class TestTableMngr:
     def end_run(self, r):
         self.resultFile.end_run(r, True)
 
-        return True
+        return True 
+
+def Foo():
+    while True:
+        a = 9
 
 class TableMngr:
-    def __init__(self, numActions, qTableName, QTableParams, transitionTableName = '', resultFileName = '', rewardTableName = '', numTrials2SaveTable = 20, numToWriteResult = 100):
+    def __init__(self, numActions, sizeState, qTableName, resultFileName = '', QTableParams = QTableParamsWOChangeInExploration(), transitionTableName = '', onlineHallucination = False, rewardTableName = '', numTrials2SaveTable = 20, numToWriteResult = 100):
         self.qTable = QLearningTable(numActions, qTableName, QTableParams)
 
         self.numTrials2Save = numTrials2SaveTable
         self.numTrials = 0
 
+        self.onlineHallucination = onlineHallucination
         if transitionTableName != '':
             self.createTransitionTable = True
-            #self.tTable = TransitionTable(numActions, transitionTableName)
             self.tTable = TransitionTable(numActions, transitionTableName)
         else:
             self.createTransitionTable = False
@@ -74,6 +107,20 @@ class TableMngr:
         else:
             self.createResultFile = False
 
+
+        if onlineHallucination:
+            manager = Manager()
+            self.sharedMemoryPS = manager.dict()
+            self.sharedMemoryPS["q_table"] = qTableName
+            self.sharedMemoryPS["t_table"] = transitionTableName
+            self.sharedMemoryPS["num_actions"] = numActions
+            self.sharedMemoryPS["updateStateFlag"] = False
+            self.sharedMemoryPS["updateTableFlag"] = False
+            self.sharedMemoryPS["nextState"] = None
+            self.process = Process(target=HallucinationMngrPSFunc, args=(self.sharedMemoryPS,))
+            self.process.daemon = True
+            self.process.start()
+
     def choose_action(self, observation):
         return self.qTable.choose_action(observation)
 
@@ -85,6 +132,10 @@ class TableMngr:
 
         if self.createRewardTable:
             self.rTable.learn(s_, r)
+        
+        if self.onlineHallucination:
+            self.sharedMemoryPS["updateStateFlag"] = True
+            self.sharedMemoryPS["nextState"] = s_
 
     def end_run(self, r):
         saveTable = False
@@ -104,6 +155,14 @@ class TableMngr:
         if self.createResultFile:
             self.resultFile.end_run(r, saveTable)
 
+        if self.onlineHallucination and saveTable:
+            self.sharedMemoryPS["updateTableFlag"] = True
+            notFinished = True
+            while notFinished:
+                notFinished = self.sharedMemoryPS["updateTableFlag"]
+            
+            self.qTable.ReadTable()
+
         return saveTable
 
 
@@ -111,9 +170,9 @@ class QLearningTable:
     def __init__(self, numActions, qTableName, qTableParams = QTableParamsWOChangeInExploration()):
         self.qTableName = qTableName
         self.actions = list(range(numActions))  # a list
-        self.q_table = pd.DataFrame(columns=self.actions, dtype=np.float)
+        self.table = pd.DataFrame(columns=self.actions, dtype=np.float)
         if os.path.isfile(qTableName + '.gz'):
-            self.q_table = pd.read_pickle(qTableName + '.gz', compression='gzip')
+            self.ReadTable()
         
         self.params = qTableParams
         
@@ -126,30 +185,29 @@ class QLearningTable:
 
         self.check_state_exist(self.TrialsData)
 
-        self.numTotRuns = self.q_table.ix[self.TrialsData, self.NumRunsTotalSlot]
-        self.avgTotReward = self.q_table.ix[self.TrialsData, self.AvgRewardSlot]
+        self.numTotRuns = self.table.ix[self.TrialsData, self.NumRunsTotalSlot]
+        self.avgTotReward = self.table.ix[self.TrialsData, self.AvgRewardSlot]
         self.numExpRuns = 0
         self.avgExpReward = 0
 
-        self.q_table.ix[self.TrialsData, self.AvgRewardExperimentSlot] = 0
-        self.q_table.ix[self.TrialsData, self.NumRunsExperimentSlot] = 0
+        self.table.ix[self.TrialsData, self.AvgRewardExperimentSlot] = 0
+        self.table.ix[self.TrialsData, self.NumRunsExperimentSlot] = 0
 
         self.terminalStates = ['terminal', 'win', 'loss', 'tie']
 
-        # if self.params.propogateBackward:
-        #     self.history = []
+        if self.params.LearnAtEnd():
+            self.history = []
+
+    def ReadTable(self):
+        self.table = pd.read_pickle(self.qTableName + '.gz', compression='gzip')
 
     def choose_action(self, observation):
         self.check_state_exist(observation)
-        
-        if self.params.isExplorationDecay:
-            exploreProb = self.params.exploreStop + (self.params.exploreStart - self.params.exploreStop) * np.exp(-self.params.exploreRate * self.numTotRuns)
-        else:
-            exploreProb = self.params.explorationProb
+        exploreProb = self.params.ExploreProb(self.numTotRuns)
 
         if np.random.uniform() > exploreProb:
             # choose best action
-            state_action = self.q_table.ix[observation, :]
+            state_action = self.table.ix[observation, :]
             
             # some actions have the same value
             state_action = state_action.reindex(np.random.permutation(state_action.index))
@@ -161,21 +219,41 @@ class QLearningTable:
             
         return action
 
-    def learn(self, s, a, r, s_, sToInitValues, s_ToInitValues):
-        self.check_state_exist(s, sToInitValues)
-        q_predict = self.q_table.ix[s, a]
+    def learnIMP(self, s, a, r, s_):
+        q_predict = self.table.ix[s, a]
         
         if s_ not in self.terminalStates:
-            self.check_state_exist(s_, s_ToInitValues)
-            q_target = r + self.params.rewardDecay * self.q_table.ix[s_, :].max()
+            q_target = r + self.params.rewardDecay * self.table.ix[s_, :].max()
         else:
             q_target = r  # next state is terminal
         
         # update
-        self.q_table.ix[s, a] += self.params.learningRate * (q_target - q_predict)
+        self.table.ix[s, a] += self.params.learningRate * (q_target - q_predict)
 
-        # if self.params.propogateBackward:
-        #     self.history.append([s, a])
+    def learn(self, s, a, r, s_, sToInitValues, s_ToInitValues):
+        self.check_state_exist(s, sToInitValues)
+        if s_ not in self.terminalStates:
+            self.check_state_exist(s_, s_ToInitValues) 
+
+        if not self.params.LearnAtEnd():
+            self.learnIMP(s, a, r, s_)
+        else:
+            self.history.append([s, a, r])
+            if s_ in self.terminalStates:
+                lastIdx = len(self.history) - 1
+                rProp = self.history[lastIdx][2]
+                self.history[lastIdx][2] = 0
+                for idx in range(lastIdx, -1, -1):
+                    r = self.history[idx][2] + rProp
+                    s = self.history[idx][0]
+
+                    self.learnIMP(s, self.history[idx][1], r, s_)
+
+                    s_ = s
+                    rProp *= self.params.rewardDecay
+            
+                self.history = []
+
 
     def end_run(self, r, saveTable):
     
@@ -185,38 +263,33 @@ class QLearningTable:
         self.numTotRuns += 1
         self.numExpRuns += 1
 
-        self.q_table.ix[self.TrialsData, self.AvgRewardSlot] = self.avgTotReward
-        self.q_table.ix[self.TrialsData, self.AvgRewardExperimentSlot] = self.avgExpReward
+        self.table.ix[self.TrialsData, self.AvgRewardSlot] = self.avgTotReward
+        self.table.ix[self.TrialsData, self.AvgRewardExperimentSlot] = self.avgExpReward
 
         
-        self.q_table.ix[self.TrialsData, self.NumRunsTotalSlot] = self.numTotRuns
-        self.q_table.ix[self.TrialsData, self.NumRunsExperimentSlot] = self.numExpRuns
+        self.table.ix[self.TrialsData, self.NumRunsTotalSlot] = self.numTotRuns
+        self.table.ix[self.TrialsData, self.NumRunsExperimentSlot] = self.numExpRuns
 
         print("num total runs = ", self.numTotRuns, "avg total = ", self.avgTotReward)
         print("num experiment runs = ", self.numExpRuns, "avg experiment = ", self.avgExpReward)
 
-        # if self.params.propogateBackward:
-        #     for idx in range(len(self.history) - 1, -1):
-        #         self.learn(self.history[idx][0], self.history[idx][1], )
-
-
         if saveTable:
-            self.q_table.to_pickle(self.qTableName + '.gz', 'gzip') 
+            self.table.to_pickle(self.qTableName + '.gz', 'gzip') 
 
     def check_state_exist(self, state, stateToInitValues = None):
-        if state not in self.q_table.index:
+        if state not in self.table.index:
             # append new state to q table
-            self.q_table = self.q_table.append(pd.Series([0] * len(self.actions), index=self.q_table.columns, name=state))
+            self.table = self.table.append(pd.Series([0] * len(self.actions), index=self.table.columns, name=state))
             
-            if stateToInitValues in self.q_table.index:
-                self.q_table.ix[state,:] = self.q_table.ix[stateToInitValues, :]
+            if stateToInitValues in self.table.index:
+                self.table.ix[state,:] = self.table.ix[stateToInitValues, :]
 
 class TransitionTable:
     def __init__(self, numActions, tableName):
         self.tableName = tableName
         self.actions = list(range(numActions))  # a list
 
-        self.transitionDictionary = {} # pd.Panel(major_axis = [], minor_axis = self.actions)
+        self.table = {}
         
         self.TrialsData = "TrialsData"
         self.NumRunsTotalSlot = 0
@@ -225,26 +298,26 @@ class TransitionTable:
         self.actionSumIdx = 1
 
         if os.path.isfile(tableName + '.gz'):
-            self.transitionDictionary = pd.read_pickle(tableName + '.gz', compression='gzip')
+            self.table = pd.read_pickle(tableName + '.gz', compression='gzip')
         else:
-            self.transitionDictionary[self.TrialsData] = [0]
+            self.table[self.TrialsData] = [0]
 
-        self.numTotRuns = self.transitionDictionary[self.TrialsData][self.NumRunsTotalSlot]
+        self.numTotRuns = self.table[self.TrialsData][self.NumRunsTotalSlot]
 
     def check_item_exist(self, item):
-        if item not in self.transitionDictionary:
+        if item not in self.table:
             # append new state to q table
-            self.transitionDictionary[item] = [None, None]
-            self.transitionDictionary[item][self.tableIdx] = pd.DataFrame(columns=self.actions, dtype=np.float)
-            self.transitionDictionary[item][self.actionSumIdx] = []
+            self.table[item] = [None, None]
+            self.table[item][self.tableIdx] = pd.DataFrame(columns=self.actions, dtype=np.float)
+            self.table[item][self.actionSumIdx] = []
             for a in range(0, len(self.actions)):
-                self.transitionDictionary[item][self.actionSumIdx].append(0)
+                self.table[item][self.actionSumIdx].append(0)
 
     def check_state_exist(self, s, s_):
         self.check_item_exist(s)
-        if s_ not in self.transitionDictionary[s][self.tableIdx].index:
+        if s_ not in self.table[s][self.tableIdx].index:
             # append new state to q table
-            self.transitionDictionary[s][self.tableIdx] = self.transitionDictionary[s][self.tableIdx].append(pd.Series([0] * len(self.actions), index=self.transitionDictionary[s][self.tableIdx].columns, name=s_))   
+            self.table[s][self.tableIdx] = self.table[s][self.tableIdx].append(pd.Series([0] * len(self.actions), index=self.table[s][self.tableIdx].columns, name=s_))   
 
                 
 
@@ -252,49 +325,15 @@ class TransitionTable:
         self.check_state_exist(s, s_)  
 
         # update transition
-        self.transitionDictionary[s][self.tableIdx].ix[s_, a] += 1
-        self.transitionDictionary[s][self.actionSumIdx][a] += 1
+        self.table[s][self.tableIdx].ix[s_, a] += 1
+        self.table[s][self.actionSumIdx][a] += 1
 
     def end_run(self, saveTable):
         self.numTotRuns += 1      
         if saveTable:
-            print("transition size = ", len(self.transitionDictionary), "num runs =", self.numTotRuns)
-            self.transitionDictionary[self.TrialsData][self.NumRunsTotalSlot] = self.numTotRuns
-            pd.to_pickle(self.transitionDictionary, self.tableName + '.gz', 'gzip') 
-
-class TransitionTable2D:
-    def __init__(self, numActions, tableName):
-        self.tableName = tableName
-        self.actions = list(range(numActions))  # a list
-        self.t_table = pd.DataFrame(columns=self.actions, dtype=np.float)
-        if os.path.isfile(tableName + '.gz'):
-            self.t_table = pd.read_pickle(tableName + '.gz', compression='gzip')
-        
-        self.TrialsData = "TrialsData"
-        self.NumRunsTotalSlot = 0
-
-        self.check_state_exist(self.TrialsData)
-
-        self.numTotRuns = self.t_table.ix[self.TrialsData, self.NumRunsTotalSlot]
-
-    def check_state_exist(self, state):
-        if state not in self.t_table.index:
-            # append new state to q table
-            self.t_table = self.t_table.append(pd.Series([0] * len(self.actions), index=self.t_table.columns, name=state))
-
-    def learn(self, s, a, s_):
-        state = s + "__" + s_
-        self.check_state_exist(state)             
-        # update transition
-        self.t_table.ix[state, a] += 1
-
-    def end_run(self, saveTable):
-   
-        self.numTotRuns += 1      
-        self.t_table.ix[self.TrialsData, self.NumRunsTotalSlot] = self.numTotRuns
-
-        if saveTable:
-            self.t_table.to_pickle(self.tableName + '.gz', 'gzip') 
+            print("transition size = ", len(self.table), "num runs =", self.numTotRuns)
+            self.table[self.TrialsData][self.NumRunsTotalSlot] = self.numTotRuns
+            pd.to_pickle(self.table, self.tableName + '.gz', 'gzip') 
 
 class RewardTable:
     def __init__(self, tableName):

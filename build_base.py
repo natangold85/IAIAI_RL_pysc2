@@ -14,6 +14,7 @@ from train_army import TrainArmySubAgent
 from utils import TerranUnit
 from utils import SC2_Params
 from utils import SC2_Actions
+from utils_tables import TableMngr
 from utils_tables import QLearningTable
 from utils_tables import TransitionTable
 
@@ -110,9 +111,8 @@ class BuildBaseSubAgent:
             self.num_Actions += 1
             self.trainArmySubAgent = TrainArmySubAgent()
 
-        # qtables:
-        qTableParams = QTableParamsWOChangeInExploration()
-        self.qTable = QLearningTable(self.num_Actions, qTableName, qTableParams)
+        # tables:
+        self.tables = TableMngr(self.num_Actions, qTableName)
 
         if tTableName != '':
             self.use_tTable = True
@@ -153,7 +153,7 @@ class BuildBaseSubAgent:
                
         if self.move_number == 0:
             if not doNothingAction:
-                self.current_action = self.qTable.choose_action(str(self.current_scaled_state))
+                self.current_action = self.tables.choose_action(str(self.current_scaled_state))
             elif self.current_action != ID_ACTION_DO_NOTHING:
                 self.current_action = None
 
@@ -171,7 +171,7 @@ class BuildBaseSubAgent:
         self.unit_type = obs.observation['screen'][SC2_Params.UNIT_TYPE]
                
         if self.move_number == 0:
-            self.current_action = self.qTable.choose_action(str(self.current_scaled_state))
+            self.current_action = self.tables.choose_action(str(self.current_scaled_state))
             if self.current_action == ID_ACTION_TRAIN_ARMY:
                 return "train_army"
 
@@ -219,12 +219,12 @@ class BuildBaseSubAgent:
 
     def LastStep(self, obs, reward):
         if self.current_action != None:
-            self.qTable.learn(str(self.previous_scaled_state), self.current_action, reward, 'terminal')
-        self.qTable.end_run(reward, True)
+            self.tables.learn(str(self.previous_scaled_state), self.current_action, reward, 'terminal')
+        self.tables.end_run(reward)
 
     def Learn(self, obs, reward = 0):
         if self.current_action is not None:
-            self.qTable.learn(str(self.previous_scaled_state), self.current_action, reward, str(self.current_scaled_state))
+            self.tables.learn(str(self.previous_scaled_state), self.current_action, reward, str(self.current_scaled_state))
             self.current_action = None
 
         self.previous_state[:] = self.current_state[:]

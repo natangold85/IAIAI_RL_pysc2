@@ -15,9 +15,13 @@ from utils import TerranUnit
 from utils import SC2_Params
 from utils import SC2_Actions
 
-from utils import TableMngr
-from utils import QTableParamsWOChangeInExploration
-from utils import QTableParamsWithChangeInExploration
+from utils_tables import TableMngr
+from utils_tables import TestTableMngr
+from utils_tables import UserPlay
+
+from utils_tables import QTableParamsWOChangeInExploration
+from utils_tables import QTableParamsWithChangeInExploration
+from utils_tables import QTablePropogation
 
 from utils import SwapPnt
 from utils import PrintScreen
@@ -25,18 +29,61 @@ from utils import PrintSpecificMat
 from utils import FindMiddle
 from utils import DistForCmp
 
-WITH_EXPLORATION_CHANGE = True
-SMART_EXPLORATION = 'smartExploration'
-NAIVE_EXPLORATION = 'naiveExploration'
-Q_TABLE_SMART_EXPLORATION = "melee_attack_qtable_smartExploration"
-T_TABLE_SMART_EXPLORATION = "melee_attack_ttable_smartExploration"
-R_TABLE_SMART_EXPLORATION = "melee_attack_rtable_smartExploration"
-RESULT_SMART_EXPLORATION = "melee_attack_result_smartExploration"
+# possible types of play
+SMART_EXPLORATION_GRID_SIZE_2 = 'smartExploration'
+NAIVE_EXPLORATION_GRID_SIZE_2 = 'naiveExploration'
+ONLINE_HALLUCINATION = 'onlineHallucination'
+REWARD_PROPAGATION = 'rewardPropogation'
 
-Q_TABLE_NAIVE_EXPLORATION = "melee_attack_qtable_naiveExploration"
-T_TABLE_NAIVE_EXPLORATION = "melee_attack_ttable_naiveExploration"
-R_TABLE_NAIVE_EXPLORATION = "melee_attack_rtable_naiveExploration"
-RESULT_NAIVE_EXPLORATION = "melee_attack_result_naiveExploration"
+USER_PLAY = 'play'
+
+ALL_TYPES = set([SMART_EXPLORATION_GRID_SIZE_2, NAIVE_EXPLORATION_GRID_SIZE_2, 
+            ONLINE_HALLUCINATION, REWARD_PROPAGATION, USER_PLAY])
+
+# table type
+TYPE = "type"
+Q_TABLE = "q"
+T_TABLE = "t"
+R_TABLE = "r"
+RESULTS = "results"
+PARAMS = 'params'
+
+# table names
+RUN_TYPES = {}
+RUN_TYPES[SMART_EXPLORATION_GRID_SIZE_2] = {}
+RUN_TYPES[SMART_EXPLORATION_GRID_SIZE_2][TYPE] = "all"
+RUN_TYPES[SMART_EXPLORATION_GRID_SIZE_2][PARAMS] = [QTableParamsWithChangeInExploration()]
+RUN_TYPES[SMART_EXPLORATION_GRID_SIZE_2][Q_TABLE] = "melee_attack_qtable_smartExploration"
+RUN_TYPES[SMART_EXPLORATION_GRID_SIZE_2][T_TABLE] = ""
+RUN_TYPES[SMART_EXPLORATION_GRID_SIZE_2][R_TABLE] = ""
+RUN_TYPES[SMART_EXPLORATION_GRID_SIZE_2][RESULTS] = "melee_attack_result_smartExploration"
+
+RUN_TYPES[NAIVE_EXPLORATION_GRID_SIZE_2] = {}
+RUN_TYPES[NAIVE_EXPLORATION_GRID_SIZE_2][TYPE] = "all"
+RUN_TYPES[NAIVE_EXPLORATION_GRID_SIZE_2][PARAMS] = [QTableParamsWOChangeInExploration()]
+RUN_TYPES[NAIVE_EXPLORATION_GRID_SIZE_2][Q_TABLE] = "melee_attack_qtable_naiveExploration"
+RUN_TYPES[NAIVE_EXPLORATION_GRID_SIZE_2][T_TABLE] = ""
+RUN_TYPES[NAIVE_EXPLORATION_GRID_SIZE_2][R_TABLE] = ""
+RUN_TYPES[NAIVE_EXPLORATION_GRID_SIZE_2][RESULTS] = "melee_attack_result_naiveExploration"
+
+RUN_TYPES[ONLINE_HALLUCINATION] = {}
+RUN_TYPES[ONLINE_HALLUCINATION][TYPE] = "hallucination"
+RUN_TYPES[ONLINE_HALLUCINATION][PARAMS] = [QTableParamsWOChangeInExploration()]
+RUN_TYPES[ONLINE_HALLUCINATION][Q_TABLE] = "melee_attack_qtable_onlineHallucination"
+RUN_TYPES[ONLINE_HALLUCINATION][T_TABLE] = "melee_attack_ttable_onlineHallucination"
+RUN_TYPES[ONLINE_HALLUCINATION][R_TABLE] = ""
+RUN_TYPES[ONLINE_HALLUCINATION][RESULTS] = "melee_attack_result_onlineHallucination"
+
+RUN_TYPES[REWARD_PROPAGATION] = {}
+RUN_TYPES[REWARD_PROPAGATION][TYPE] = "all"
+RUN_TYPES[REWARD_PROPAGATION][PARAMS] = [QTablePropogation()]
+RUN_TYPES[REWARD_PROPAGATION][Q_TABLE] = "melee_attack_qtable_rewardPropogation"
+RUN_TYPES[REWARD_PROPAGATION][T_TABLE] = ""
+RUN_TYPES[REWARD_PROPAGATION][R_TABLE] = ""
+RUN_TYPES[REWARD_PROPAGATION][RESULTS] = "melee_attack_result_rewardPropogation"
+
+RUN_TYPES[USER_PLAY] = {}
+RUN_TYPES[USER_PLAY][TYPE] = "play"
 
 
 NUM_ENEMIES = 2
@@ -77,6 +124,7 @@ DEAD_UNIT = [-1,-1]
 DEAD_UNIT_IDX = STATE_GRID_SIZE * STATE_GRID_SIZE
 
 STEP_DURATION = 0
+MARINE_SCREEN_SIZE_ONE_AXIS = 3
 
 def IsAttackAction(action):
     return action >= NUM_MOVE_ACTIONS and action < NUM_MOVE_ACTIONS + NUM_ENEMIES
@@ -152,16 +200,25 @@ class Attack(base_agent.BaseAgent):
     def __init__(self):        
         super(Attack, self).__init__()
 
-        # tables:
-        if SMART_EXPLORATION in sys.argv:
-            qTableParams = QTableParamsWithChangeInExploration()
-            self.tables = TableMngr(NUM_ACTIONS, Q_TABLE_SMART_EXPLORATION, qTableParams, "", RESULT_SMART_EXPLORATION)           
-        elif NAIVE_EXPLORATION in sys.argv:
-            qTableParams = QTableParamsWOChangeInExploration()
-            self.tables = TableMngr(NUM_ACTIONS, Q_TABLE_NAIVE_EXPLORATION, qTableParams, "", RESULT_NAIVE_EXPLORATION)
-        else:
-            print("Error: Enter typeof exploration!!")
-            exit(1)            
+        runTypeArg = ALL_TYPES.intersection(sys.argv)
+        if len(runTypeArg) != 1:
+            print("play type not entered correctly")
+            exit(1) 
+
+
+        runType = RUN_TYPES[runTypeArg.pop()]
+        if runType[TYPE] == 'all':
+            params = runType[PARAMS]
+            self.tables = TableMngr(NUM_ACTIONS, STATE_SIZE, runType[Q_TABLE], runType[RESULTS], params[0])   
+        elif runType[TYPE] == 'hallucination':
+            params = runType[PARAMS]
+            self.tables = TableMngr(NUM_ACTIONS, STATE_SIZE, runType[Q_TABLE], runType[RESULTS], params[0], runType[T_TABLE], True)   
+        elif runType[TYPE] == 'test':
+            params = runType[PARAMS]
+            self.tables = TestTableMngr(NUM_ACTIONS, runType[Q_TABLE], runType[RESULTS])
+        elif runType[TYPE] == 'play':
+            self.tables = UserPlay()
+
         # states and action:
         self.current_action = None
 
@@ -229,7 +286,10 @@ class Attack(base_agent.BaseAgent):
         self.previous_state = []
         for i in range (0, STATE_SIZE):
             self.previous_state.append(0)
-        
+
+        self.previous_scaled_state = np.zeros(STATE_SIZE, dtype=np.int32, order='C')
+        self.current_scaled_state = np.zeros(STATE_SIZE, dtype=np.int32, order='C')
+                
         self.lastAttackAction = ID_ACTION_DO_NOTHING
 
         self.errorOccur = False
@@ -237,12 +297,18 @@ class Attack(base_agent.BaseAgent):
     def LastStep(self, obs):
         if obs.reward > 0:
             reward = 1
+            s_ = "win"
         elif obs.reward < 0:
             reward = -1
+            s_ = "loss"
         else:
             reward = -1
+            s_ = "tie"
 
-        self.tables.end_run(str(self.previous_scaled_state), self.current_action, reward)
+        if self.current_action is not None:
+            self.tables.learn(str(self.previous_scaled_state), self.current_action, reward, s_)
+
+        self.tables.end_run(reward)
 
     def Learn(self):
         if self.current_action is not None:
@@ -298,17 +364,17 @@ class Attack(base_agent.BaseAgent):
         
         densityMat = obs.observation['screen'][SC2_Params.UNIT_DENSITY]
         enemiesMidPoint = []
-        unitSize1Axis1Directiom = int((TerranUnit.MARINE_SCREEN_SIZE_ONE_AXIS - 1) / 2)
+        unitSize1Axis1Direction = int((MARINE_SCREEN_SIZE_ONE_AXIS - 1) / 2)
 
         for idx in range(0, len(enemy_y)):
-            if enemy_y[idx] - unitSize1Axis1Directiom >= 0 and enemy_y[idx] + unitSize1Axis1Directiom < SC2_Params.SCREEN_SIZE[SC2_Params.Y_IDX] and enemy_x[idx] - unitSize1Axis1Directiom >= 0 and enemy_x[idx] + unitSize1Axis1Directiom < SC2_Params.SCREEN_SIZE[SC2_Params.X_IDX]:
+            if enemy_y[idx] - unitSize1Axis1Direction >= 0 and enemy_y[idx] + unitSize1Axis1Direction < SC2_Params.SCREEN_SIZE[SC2_Params.Y_IDX] and enemy_x[idx] - unitSize1Axis1Direction >= 0 and enemy_x[idx] + unitSize1Axis1Direction < SC2_Params.SCREEN_SIZE[SC2_Params.X_IDX]:
                 
                 if densityMat[enemy_y[idx]][enemy_x[idx]] > 1:
                     continue
 
                 found = True
-                for y in range(enemy_y[idx] - unitSize1Axis1Directiom, enemy_y[idx] + unitSize1Axis1Directiom + 1):
-                    for x in range(enemy_x[idx] - unitSize1Axis1Directiom, enemy_x[idx] + unitSize1Axis1Directiom + 1):
+                for y in range(enemy_y[idx] - unitSize1Axis1Direction, enemy_y[idx] + unitSize1Axis1Direction + 1):
+                    for x in range(enemy_x[idx] - unitSize1Axis1Direction, enemy_x[idx] + unitSize1Axis1Direction + 1):
                         if not enemyMat[y][x]:
                             found = False
 

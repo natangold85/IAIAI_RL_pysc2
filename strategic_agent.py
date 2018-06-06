@@ -21,7 +21,7 @@ from utils import SC2_Actions
 
 from utils import SwapPnt
 
-from utils_tables import QLearningTable
+from utils_tables import TableMngr
 from utils_tables import QTableParamsWOChangeInExploration
 
 from build_base import BuildBaseSubAgent
@@ -80,11 +80,13 @@ class Strategic(base_agent.BaseAgent):
         self.m_trainArmySubAgent = TrainArmySubAgent(Q_TABLE_TRAINARMY_FILE)
         self.m_attackSubAgent = AttackSubAgent(Q_TABLE_ATTACK_FILE)
 
-        # qtables:
-        qTableParams = QTableParamsWOChangeInExploration()
-        self.qTable = QLearningTable(NUM_ACTIONS, Q_TABLE_STRATEGIC_FILE, qTableParams)
-        if os.path.isfile(Q_TABLE_STRATEGIC_FILE + '.gz'):
-            self.qTable.q_table = pd.read_pickle(Q_TABLE_STRATEGIC_FILE + '.gz', compression='gzip')
+
+        self.tables = TableMngr(NUM_ACTIONS, Q_TABLE_STRATEGIC_FILE)
+        # # qtables:
+        # qTableParams = QTableParamsWOChangeInExploration()
+        # self.qTable = QLearningTable(NUM_ACTIONS, Q_TABLE_STRATEGIC_FILE, qTableParams)
+        # if os.path.isfile(Q_TABLE_STRATEGIC_FILE + '.gz'):
+        #     self.qTable.q_table = pd.read_pickle(Q_TABLE_STRATEGIC_FILE + '.gz', compression='gzip')
 
         # states and action:
         self.current_action = None
@@ -130,7 +132,7 @@ class Strategic(base_agent.BaseAgent):
                 self.CreateState(obs)
                 self.Learn(obs)
 
-                self.current_action = self.qTable.choose_action(str(self.current_scaled_state))
+                self.current_action = self.tables.choose_action(str(self.current_scaled_state))
                 self.previous_state[:] = self.current_state[:]
                 self.previous_scaled_state[:] = self.current_scaled_state[:]
 
@@ -205,14 +207,12 @@ class Strategic(base_agent.BaseAgent):
         self.m_attackSubAgent.Learn(obs)
 
         if self.current_action is not None:
-            self.qTable.learn(str(self.previous_scaled_state), self.current_action, 0, str(self.current_scaled_state))
+            self.tables.learn(str(self.previous_scaled_state), self.current_action, 0, str(self.current_scaled_state))
 
     def EndRunQTable(self, obs):
         reward = obs.reward
-        self.qTable.learn(str(self.previous_scaled_state), self.current_action, reward, 'terminal')
-        self.qTable.end_run(reward,True)
-        self.qTable.q_table.to_pickle(Q_TABLE_STRATEGIC_FILE + '.gz', 'gzip') 
-
+        self.tables.learn(str(self.previous_scaled_state), self.current_action, reward, 'terminal')
+        self.tables.end_run(reward)
        
     def ScaleCurrState(self):
         self.current_scaled_state[:] = self.current_state[:]
