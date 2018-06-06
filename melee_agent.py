@@ -111,8 +111,10 @@ STATE_GRID_SIZE = 10
 STATE_SELF_LOCATION = 0
 STATE_LAST_ATTACK_ACTION = 1
 STATE_ENEMIES_START_IDX_LOCATION = 2
+STATE_TIME_LINE = STATE_ENEMIES_START_IDX_LOCATION + NUM_ENEMIES
+STATE_SIZE = STATE_ENEMIES_START_IDX_LOCATION + NUM_ENEMIES + 1
 
-STATE_SIZE = STATE_ENEMIES_START_IDX_LOCATION + NUM_ENEMIES
+TIME_LINE_BUCKETING = 25
 
 ENEMY_ACTION_2_STATE = {}
 for i in range (0, NUM_ENEMIES):
@@ -243,7 +245,7 @@ class Attack(base_agent.BaseAgent):
              return DO_NOTHING_SC2_ACTION
         
         self.CreateState(obs)
-
+        print(self.current_scaled_state)
         if self.errorOccur:
             return DO_NOTHING_SC2_ACTION
 
@@ -304,6 +306,7 @@ class Attack(base_agent.BaseAgent):
         else:
             reward = -1
             s_ = "tie"
+            print("\n\nnum steps =", self.numStep)
 
         if self.current_action is not None:
             self.tables.learn(str(self.previous_scaled_state), self.current_action, reward, s_)
@@ -333,6 +336,8 @@ class Attack(base_agent.BaseAgent):
         self.current_scaled_state[STATE_SELF_LOCATION] = Coord2ScaledIdx(self.current_state[STATE_SELF_LOCATION])
         for i in range(STATE_ENEMIES_START_IDX_LOCATION, STATE_ENEMIES_START_IDX_LOCATION + NUM_ENEMIES):
             self.current_scaled_state[i] = Coord2ScaledIdx(self.current_state[i])
+
+        self.current_scaled_state[STATE_TIME_LINE] = int(self.numStep / TIME_LINE_BUCKETING)
 
 
         
