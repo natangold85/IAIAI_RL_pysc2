@@ -15,7 +15,7 @@ from multiprocessing import Process, Lock, Value, Array, Manager
 
 #qtable types
 class QTableParamsWOChangeInExploration:
-    def __init__(self, learning_rate=0.01, reward_decay=0.9, explorationProb=0.1):
+    def __init__(self, learning_rate=0.01, reward_decay=0.95, explorationProb=0.1):
         self.learningRate = learning_rate
         self.rewardDecay = reward_decay
         self.explorationProb = explorationProb
@@ -31,7 +31,7 @@ class QTableParamsWOChangeInExploration:
         return False
 
 class QTableParamsWithChangeInExploration:
-    def __init__(self, exploreRate = 0.0001, exploreStart = 1, exploreStop = 0.01, learning_rate=0.01, reward_decay=0.9):
+    def __init__(self, exploreRate = 0.0001, exploreStart = 1, exploreStop = 0.01, learning_rate=0.01, reward_decay=0.95):
         self.learningRate = learning_rate
         self.rewardDecay = reward_decay
         self.exploreStart = exploreStart
@@ -77,14 +77,14 @@ class UserPlay:
         return False
 
 class LearnWithReplayMngr:
-    def __init__(self, numActions, sizeState, chooseActionFromNN, terminalStatesArrays, nnDirectory = '', qTableName = '', resultFileName = '', historyProportion4Learn = 0.25, QTableParams = QTableParamsWOChangeInExploration(), transitionTableName = '', discountFactor = 0.95, numTrials2Learn = 100):
+    def __init__(self, numActions, sizeState, chooseActionFromNN, terminalStates, nnDirectory = '', qTableName = '', resultFileName = '', historyFileName = '', historyProportion4Learn = 0.25, build_DQN_func = None, QTableParams = QTableParamsWOChangeInExploration(), discountFactor = 0.95, numTrials2Learn = 100):
         self.numTrials2Learn = numTrials2Learn
         self.trialNum = 0
 
         self.discountFactor = discountFactor
         self.historyProportion4Learn = historyProportion4Learn
 
-        self.terminalStatesArrays = terminalStatesArrays
+        self.terminalStates = terminalStates
 
         self.stateHistory = []
         self.actionHistory = []
@@ -93,7 +93,7 @@ class LearnWithReplayMngr:
 
         self.chooseActionFromNN = chooseActionFromNN
         if chooseActionFromNN:
-            self.dqn = DQN(numActions, sizeState, nnDirectory)
+            self.dqn = DQN(numActions, sizeState, nnDirectory, terminalStates, build_DQN_func, discountFactor)
         else:
             self.dqn = None
 
@@ -102,10 +102,12 @@ class LearnWithReplayMngr:
         else:
             self.qTable = None
 
-        if transitionTableName != '':
-            self.tTable = TransitionTable(numActions, transitionTableName)
+        self.tTable = None
+
+        if historyFileName != '':
+            self.histFile = open(historyFileName + ".txt", "a+")
         else:
-            self.tTable = None
+            self.histFile = None
 
         if resultFileName != '':
             self.resultFile = ResultFile(resultFileName, numTrials2Learn)
@@ -138,11 +140,16 @@ class LearnWithReplayMngr:
         np.random.shuffle(idx4Shuffle)
         size = int(len(idx4Shuffle) * self.historyProportion4Learn)
         chosenIdx = idx4Shuffle[0:size]
-
+        
         r = np.array(self.rewardHistory)[chosenIdx]
         s = np.array(self.stateHistory)[chosenIdx]
         a = np.array(self.actionHistory)[chosenIdx]
         s_ = np.array(self.nextStateHistory)[chosenIdx]
+        
+        self.histFile.write("\nhistory for " + str(self.numTrials2Learn) + "trials:(s,a,r,s_)\n\n")
+        for i in range(len(self.rewardHistory)):
+            toWrite = str(self.stateHistory[i]) + "," + str(self.actionHistory[i]) + "," + str(self.rewardHistory[i]) + "," + str(self.nextStateHistory[i]) + "\n"
+            self.histFile.write(toWrite)
 
         self.rewardHistory = []
         self.stateHistory = []
@@ -152,7 +159,7 @@ class LearnWithReplayMngr:
         return s, a, r, s_
 
     def TerminalState(self, s):
-        for v in self.terminalStatesArrays.values():
+        for v in self.terminalStates.values():
             if np.array_equal(s, v):
                 return True
         return False

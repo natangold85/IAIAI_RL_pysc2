@@ -8,13 +8,14 @@ import tensorflow as tf
 import os
 
 class DQN:
-    def __init__(self, numActions, sizeState, nnDirectory = '', learning_rate = 0.1, discount_factor = 0.95, explorationProb = 0.9):
+    def __init__(self, numActions, sizeState, nnDirectory, terminalStates, NN_Func = None, discount_factor = 0.95, explorationProb = 0.9, learning_rate = 0.1):
         # Parameters
         self.learning_rate = learning_rate
         self.discount_factor = discount_factor
         self.explorationProb = explorationProb
 
         # Network Parameters
+        self.terminalStates = terminalStates
         self.num_input = sizeState
         self.numActions = numActions
 
@@ -27,7 +28,7 @@ class DQN:
         self.numRuns =tf.get_variable("numRuns", shape=(), initializer=tf.zeros_initializer())
 
         # Construct network
-        self.outputLayer = self.build_dqn()
+        self.outputLayer = self.build_dqn(NN_Func)
 
         batch_size = tf.shape(self.inputLayer)[0]
 
@@ -48,20 +49,20 @@ class DQN:
         self.sess = tf.Session()
         self.sess.run(init)        
         
-        self.saveNN = False
 
-        if nnDirectory != '':
-            self.saveNN = True
-            self.directoryName = nnDirectory
-            self.saver = tf.train.Saver()
-            fnameNNMeta = nnDirectory + ".meta"
-            if os.path.isfile(fnameNNMeta):
-                tf.reset_default_graph()
-                self.saver.restore(self.sess, nnDirectory)
+        self.directoryName = nnDirectory
+        self.saver = tf.train.Saver()
+        fnameNNMeta = nnDirectory + ".meta"
+        if os.path.isfile(fnameNNMeta):
+            tf.reset_default_graph()
+            self.saver.restore(self.sess, nnDirectory)
 
 
     # Define the neural network
-    def build_dqn(self):        
+    def build_dqn(self, NN_Func):
+        if NN_Func != None:
+            return NN_Func(self.inputLayer)   
+
         # Store layers weight & bias
         n_hidden_1 = 512
         n_hidden_2 = 256
@@ -100,7 +101,12 @@ class DQN:
 
     def learn(self, s, a, r, s_):     
         size = len(a)
-        sTmp = s.reshape(size, self.num_input)
+        rNextState = self.outputLayer.eval({self.inputLayer: s_.reshape(size, self.num_input)}, session=self.sess)
+        
+        for i in range(size):
+            if not self.TerminalState(s_[i,:]):
+                r[i] += self.discount_factor * np.max(rNextState[i,:])
+                
         feedDict = {self.inputLayer: s.reshape(size, self.num_input), self.outputSingle: r, self.actionSelected: a}
         self.sess.run([self.train_op, self.loss_op], feed_dict=feedDict)
 
@@ -111,4 +117,10 @@ class DQN:
     def end_run(self):
         assign = self.numRuns.assign_add(1)
         self.sess.run(assign)
+
+    def TerminalState(self, s):
+        for v in self.terminalStates.values():
+            if np.array_equal(s, v):
+                return True
+        return False
 

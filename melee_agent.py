@@ -36,6 +36,7 @@ NAIVE_EXPLORATION_GRID_SIZE_2 = 'naiveExploration'
 DQN_CMP_QTABLE = "dqnCmpQ"
 DQN_CMP_QTABLE_FULL = "dqnCmpQFull"
 DQN_CMP_NEURAL_NETWORK = "dqnCmpNN"
+DQN_CMP_NEURAL_NETWORK_FULL = "dqnCmpNNFull"
 ONLINE_HALLUCINATION = 'onlineHallucination'
 REWARD_PROPAGATION = 'rewardPropogation'
 
@@ -43,7 +44,7 @@ USER_PLAY = 'play'
 
 ALL_TYPES = set([SMART_EXPLORATION_GRID_SIZE_2, NAIVE_EXPLORATION_GRID_SIZE_2, 
             ONLINE_HALLUCINATION, REWARD_PROPAGATION, USER_PLAY,
-            DQN_CMP_QTABLE, DQN_CMP_NEURAL_NETWORK, DQN_CMP_QTABLE_FULL])
+            DQN_CMP_QTABLE, DQN_CMP_NEURAL_NETWORK, DQN_CMP_QTABLE_FULL, DQN_CMP_NEURAL_NETWORK_FULL])
 
 # table type
 TYPE = "type"
@@ -57,13 +58,21 @@ PARAMS = 'params'
 # table names
 RUN_TYPES = {}
 
+RUN_TYPES[DQN_CMP_NEURAL_NETWORK_FULL] = {}
+RUN_TYPES[DQN_CMP_NEURAL_NETWORK_FULL][TYPE] = "NN"
+RUN_TYPES[DQN_CMP_NEURAL_NETWORK_FULL][PARAMS] = 1
+RUN_TYPES[DQN_CMP_NEURAL_NETWORK_FULL][NN] = "./melee_attack_DQN_Full"
+RUN_TYPES[DQN_CMP_NEURAL_NETWORK_FULL][Q_TABLE] = "melee_attack_qtable_dqnCmpNN_Full"
+RUN_TYPES[DQN_CMP_NEURAL_NETWORK_FULL][T_TABLE] = "melee_attack_history_dqnCmpNN_Full"
+RUN_TYPES[DQN_CMP_NEURAL_NETWORK_FULL][R_TABLE] = ""
+RUN_TYPES[DQN_CMP_NEURAL_NETWORK_FULL][RESULTS] = "melee_attack_result_dqnCmpNN_Full"
 
 RUN_TYPES[DQN_CMP_QTABLE] = {}
 RUN_TYPES[DQN_CMP_QTABLE][TYPE] = "NN"
 RUN_TYPES[DQN_CMP_QTABLE][PARAMS] = 0.25
 RUN_TYPES[DQN_CMP_QTABLE][NN] = ""
 RUN_TYPES[DQN_CMP_QTABLE][Q_TABLE] = "melee_attack_qtable_dqnCmpQ"
-RUN_TYPES[DQN_CMP_QTABLE][T_TABLE] = ""
+RUN_TYPES[DQN_CMP_QTABLE][T_TABLE] = "melee_attack_history_dqnCmpQ"
 RUN_TYPES[DQN_CMP_QTABLE][RESULTS] = "melee_attack_result_dqnCmpQ"
 
 RUN_TYPES[DQN_CMP_QTABLE_FULL] = {}
@@ -71,7 +80,7 @@ RUN_TYPES[DQN_CMP_QTABLE_FULL][TYPE] = "NN"
 RUN_TYPES[DQN_CMP_QTABLE_FULL][PARAMS] = 1
 RUN_TYPES[DQN_CMP_QTABLE_FULL][NN] = ""
 RUN_TYPES[DQN_CMP_QTABLE_FULL][Q_TABLE] = "melee_attack_qtable_dqnCmpQ_Full"
-RUN_TYPES[DQN_CMP_QTABLE_FULL][T_TABLE] = ""
+RUN_TYPES[DQN_CMP_QTABLE_FULL][T_TABLE] = "melee_attack_history_dqnCmpQ_Full"
 RUN_TYPES[DQN_CMP_QTABLE_FULL][RESULTS] = "melee_attack_result_dqnCmpQ_Full"
 
 
@@ -80,8 +89,7 @@ RUN_TYPES[DQN_CMP_NEURAL_NETWORK][TYPE] = "NN"
 RUN_TYPES[DQN_CMP_NEURAL_NETWORK][PARAMS] = 0.25
 RUN_TYPES[DQN_CMP_NEURAL_NETWORK][NN] = "./melee_attack_DQN"
 RUN_TYPES[DQN_CMP_NEURAL_NETWORK][Q_TABLE] = "melee_attack_qtable_dqnCmpNN"
-RUN_TYPES[DQN_CMP_NEURAL_NETWORK][T_TABLE] = ""
-RUN_TYPES[DQN_CMP_NEURAL_NETWORK][R_TABLE] = ""
+RUN_TYPES[DQN_CMP_NEURAL_NETWORK][T_TABLE] = "melee_attack_history_dqnCmpNN"
 RUN_TYPES[DQN_CMP_NEURAL_NETWORK][RESULTS] = "melee_attack_result_dqnCmpNN"
 
 
@@ -262,10 +270,14 @@ class Attack(base_agent.BaseAgent):
         
         if runType[TYPE] == 'NN':
             self.terminalStates = {}
-            self.terminalStates["win"] = np.array([1])
-            self.terminalStates["tie"] = np.array([0])
-            self.terminalStates["loss"] = np.array([-1])
-            self.tables = LearnWithReplayMngr(NUM_ACTIONS, STATE_SIZE, runType[NN] != '', self.terminalStates, runType[NN], runType[Q_TABLE], runType[RESULTS], runType[PARAMS])     
+            state = np.zeros(STATE_SIZE, dtype=np.int32, order='C')
+            state[0] = -1
+            self.terminalStates["win"] = state.copy()
+            state[0] = -2
+            self.terminalStates["tie"] = state.copy()
+            state[0] = -3
+            self.terminalStates["loss"] = state.copy()
+            self.tables = LearnWithReplayMngr(NUM_ACTIONS, STATE_SIZE, runType[NN] != '', self.terminalStates, runType[NN], runType[Q_TABLE], runType[RESULTS], runType[T_TABLE], runType[PARAMS])     
         
         elif runType[TYPE] == 'hallucination':
             params = runType[PARAMS]
