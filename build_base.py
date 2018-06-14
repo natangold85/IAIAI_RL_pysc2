@@ -112,7 +112,7 @@ class BuildBaseSubAgent:
             self.trainArmySubAgent = TrainArmySubAgent()
 
         # tables:
-        self.tables = TableMngr(self.num_Actions, qTableName)
+        self.tables = TableMngr(self.num_Actions, STATE_SIZE, qTableName)
 
         if tTableName != '':
             self.use_tTable = True

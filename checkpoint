@@ -1,0 +1,2 @@
+model_checkpoint_path: "melee_attack_DQN"
+all_model_checkpoint_paths: "melee_attack_DQN"

@@ -81,12 +81,7 @@ class Strategic(base_agent.BaseAgent):
         self.m_attackSubAgent = AttackSubAgent(Q_TABLE_ATTACK_FILE)
 
 
-        self.tables = TableMngr(NUM_ACTIONS, Q_TABLE_STRATEGIC_FILE)
-        # # qtables:
-        # qTableParams = QTableParamsWOChangeInExploration()
-        # self.qTable = QLearningTable(NUM_ACTIONS, Q_TABLE_STRATEGIC_FILE, qTableParams)
-        # if os.path.isfile(Q_TABLE_STRATEGIC_FILE + '.gz'):
-        #     self.qTable.q_table = pd.read_pickle(Q_TABLE_STRATEGIC_FILE + '.gz', compression='gzip')
+        self.tables = TableMngr(NUM_ACTIONS, STATE_SIZE, Q_TABLE_STRATEGIC_FILE)
 
         # states and action:
         self.current_action = None

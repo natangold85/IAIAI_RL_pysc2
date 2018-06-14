@@ -17,6 +17,7 @@ from utils import SC2_Actions
 
 from utils_tables import TableMngr
 from utils_tables import TestTableMngr
+from utils_tables import LearnWithReplayMngr
 from utils_tables import UserPlay
 
 from utils_tables import QTableParamsWOChangeInExploration
@@ -32,16 +33,21 @@ from utils import DistForCmp
 # possible types of play
 SMART_EXPLORATION_GRID_SIZE_2 = 'smartExploration'
 NAIVE_EXPLORATION_GRID_SIZE_2 = 'naiveExploration'
+DQN_CMP_QTABLE = "dqnCmpQ"
+DQN_CMP_QTABLE_FULL = "dqnCmpQFull"
+DQN_CMP_NEURAL_NETWORK = "dqnCmpNN"
 ONLINE_HALLUCINATION = 'onlineHallucination'
 REWARD_PROPAGATION = 'rewardPropogation'
 
 USER_PLAY = 'play'
 
 ALL_TYPES = set([SMART_EXPLORATION_GRID_SIZE_2, NAIVE_EXPLORATION_GRID_SIZE_2, 
-            ONLINE_HALLUCINATION, REWARD_PROPAGATION, USER_PLAY])
+            ONLINE_HALLUCINATION, REWARD_PROPAGATION, USER_PLAY,
+            DQN_CMP_QTABLE, DQN_CMP_NEURAL_NETWORK, DQN_CMP_QTABLE_FULL])
 
 # table type
 TYPE = "type"
+NN = "nn"
 Q_TABLE = "q"
 T_TABLE = "t"
 R_TABLE = "r"
@@ -50,6 +56,35 @@ PARAMS = 'params'
 
 # table names
 RUN_TYPES = {}
+
+
+RUN_TYPES[DQN_CMP_QTABLE] = {}
+RUN_TYPES[DQN_CMP_QTABLE][TYPE] = "NN"
+RUN_TYPES[DQN_CMP_QTABLE][PARAMS] = 0.25
+RUN_TYPES[DQN_CMP_QTABLE][NN] = ""
+RUN_TYPES[DQN_CMP_QTABLE][Q_TABLE] = "melee_attack_qtable_dqnCmpQ"
+RUN_TYPES[DQN_CMP_QTABLE][T_TABLE] = ""
+RUN_TYPES[DQN_CMP_QTABLE][RESULTS] = "melee_attack_result_dqnCmpQ"
+
+RUN_TYPES[DQN_CMP_QTABLE_FULL] = {}
+RUN_TYPES[DQN_CMP_QTABLE_FULL][TYPE] = "NN"
+RUN_TYPES[DQN_CMP_QTABLE_FULL][PARAMS] = 1
+RUN_TYPES[DQN_CMP_QTABLE_FULL][NN] = ""
+RUN_TYPES[DQN_CMP_QTABLE_FULL][Q_TABLE] = "melee_attack_qtable_dqnCmpQ_Full"
+RUN_TYPES[DQN_CMP_QTABLE_FULL][T_TABLE] = ""
+RUN_TYPES[DQN_CMP_QTABLE_FULL][RESULTS] = "melee_attack_result_dqnCmpQ_Full"
+
+
+RUN_TYPES[DQN_CMP_NEURAL_NETWORK] = {}
+RUN_TYPES[DQN_CMP_NEURAL_NETWORK][TYPE] = "NN"
+RUN_TYPES[DQN_CMP_NEURAL_NETWORK][PARAMS] = 0.25
+RUN_TYPES[DQN_CMP_NEURAL_NETWORK][NN] = "./melee_attack_DQN"
+RUN_TYPES[DQN_CMP_NEURAL_NETWORK][Q_TABLE] = "melee_attack_qtable_dqnCmpNN"
+RUN_TYPES[DQN_CMP_NEURAL_NETWORK][T_TABLE] = ""
+RUN_TYPES[DQN_CMP_NEURAL_NETWORK][R_TABLE] = ""
+RUN_TYPES[DQN_CMP_NEURAL_NETWORK][RESULTS] = "melee_attack_result_dqnCmpNN"
+
+
 RUN_TYPES[SMART_EXPLORATION_GRID_SIZE_2] = {}
 RUN_TYPES[SMART_EXPLORATION_GRID_SIZE_2][TYPE] = "all"
 RUN_TYPES[SMART_EXPLORATION_GRID_SIZE_2][PARAMS] = [QTableParamsWithChangeInExploration()]
@@ -98,27 +133,42 @@ NUM_MOVE_ACTIONS = 5
 
 NUM_ACTIONS = NUM_MOVE_ACTIONS + NUM_ENEMIES
 
+ATTACK_ACTION_2_ENEMY_NUM = {}
+idx = 1
+ATTACK_ACTION_2_ENEMY_NUM[ID_ACTION_DO_NOTHING] = 0
+for i in range(NUM_MOVE_ACTIONS, NUM_ACTIONS):
+    ATTACK_ACTION_2_ENEMY_NUM[i] = idx
+    idx += 1
+
 TO_MOVE = 4
 MOVES_LUT = {}
 MOVES_LUT[ID_ACTION_MOVE_NORTH] = [-TO_MOVE, 0]
 MOVES_LUT[ID_ACTION_MOVE_SOUTH] = [TO_MOVE, 0]
 MOVES_LUT[ID_ACTION_MOVE_WEST] = [0, -TO_MOVE]
 MOVES_LUT[ID_ACTION_MOVE_EAST] = [0, +TO_MOVE]
+
 # state details
 STATE_NON_VALID_NUM = -1
 STATE_GRID_SIZE = 10
 
-STATE_SELF_LOCATION = 0
-STATE_LAST_ATTACK_ACTION = 1
-STATE_ENEMIES_START_IDX_LOCATION = 2
-STATE_TIME_LINE = STATE_ENEMIES_START_IDX_LOCATION + NUM_ENEMIES
-STATE_SIZE = STATE_ENEMIES_START_IDX_LOCATION + NUM_ENEMIES + 1
+RAW_STATE_SELF_LOC = 0
+RAW_STATE_ENEMY1_LOC = 1
+RAW_STATE_ENEMY2_LOC = 2
+RAW_STATE_LAST_ATTACK = 3
+RAW_STATE_SIZE = 4
+
+STATE_SELF_LOCATION_MAT_START = 0
+STATE_ENEMY_LOCATION_MAT_START = STATE_GRID_SIZE * STATE_GRID_SIZE
+
+STATE_LAST_ATTACK_ENEMY = 2 * STATE_GRID_SIZE * STATE_GRID_SIZE
+STATE_TIME_LINE = STATE_LAST_ATTACK_ENEMY + 1
+STATE_SIZE = STATE_TIME_LINE + 1
 
 TIME_LINE_BUCKETING = 25
 
-ENEMY_ACTION_2_STATE = {}
+ENEMY_ACTION_2_RAW_STATE = {}
 for i in range (0, NUM_ENEMIES):
-    ENEMY_ACTION_2_STATE[NUM_MOVE_ACTIONS + i] = STATE_ENEMIES_START_IDX_LOCATION + i
+    ENEMY_ACTION_2_RAW_STATE[NUM_MOVE_ACTIONS + i] = RAW_STATE_ENEMY1_LOC + i
 
 DO_NOTHING_SC2_ACTION = actions.FunctionCall(SC2_Actions.NO_OP, [])
 
@@ -133,8 +183,6 @@ def IsAttackAction(action):
 
 def IsMoveAction(action):
     return action > ID_ACTION_DO_NOTHING and action < NUM_MOVE_ACTIONS
-
-
 
 def maxDiff(p1, p2):
     if p1 == DEAD_UNIT or p2 == DEAD_UNIT:
@@ -207,11 +255,18 @@ class Attack(base_agent.BaseAgent):
             print("play type not entered correctly")
             exit(1) 
 
-
         runType = RUN_TYPES[runTypeArg.pop()]
         if runType[TYPE] == 'all':
             params = runType[PARAMS]
-            self.tables = TableMngr(NUM_ACTIONS, STATE_SIZE, runType[Q_TABLE], runType[RESULTS], params[0])   
+            self.tables = TableMngr(NUM_ACTIONS, STATE_SIZE, runType[Q_TABLE], runType[RESULTS], params[0]) 
+        
+        if runType[TYPE] == 'NN':
+            self.terminalStates = {}
+            self.terminalStates["win"] = np.array([1])
+            self.terminalStates["tie"] = np.array([0])
+            self.terminalStates["loss"] = np.array([-1])
+            self.tables = LearnWithReplayMngr(NUM_ACTIONS, STATE_SIZE, runType[NN] != '', self.terminalStates, runType[NN], runType[Q_TABLE], runType[RESULTS], runType[PARAMS])     
+        
         elif runType[TYPE] == 'hallucination':
             params = runType[PARAMS]
             self.tables = TableMngr(NUM_ACTIONS, STATE_SIZE, runType[Q_TABLE], runType[RESULTS], params[0], runType[T_TABLE], True)   
@@ -245,25 +300,24 @@ class Attack(base_agent.BaseAgent):
              return DO_NOTHING_SC2_ACTION
         
         self.CreateState(obs)
-        print(self.current_scaled_state)
         if self.errorOccur:
             return DO_NOTHING_SC2_ACTION
 
         self.numStep += 1
         self.Learn()
-        self.current_action = self.tables.choose_action(str(self.current_scaled_state))
+        self.current_action = self.tables.choose_action(self.current_scaled_state)
         
         time.sleep(STEP_DURATION)
         sc2Action = DO_NOTHING_SC2_ACTION
 
         if IsAttackAction(self.current_action):
-            coord2Attack = self.current_state[ENEMY_ACTION_2_STATE[self.current_action]]
+            coord2Attack = self.current_state[ENEMY_ACTION_2_RAW_STATE[self.current_action]]
             self.lastAttackAction = self.current_action
             if coord2Attack != DEAD_UNIT and SC2_Actions.ATTACK_SCREEN in obs.observation['available_actions']:
                 sc2Action = actions.FunctionCall(SC2_Actions.ATTACK_SCREEN, [SC2_Params.NOT_QUEUED, SwapPnt(coord2Attack)])
         elif IsMoveAction(self.current_action):            
             goTo = []
-            goTo[:] = self.current_state[STATE_SELF_LOCATION]
+            goTo[:] = self.current_state[RAW_STATE_SELF_LOC]
 
             goTo[SC2_Params.X_IDX] += MOVES_LUT[self.current_action][SC2_Params.X_IDX]
             goTo[SC2_Params.Y_IDX] += MOVES_LUT[self.current_action][SC2_Params.Y_IDX]
@@ -299,23 +353,22 @@ class Attack(base_agent.BaseAgent):
     def LastStep(self, obs):
         if obs.reward > 0:
             reward = 1
-            s_ = "win"
+            s_ = self.terminalStates["win"]
         elif obs.reward < 0:
             reward = -1
-            s_ = "loss"
+            s_ = self.terminalStates["loss"]
         else:
             reward = -1
-            s_ = "tie"
-            print("\n\nnum steps =", self.numStep)
+            s_ = self.terminalStates["tie"]
 
         if self.current_action is not None:
-            self.tables.learn(str(self.previous_scaled_state), self.current_action, reward, s_)
+            self.tables.learn(self.current_scaled_state.copy(), self.current_action, reward, s_)
 
         self.tables.end_run(reward)
 
     def Learn(self):
         if self.current_action is not None:
-            self.tables.learn(str(self.previous_scaled_state), self.current_action, 0, str(self.current_scaled_state))
+            self.tables.learn(self.previous_scaled_state.copy(), self.current_action, 0, self.current_scaled_state.copy())
 
         self.previous_state[:] = self.current_state[:]
         self.previous_scaled_state[:] = self.current_scaled_state[:]
@@ -325,25 +378,35 @@ class Attack(base_agent.BaseAgent):
             self.InitState(obs)
             self.m_initState = True
         else:
-            self.current_state[STATE_SELF_LOCATION] = self.GetSelfLocation(obs)
+            self.current_state[RAW_STATE_SELF_LOC] = self.GetSelfLocation(obs)
             self.SetStateEnemyLocation(obs)
-            self.current_state[STATE_LAST_ATTACK_ACTION] = self.lastAttackAction
+            self.current_state[RAW_STATE_LAST_ATTACK] = self.lastAttackAction
 
         self.ScaleState()
 
     def ScaleState(self):
-        self.current_scaled_state[STATE_LAST_ATTACK_ACTION] = self.current_state[STATE_LAST_ATTACK_ACTION]
-        self.current_scaled_state[STATE_SELF_LOCATION] = Coord2ScaledIdx(self.current_state[STATE_SELF_LOCATION])
-        for i in range(STATE_ENEMIES_START_IDX_LOCATION, STATE_ENEMIES_START_IDX_LOCATION + NUM_ENEMIES):
-            self.current_scaled_state[i] = Coord2ScaledIdx(self.current_state[i])
+        self.current_scaled_state[STATE_LAST_ATTACK_ENEMY] = ATTACK_ACTION_2_ENEMY_NUM[self.current_state[RAW_STATE_LAST_ATTACK]]
+        for i in range(STATE_GRID_SIZE * STATE_GRID_SIZE):
+            if Coord2ScaledIdx(self.current_state[RAW_STATE_SELF_LOC]) == i:
+                self.current_scaled_state[STATE_SELF_LOCATION_MAT_START + i] = 1
+            else:
+                self.current_scaled_state[STATE_SELF_LOCATION_MAT_START + i] = 0
+
+            toInsertToRedMat = 0
+            if Coord2ScaledIdx(self.current_state[RAW_STATE_ENEMY1_LOC]) == i:
+                toInsertToRedMat += 1
+            if Coord2ScaledIdx(self.current_state[RAW_STATE_ENEMY2_LOC]) == i:
+                toInsertToRedMat += 2
+
+            self.current_scaled_state[STATE_ENEMY_LOCATION_MAT_START + i] = toInsertToRedMat
 
         self.current_scaled_state[STATE_TIME_LINE] = int(self.numStep / TIME_LINE_BUCKETING)
 
 
         
     def InitState(self, obs):
-        self.current_state[STATE_SELF_LOCATION] = self.GetSelfLocation(obs)
-        self.current_state[STATE_LAST_ATTACK_ACTION] = ID_ACTION_DO_NOTHING
+        self.current_state[RAW_STATE_SELF_LOC] = self.GetSelfLocation(obs)
+        self.current_state[RAW_STATE_LAST_ATTACK] = ID_ACTION_DO_NOTHING
         
         midPnt = self.GetEnemyLocation(obs)
         if len(midPnt) != NUM_ENEMIES:
@@ -354,7 +417,7 @@ class Attack(base_agent.BaseAgent):
 
         midPnt.sort()
         for i in  range (0, NUM_ENEMIES):
-            self.current_state[STATE_ENEMIES_START_IDX_LOCATION + i] = midPnt[i]
+            self.current_state[RAW_STATE_ENEMY1_LOC + i] = midPnt[i]
         
     def GetSelfLocation(self, obs):
         self_y, self_x = (obs.observation['screen'][SC2_Params.PLAYER_RELATIVE] == SC2_Params.PLAYER_SELF).nonzero()
@@ -411,7 +474,7 @@ class Attack(base_agent.BaseAgent):
 
     def SetStateEnemyLocation(self, obs):
         enemyPoints = self.GetEnemyLocation(obs)
-        stateEnemiesOffset = STATE_ENEMIES_START_IDX_LOCATION
+        stateEnemiesOffset = RAW_STATE_ENEMY1_LOC
 
         if len(enemyPoints) == 0:
             self.AllEnemiesDead()
@@ -424,11 +487,6 @@ class Attack(base_agent.BaseAgent):
         newDead = len(enemyPoints) < NUM_ENEMIES
         # add new deads
         if newDead:
-            if IsAttackAction(self.current_action):
-                enemyPoints.append(DEAD_UNIT)
-                self.m_deadEnemies.append(ENEMY_ACTION_2_STATE[self.current_action])
-                self.current_state[ENEMY_ACTION_2_STATE[self.current_action]] = DEAD_UNIT
-
             while len(enemyPoints) != NUM_ENEMIES:
                 enemyPoints.append(DEAD_UNIT)
 
@@ -484,7 +542,7 @@ class Attack(base_agent.BaseAgent):
 
     def AllEnemiesDead(self):
         self.m_deadEnemies = []
-        for i in  range (STATE_ENEMIES_START_IDX_LOCATION, STATE_ENEMIES_START_IDX_LOCATION + NUM_ENEMIES):
+        for i in  range (RAW_STATE_ENEMY1_LOC, RAW_STATE_ENEMY1_LOC + NUM_ENEMIES):
             self.m_deadEnemies.append(i)
             self.current_state[i] = DEAD_UNIT
 

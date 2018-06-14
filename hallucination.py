@@ -1,6 +1,5 @@
 
 import time
-import datetime
 import random
 import numpy as np
 import pandas as pd
@@ -160,16 +159,15 @@ def HallucinationMngrPSFunc(sharedDict):
             if sharedDict["updateTableFlag"]:
                 break
 
-        updateTableFlag = sharedDict["updateTableFlag"]
+        updateTableFlag = False
         while not updateTableFlag:
             updateTableFlag = sharedDict["updateTableFlag"]
-
+        
         count = TREE_DATA.UpdateQTable(qTableName)
         TREE_DATA.T_TABLE = pd.read_pickle(tTableName + '.gz', compression='gzip')
         TTableCreated = True
         sharedDict["updateTableFlag"] = False
-
-        print("\n\nupdate q table count vals =", count)
+        print("\n\n\tupdate q table count vals =", count)
         TREE_DATA.VALUES_2_UPDATE_DICT = {}
         TREE_DATA.STATE_DICT = {}
 

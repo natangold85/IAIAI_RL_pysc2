@@ -1,0 +1,2 @@
+model_checkpoint_path: "C:\\Users\\user\\Documents\\GitHub\\pysc2_mcts_learning\\experiments\\Test\\checkpoints\\model"
+all_model_checkpoint_paths: "C:\\Users\\user\\Documents\\GitHub\\pysc2_mcts_learning\\experiments\\Test\\checkpoints\\model"

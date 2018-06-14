@@ -29,12 +29,14 @@ from utils_tables import TestTableMngr
 from utils_tables import QTableParamsWOChangeInExploration
 from utils_tables import QTableParamsWithChangeInExploration
 from utils_tables import QTablePropogation
+from utils_tables import QTablePropogationUsingTTable
 
 # possible types of play
 SMART_EXPLORATION_GRID_SIZE_2 = 'smartExploration2'
 NAIVE_EXPLORATION_GRID_SIZE_2 = 'naiveExploration2'
 ONLINE_HALLUCINATION = 'onlineHallucination'
 REWARD_PROPAGATION = 'rewardPropogation'
+REWARD_PROPAGATION_WITH_TRANSITION = 'rewardPropogation_ttable'
 
 TEST_WO_HALLUCINATION = "testClean"
 TEST_WITH_HALLUCINATION = "testHallucination"
@@ -43,7 +45,7 @@ TEST_WITH_HALLUCINATION_SINGLE = "testHallucinationSingle"
 USER_PLAY = 'play'
 
 ALL_TYPES = set([SMART_EXPLORATION_GRID_SIZE_2, NAIVE_EXPLORATION_GRID_SIZE_2, 
-            ONLINE_HALLUCINATION, REWARD_PROPAGATION,
+            ONLINE_HALLUCINATION, REWARD_PROPAGATION, REWARD_PROPAGATION_WITH_TRANSITION,
             TEST_WO_HALLUCINATION, TEST_WITH_HALLUCINATION, TEST_WITH_HALLUCINATION_SINGLE, USER_PLAY])
 
 # table type
@@ -87,6 +89,17 @@ RUN_TYPES[REWARD_PROPAGATION][Q_TABLE] = "melee_attack_2_qtable_rewardPropogatio
 RUN_TYPES[REWARD_PROPAGATION][T_TABLE] = ""
 RUN_TYPES[REWARD_PROPAGATION][R_TABLE] = ""
 RUN_TYPES[REWARD_PROPAGATION][RESULTS] = "melee_attack_2_result_rewardPropogation"
+
+
+RUN_TYPES[REWARD_PROPAGATION_WITH_TRANSITION] = {}
+RUN_TYPES[REWARD_PROPAGATION_WITH_TRANSITION][TYPE] = "all"
+RUN_TYPES[REWARD_PROPAGATION_WITH_TRANSITION][PARAMS] = [2, 4, QTablePropogationUsingTTable()]
+RUN_TYPES[REWARD_PROPAGATION_WITH_TRANSITION][Q_TABLE] = "melee_attack_2_qtable_rewardPropogationWithTransition"
+RUN_TYPES[REWARD_PROPAGATION_WITH_TRANSITION][T_TABLE] = "melee_attack_2_ttable_rewardPropogationWithTransition"
+RUN_TYPES[REWARD_PROPAGATION_WITH_TRANSITION][R_TABLE] = ""
+RUN_TYPES[REWARD_PROPAGATION_WITH_TRANSITION][RESULTS] = "melee_attack_2_result_rewardPropogationWithTransition"
+
+
 
 RUN_TYPES[TEST_WO_HALLUCINATION] = {}
 RUN_TYPES[TEST_WO_HALLUCINATION][TYPE] = "test"
@@ -227,12 +240,11 @@ class Attack(base_agent.BaseAgent):
             print("play type not entered correctly")
             exit(1) 
 
-
         runType = RUN_TYPES[runTypeArg.pop()]
         if runType[TYPE] == 'all':
             params = runType[PARAMS]
             changeModelParams(params[0], params[1])
-            self.tables = TableMngr(ACTIONS.NUM_ACTIONS, STATE.SCALED_SIZE, runType[Q_TABLE], runType[RESULTS], params[2])   
+            self.tables = TableMngr(ACTIONS.NUM_ACTIONS, STATE.SCALED_SIZE, runType[Q_TABLE], runType[RESULTS], params[2], runType[T_TABLE])   
         elif runType[TYPE] == 'hallucination':
             params = runType[PARAMS]
             changeModelParams(params[0], params[1])
