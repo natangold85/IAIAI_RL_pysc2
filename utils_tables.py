@@ -8,17 +8,53 @@ import datetime
 import tensorflow as tf
 
 from utils_dqn import DQN
+from utils_dqn import DoubleDQN
+
 from hallucination import HallucinationMngrPSFunc
 
 from multiprocessing import Process, Lock, Value, Array, Manager
 
+# dqn params
+class DQN_PARAMS:
+    def __init__(self, stateSize, numActions, historyProportion4Learn = 1, nn_Func = None, isStateProcessed = True, outputGraph = False, isDoubleDQN = False, discountFactor = 0.95, batchSize = 32, maxReplaySize = 50000, minReplaySize = 100, copyEvalToTarget = 5, explorationProb = 0.1, descendingExploration = True, exploreChangeRate = 0.001):
+        self.stateSize = stateSize
+        self.numActions = numActions
+        self.historyProportion4Learn = historyProportion4Learn
+        self.nn_Func = nn_Func
+        self.isStateProcessed = isStateProcessed
+        self.discountFactor = discountFactor
+        self.batchSize = batchSize
+        self.maxReplaySize = maxReplaySize
+        self.minReplaySize = minReplaySize
+        self.outputGraph = outputGraph
+        self.isDoubleDQN = isDoubleDQN
+        self.copyEvalToTarget = copyEvalToTarget
 
-#qtable types
-class QTableParamsWOChangeInExploration:
-    def __init__(self, learning_rate=0.01, reward_decay=0.95, explorationProb=0.1):
-        self.learningRate = learning_rate
-        self.rewardDecay = reward_decay
         self.explorationProb = explorationProb
+        self.descendingExploration = descendingExploration
+        self.exploreChangeRate = exploreChangeRate
+
+    def ExplorationProb(self, numRuns):
+        if self.descendingExploration:
+            return self.explorationProb + (1 - self.explorationProb) * np.exp(-self.exploreChangeRate * numRuns)
+        else:
+            return self.explorationProb
+
+#qtable params
+class QTableParams:
+    def __init__(self, stateSize, numActions, historyProportion4Learn = 1, learning_rate=0.01, discountFactor=0.95, explorationProb=0.1, maxReplaySize = 50000, minReplaySize = 200):
+        self.stateSize = stateSize
+        self.numActions = numActions
+        self.learningRate = learning_rate
+        self.discountFactor = discountFactor
+        self.explorationProb = explorationProb
+
+        self.historyProportion4Learn = historyProportion4Learn
+
+        self.maxReplaySize = maxReplaySize
+        self.minReplaySize = minReplaySize
+
+        self.isStateProcessed = True
         
     
     def ExploreProb(self, numRuns):
@@ -31,9 +67,9 @@ class QTableParamsWOChangeInExploration:
         return False
 
 class QTableParamsWithChangeInExploration:
-    def __init__(self, exploreRate = 0.0001, exploreStart = 1, exploreStop = 0.01, learning_rate=0.01, reward_decay=0.95):
+    def __init__(self, exploreRate = 0.0001, exploreStart = 1, exploreStop = 0.01, learning_rate=0.01, discountFactor=0.95):
         self.learningRate = learning_rate
-        self.rewardDecay = reward_decay
+        self.discountFactor = discountFactor
         self.exploreStart = exploreStart
         self.exploreStop = exploreStop
         self.exploreRate = exploreRate
@@ -48,9 +84,9 @@ class QTableParamsWithChangeInExploration:
         return False
 
 class QTablePropogation:
-    def __init__(self, learning_rate=0.01, reward_decay=0.95, explorationProb=0.1):
+    def __init__(self, learning_rate=0.01, discountFactor=0.95, explorationProb=0.1):
         self.learningRate = learning_rate
-        self.rewardDecay = reward_decay
+        self.discountFactor = discountFactor
         self.explorationProb = explorationProb
 
     def ExploreProb(self, numRuns):
@@ -71,18 +107,22 @@ class UserPlay:
     def choose_action(self, observation):
         a = input("insert action: ")
         return int(a)
-    def learn(self, s, a, r, s_, initValuesState = None):
-        return False
+
+    def learn(self, s, a, r, s_, terminal = False):
+        return None
+
     def end_run(self, r):
         return False
 
+TYPES = ["NN" , "Q"]
 class LearnWithReplayMngr:
-    def __init__(self, numActions, sizeState, chooseActionFromNN, terminalStates, nnDirectory = '', qTableName = '', resultFileName = '', historyFileName = '', historyProportion4Learn = 0.25, build_DQN_func = None, QTableParams = QTableParamsWOChangeInExploration(), discountFactor = 0.95, numTrials2Learn = 100):
+    def __init__(self, modelType, modelParams, terminalStates, nnDirectory = '', qTableName = '', resultFileName = '', historyFileName = '', numTrials2Learn = 20):
         self.numTrials2Learn = numTrials2Learn
         self.trialNum = 0
-
-        self.discountFactor = discountFactor
-        self.historyProportion4Learn = historyProportion4Learn
+        self.discountFactor = modelParams.discountFactor
+        self.historyProportion4Learn = modelParams.historyProportion4Learn
+        self.maxReplaySize = modelParams.maxReplaySize
+        self.minReplaySize = modelParams.minReplaySize
 
         self.terminalStates = terminalStates
 
@@ -90,22 +130,34 @@ class LearnWithReplayMngr:
         self.actionHistory = []
         self.rewardHistory = []
         self.nextStateHistory = []
+        self.terminalHistory = []
 
-        self.chooseActionFromNN = chooseActionFromNN
-        if chooseActionFromNN:
-            self.dqn = DQN(numActions, sizeState, nnDirectory, terminalStates, build_DQN_func, discountFactor)
+        self.chooseActionFromNN = modelType == "NN"
+        if self.chooseActionFromNN:
+            if modelParams.isDoubleDQN:
+                self.dqn = DoubleDQN(modelParams, nnDirectory)
+            else:
+                self.dqn = DQN(modelParams, nnDirectory)
         else:
             self.dqn = None
 
         if qTableName != '':
-            self.qTable = QLearningTable(numActions, qTableName, QTableParams)
+            if self.dqn == None:
+                qTableParams = modelParams
+            else:
+                qTableParams = QTableParams(modelParams.stateSize, modelParams.numActions)
+            self.qTable = QLearningTable(qTableParams, qTableName)
+
         else:
             self.qTable = None
 
         self.tTable = None
 
         if historyFileName != '':
-            self.histFile = open(historyFileName + ".txt", "a+")
+            hfName = historyFileName + '.txt'
+            if os.path.isfile(hfName):
+                self.ReadHistFromFile(hfName)
+            self.histFile = open(hfName, "a+")
         else:
             self.histFile = None
 
@@ -113,28 +165,43 @@ class LearnWithReplayMngr:
             self.resultFile = ResultFile(resultFileName, numTrials2Learn)
         else:
             self.resultFile = None
-        
+    
+    def ReadHistFromFile(self, fName):
+        f = open(fName)
+        i = 0
+        for line in reversed(f.readlines()):
+            print(i, ":", line)
+            i += 1
+
     def choose_action(self, observation):
         if self.chooseActionFromNN:
             return self.dqn.choose_action(observation)  
         else:
             return self.qTable.choose_action(str(observation))       
 
-    def learn(self, s, a, r, s_):
+    def learn(self, s, a, r, s_, terminal = False):
         self.stateHistory.append(s)
         self.actionHistory.append(a)
         self.rewardHistory.append(r)
         self.nextStateHistory.append(s_)
+        self.terminalHistory.append(terminal)
 
     def PropogateRewardsAndSelectTrainSet(self):            
-        prevReward = 0
-        for i in range (len(self.rewardHistory) - 1, -1, -1):
+        # prevReward = 0
+        # for i in range (len(self.rewardHistory) - 1, -1, -1):
 
-            if self.TerminalState(self.nextStateHistory[i]):
-                prevReward = self.rewardHistory[i]
-            else:
-                prevReward *= self.discountFactor
-                self.rewardHistory[i] += prevReward
+        #     if self.TerminalState(self.nextStateHistory[i]) or self.rewardHistory[i] != 0:
+        #         prevReward = self.rewardHistory[i]
+        #     else:
+        #         prevReward *= self.discountFactor
+        #         self.rewardHistory[i] += prevReward
+        while len(self.rewardHistory) > self.maxReplaySize:
+            self.rewardHistory.pop(0)
+            self.stateHistory.pop(0)
+            self.actionHistory.pop(0)
+            self.nextStateHistory.pop(0)
+            self.terminalHistory.pop(0)
+
 
         idx4Shuffle = np.arange(len(self.rewardHistory))
         np.random.shuffle(idx4Shuffle)
@@ -145,18 +212,15 @@ class LearnWithReplayMngr:
         s = np.array(self.stateHistory)[chosenIdx]
         a = np.array(self.actionHistory)[chosenIdx]
         s_ = np.array(self.nextStateHistory)[chosenIdx]
-        
-        self.histFile.write("\nhistory for " + str(self.numTrials2Learn) + "trials:(s,a,r,s_)\n\n")
-        for i in range(len(self.rewardHistory)):
-            toWrite = str(self.stateHistory[i]) + "," + str(self.actionHistory[i]) + "," + str(self.rewardHistory[i]) + "," + str(self.nextStateHistory[i]) + "\n"
-            self.histFile.write(toWrite)
+        terminal = np.array(self.terminalHistory)[chosenIdx]
 
-        self.rewardHistory = []
-        self.stateHistory = []
-        self.actionHistory = []
-        self.nextStateHistory = []
+        if self.histFile != None:
+            self.histFile.write("\nhistory for " + str(self.numTrials2Learn) + "trials:(s,a,r,s_)\n\n")
+            for i in range(len(self.rewardHistory)):
+                toWrite = str(self.stateHistory[i]) + "," + str(self.actionHistory[i]) + "," + str(self.rewardHistory[i]) + "," + str(self.nextStateHistory[i]) + "\n"
+                self.histFile.write(toWrite)
 
-        return s, a, r, s_
+        return s, a, r, s_, terminal
 
     def TerminalState(self, s):
         for v in self.terminalStates.values():
@@ -178,23 +242,27 @@ class LearnWithReplayMngr:
             self.qTable.end_run(r)
         if self.tTable != None:
             self.tTable.end_run(learnAndSave)
-        if self.resultFile != None:
-            self.resultFile.end_run(r, learnAndSave)
 
         if learnAndSave:
-            s,a,r,s_ = self.PropogateRewardsAndSelectTrainSet()
-            
+            print("start training with hist size = ", len(self.rewardHistory), end = ' ')
+            s,a,rVec,s_, terminal = self.PropogateRewardsAndSelectTrainSet()
+            print("after cutting experience training on size =", len(rVec))
             start = datetime.datetime.now() 
             if self.dqn != None:
-                self.dqn.learn(s,a,r,s_)
-                self.dqn.save_network()
+                if len(a) > self.minReplaySize:
+                    self.dqn.learn(s,a,rVec,s_, terminal)
+                    self.dqn.save_network()
             if self.qTable != None:
-                self.qTable.learnReplay(s,a,r,s_)
+                self.qTable.learnReplay(s,a,rVec,s_)
                 self.qTable.SaveTable()
             diff = datetime.datetime.now() - start
             print("duration(ms) for learning and saving:", diff.seconds * 1000 + diff.microseconds / 1000)
 
         return True 
+    def PrintValues(self, s):
+        valsDqn = self.dqn.actionValuesVec(s)
+        valsQ = self.qTable.actionValuesVec(str(s))
+        print("dqn =", list(valsDqn), "\nQ =", valsQ)
 
 class TestTableMngr:        
     def __init__(self, numActions, qTableName, resultFileName, numToWriteResult = 100):
@@ -214,8 +282,8 @@ class TestTableMngr:
         return True 
 
 class TableMngr:
-    def __init__(self, numActions, sizeState, qTableName, resultFileName = '', QTableParams = QTableParamsWOChangeInExploration(), transitionTableName = '', onlineHallucination = False, rewardTableName = '', numTrials2SaveTable = 20, numToWriteResult = 100):
-        self.qTable = QLearningTable(numActions, qTableName, QTableParams)
+    def __init__(self, modelParams, qTableName, resultFileName = '', transitionTableName = '', onlineHallucination = False, rewardTableName = '', numTrials2SaveTable = 20, numToWriteResult = 100):
+        self.qTable = QLearningTable(modelParams, qTableName)
 
         self.numTrials2Save = numTrials2SaveTable
         self.numTrials = 0
@@ -223,11 +291,11 @@ class TableMngr:
         self.onlineHallucination = onlineHallucination
         if transitionTableName != '':
             self.createTransitionTable = True
-            if QTableParams.PropogtionUsingTTable():
-                self.tTable = BothWaysTransitionTable(numActions, transitionTableName)
+            if modelParams.PropogtionUsingTTable():
+                self.tTable = BothWaysTransitionTable(modelParams.numActions, transitionTableName)
                 self.qTable.InitTTable(self.tTable)
             else:
-                self.tTable = TransitionTable(numActions, transitionTableName)
+                self.tTable = TransitionTable(modelParams.numActions, transitionTableName)
         else:
             self.createTransitionTable = False
 
@@ -249,7 +317,7 @@ class TableMngr:
             self.sharedMemoryPS = manager.dict()
             self.sharedMemoryPS["q_table"] = qTableName
             self.sharedMemoryPS["t_table"] = transitionTableName
-            self.sharedMemoryPS["num_actions"] = numActions
+            self.sharedMemoryPS["num_actions"] = modelParams.numActions
             self.sharedMemoryPS["updateStateFlag"] = False
             self.sharedMemoryPS["updateTableFlag"] = False
             self.sharedMemoryPS["nextState"] = None
@@ -317,14 +385,14 @@ class SAR:
 
 class QLearningTable:
 
-    def __init__(self, numActions, qTableName, qTableParams = QTableParamsWOChangeInExploration()):
+    def __init__(self, modelParams, qTableName):
         self.qTableName = qTableName
-        self.actions = list(range(numActions))  # a list
+        self.actions = list(range(modelParams.numActions))  # a list
         self.table = pd.DataFrame(columns=self.actions, dtype=np.float)
         if os.path.isfile(qTableName + '.gz'):
             self.ReadTable()
         
-        self.params = qTableParams
+        self.params = modelParams
         
         self.TrialsData = "TrialsData"
         self.NumRunsTotalSlot = 0
@@ -376,6 +444,12 @@ class QLearningTable:
             action = np.random.choice(self.actions)
             
         return action
+    def actionValuesVec(self, s):
+        state_action = self.table.ix[s, :]
+        vals = []
+        for a in self.actions:
+            vals.append(state_action[a])
+        return vals
 
     def learnReplay(self, statesVec, actionsVec, rewardsVec, nextStateVec):
         for i in range(len(rewardsVec)):
@@ -390,7 +464,7 @@ class QLearningTable:
         q_predict = self.table.ix[s, a]
         
         if s_ not in self.terminalStates:
-            q_target = r + self.params.rewardDecay * self.table.ix[s_, :].max()
+            q_target = r + self.params.discountFactor * self.table.ix[s_, :].max()
         else:
             q_target = r  # next state is terminal
         
@@ -408,7 +482,7 @@ class QLearningTable:
             self.learnIMP(s, self.history[idx][1], r, s_)
 
             s_ = s
-            rProp *= self.params.rewardDecay
+            rProp *= self.params.discountFactor
     
         self.history = []
 
@@ -441,7 +515,7 @@ class QLearningTable:
                             state_action = state_action.reindex(np.random.permutation(state_action.index))    
                             actionChosen = state_action.idxmax()
                             if currTable.ix[prevS, actionChosen] > 0:
-                                openList.append(SAR(prevS, actionChosen, r * self.params.rewardDecay))
+                                openList.append(SAR(prevS, actionChosen, r * self.params.discountFactor))
                 
                 openList.remove(sar)
             

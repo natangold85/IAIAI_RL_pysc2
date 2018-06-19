@@ -1,2 +1,2 @@
-model_checkpoint_path: "melee_attack_DQN_Full"
-all_model_checkpoint_paths: "melee_attack_DQN_Full"
+model_checkpoint_path: "moveToBeacon_DoubleDQN_1Update"
+all_model_checkpoint_paths: "moveToBeacon_DoubleDQN_1Update"

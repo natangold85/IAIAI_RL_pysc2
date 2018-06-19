@@ -53,12 +53,14 @@ class SC2_Params:
     HEIGHT_MAP = features.SCREEN_FEATURES.height_map.index
     PLAYER_RELATIVE = features.SCREEN_FEATURES.player_relative.index
     UNIT_DENSITY = features.SCREEN_FEATURES.unit_density.index
+    #HIT_POINTS = features.SCREEN_FEATURES.hit_points.index
     UNIT_TYPE = features.SCREEN_FEATURES.unit_type.index
     PLAYER_ID = features.SCREEN_FEATURES.player_id.index
     SELECTED_IN_SCREEN = features.SCREEN_FEATURES.selected.index
     VISIBILITY = features.SCREEN_FEATURES.visibility_map.index 
 
     PLAYER_SELF = 1
+    PLAYER_NEUTRAL = 3 
     PLAYER_HOSTILE = 4
     ARMY_SUPPLY = 5
 
