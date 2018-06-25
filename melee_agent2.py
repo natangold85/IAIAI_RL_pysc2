@@ -295,7 +295,7 @@ class Attack(base_agent.BaseAgent):
         
         if self.errorOccur:
             return DO_NOTHING_SC2_ACTION
-        print(type(obs.observation))
+        
         self.numStep += 1
         time.sleep(STEP_DURATION)
         sc2Action = DO_NOTHING_SC2_ACTION

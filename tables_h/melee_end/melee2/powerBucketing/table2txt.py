@@ -589,22 +589,22 @@ try:
         plt.legend(tableNames, loc='upper left')
         fig.savefig(fileNamePlot)
 
-        plt.figure(1)
-        fig2, ax2 = plt.subplots()  
+        # plt.figure(1)
+        # fig2, ax2 = plt.subplots()  
 
-        width = 0.35
-        ind = np.arange(len(allMean))
-        rects1 = ax2.bar(ind, allMean, width, yerr=allStd)
+        # width = 0.35
+        # ind = np.arange(len(allMean))
+        # rects1 = ax2.bar(ind, allMean, width, yerr=allStd)
 
-        yLabel = 'avg reward for ' + str(newGrouping) + ' trials'
-        ax2.set(xlabel='trials', ylabel=yLabel,
-            title = 'avg reward for results tables:\n')
+        # yLabel = 'avg reward for ' + str(newGrouping) + ' trials'
+        # ax2.set(xlabel='trials', ylabel=yLabel,
+        #     title = 'avg reward for results tables:\n')
 
-        ax2.set_xticks(ind + width / 2)
-        ax2.set_xticklabels(tableNames)
+        # ax2.set_xticks(ind + width / 2)
+        # ax2.set_xticklabels(tableNames)
 
-        fileNameBar = fileName + "_bar.png"
-        fig2.savefig(fileNameBar)
+        # fileNameBar = fileName + "_bar.png"
+        # fig2.savefig(fileNameBar)
 
         plt.show()
 

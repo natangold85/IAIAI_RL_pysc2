@@ -4,6 +4,7 @@ import pickle
 import os.path
 import time
 import datetime
+import sys
 
 import tensorflow as tf
 
@@ -16,12 +17,11 @@ from multiprocessing import Process, Lock, Value, Array, Manager
 
 # dqn params
 class DQN_PARAMS:
-    def __init__(self, stateSize, numActions, historyProportion4Learn = 1, nn_Func = None, isStateProcessed = True, outputGraph = False, isDoubleDQN = False, discountFactor = 0.95, batchSize = 32, maxReplaySize = 50000, minReplaySize = 100, copyEvalToTarget = 5, explorationProb = 0.1, descendingExploration = True, exploreChangeRate = 0.001):
+    def __init__(self, stateSize, numActions, historyProportion4Learn = 1, nn_Func = None, outputGraph = False, isDoubleDQN = False, discountFactor = 0.95, batchSize = 32, maxReplaySize = 50000, minReplaySize = 1000, copyEvalToTarget = 5, explorationProb = 0.1, descendingExploration = True, exploreChangeRate = 0.0005):
         self.stateSize = stateSize
         self.numActions = numActions
         self.historyProportion4Learn = historyProportion4Learn
         self.nn_Func = nn_Func
-        self.isStateProcessed = isStateProcessed
         self.discountFactor = discountFactor
         self.batchSize = batchSize
         self.maxReplaySize = maxReplaySize
@@ -104,19 +104,27 @@ class QTablePropogationUsingTTable(QTablePropogation):
         return True
 
 class UserPlay:
+    def __init__(self, playWithInput = True):
+        self.playWithInput = playWithInput
     def choose_action(self, observation):
-        a = input("insert action: ")
+        if self.playWithInput:
+            a = input("insert action: ")
+        else:
+            a = 0
         return int(a)
 
     def learn(self, s, a, r, s_, terminal = False):
+        if r != 0:
+            print(r)
         return None
-
+    def actionValuesVec(self,state):
+        return []
     def end_run(self, r):
         return False
 
 TYPES = ["NN" , "Q"]
 class LearnWithReplayMngr:
-    def __init__(self, modelType, modelParams, terminalStates, nnDirectory = '', qTableName = '', resultFileName = '', historyFileName = '', numTrials2Learn = 20):
+    def __init__(self, modelType, modelParams, terminalStates, nnDirectory = '', qTableName = '', resultFileName = '', historyFileName = '', numTrials2Learn = 100):
         self.numTrials2Learn = numTrials2Learn
         self.trialNum = 0
         self.discountFactor = modelParams.discountFactor
@@ -126,18 +134,24 @@ class LearnWithReplayMngr:
 
         self.terminalStates = terminalStates
 
-        self.stateHistory = []
-        self.actionHistory = []
-        self.rewardHistory = []
-        self.nextStateHistory = []
-        self.terminalHistory = []
+        self.transitions = {}
+        self.transitions["s"] = []
+        self.transitions["a"] = []
+        self.transitions["r"] = []
+        self.transitions["s_"] = []
+        self.transitions["terminal"] = []
+
+        if "new" in sys.argv:
+            loadFiles = False
+        else:
+            loadFiles = True
 
         self.chooseActionFromNN = modelType == "NN"
         if self.chooseActionFromNN:
             if modelParams.isDoubleDQN:
-                self.dqn = DoubleDQN(modelParams, nnDirectory)
+                self.dqn = DoubleDQN(modelParams, nnDirectory, loadFiles)
             else:
-                self.dqn = DQN(modelParams, nnDirectory)
+                self.dqn = DQN(modelParams, nnDirectory, loadFiles)
         else:
             self.dqn = None
 
@@ -146,32 +160,27 @@ class LearnWithReplayMngr:
                 qTableParams = modelParams
             else:
                 qTableParams = QTableParams(modelParams.stateSize, modelParams.numActions)
-            self.qTable = QLearningTable(qTableParams, qTableName)
+            self.qTable = QLearningTable(qTableParams, qTableName, loadFiles)
 
         else:
             self.qTable = None
 
         self.tTable = None
 
+        self.histFileName = historyFileName
+
         if historyFileName != '':
-            hfName = historyFileName + '.txt'
-            if os.path.isfile(hfName):
-                self.ReadHistFromFile(hfName)
-            self.histFile = open(hfName, "a+")
-        else:
-            self.histFile = None
+            self.histFileName += '.gz'
+            if os.path.isfile(self.histFileName) and loadFiles:
+                self.transitions = pd.read_pickle(self.histFileName, compression='gzip')
+
 
         if resultFileName != '':
-            self.resultFile = ResultFile(resultFileName, numTrials2Learn)
+            self.resultFile = ResultFile(resultFileName, numTrials2Learn, loadFiles)
         else:
             self.resultFile = None
     
-    def ReadHistFromFile(self, fName):
-        f = open(fName)
-        i = 0
-        for line in reversed(f.readlines()):
-            print(i, ":", line)
-            i += 1
+
 
     def choose_action(self, observation):
         if self.chooseActionFromNN:
@@ -179,46 +188,47 @@ class LearnWithReplayMngr:
         else:
             return self.qTable.choose_action(str(observation))       
 
+    def actionValuesVec(self, state):
+        if self.chooseActionFromNN:
+            return self.dqn.actionValuesVec(state)
+        else:
+            return self.qTable.actionValuesVec(str(state))
+
+    def NumRuns(self):
+        if self.chooseActionFromNN:
+            return self.dqn.NumRuns()
+        else:
+            return self.qTable.NumRuns()
+
     def learn(self, s, a, r, s_, terminal = False):
-        self.stateHistory.append(s)
-        self.actionHistory.append(a)
-        self.rewardHistory.append(r)
-        self.nextStateHistory.append(s_)
-        self.terminalHistory.append(terminal)
+        self.transitions["s"].append(s)
+        self.transitions["a"].append(a)
+        self.transitions["r"].append(r)
+        self.transitions["s_"].append(s_)
+        self.transitions["terminal"].append(terminal)
 
-    def PropogateRewardsAndSelectTrainSet(self):            
-        # prevReward = 0
-        # for i in range (len(self.rewardHistory) - 1, -1, -1):
-
-        #     if self.TerminalState(self.nextStateHistory[i]) or self.rewardHistory[i] != 0:
-        #         prevReward = self.rewardHistory[i]
-        #     else:
-        #         prevReward *= self.discountFactor
-        #         self.rewardHistory[i] += prevReward
-        while len(self.rewardHistory) > self.maxReplaySize:
-            self.rewardHistory.pop(0)
-            self.stateHistory.pop(0)
-            self.actionHistory.pop(0)
-            self.nextStateHistory.pop(0)
-            self.terminalHistory.pop(0)
+    def ExperienceReplay(self):            
+        while len(self.transitions["r"]) > self.maxReplaySize:
+            self.transitions["s"].pop(0)
+            self.transitions["a"].pop(0)
+            self.transitions["r"].pop(0)
+            self.transitions["s_"].pop(0)
+            self.transitions["terminal"].pop(0)
 
 
-        idx4Shuffle = np.arange(len(self.rewardHistory))
+        idx4Shuffle = np.arange(len(self.transitions["r"]))
         np.random.shuffle(idx4Shuffle)
         size = int(len(idx4Shuffle) * self.historyProportion4Learn)
         chosenIdx = idx4Shuffle[0:size]
         
-        r = np.array(self.rewardHistory)[chosenIdx]
-        s = np.array(self.stateHistory)[chosenIdx]
-        a = np.array(self.actionHistory)[chosenIdx]
-        s_ = np.array(self.nextStateHistory)[chosenIdx]
-        terminal = np.array(self.terminalHistory)[chosenIdx]
+        s = np.array(self.transitions["s"])[chosenIdx]
+        a = np.array(self.transitions["a"])[chosenIdx]
+        r = np.array(self.transitions["r"])[chosenIdx]
+        s_ = np.array(self.transitions["s_"])[chosenIdx]
+        terminal = np.array(self.transitions["terminal"])[chosenIdx]
 
-        if self.histFile != None:
-            self.histFile.write("\nhistory for " + str(self.numTrials2Learn) + "trials:(s,a,r,s_)\n\n")
-            for i in range(len(self.rewardHistory)):
-                toWrite = str(self.stateHistory[i]) + "," + str(self.actionHistory[i]) + "," + str(self.rewardHistory[i]) + "," + str(self.nextStateHistory[i]) + "\n"
-                self.histFile.write(toWrite)
+        if self.histFileName != '':
+            pd.to_pickle(self.transitions, self.histFileName, 'gzip') 
 
         return s, a, r, s_, terminal
 
@@ -227,15 +237,17 @@ class LearnWithReplayMngr:
             if np.array_equal(s, v):
                 return True
         return False
-    def end_run(self, r):
+    def end_run(self, r, score):
+        print("for trial#", self.NumRuns(), ": reward =", r, "score =", score)
 
         learnAndSave = False
         self.trialNum += 1
+
         if self.trialNum % self.numTrials2Learn == 0:
             learnAndSave = True
 
         if self.resultFile != None:
-            self.resultFile.end_run(r, learnAndSave)
+            self.resultFile.end_run(r, score, learnAndSave)
         if self.dqn != None:
             self.dqn.end_run()
         if self.qTable != None:
@@ -244,8 +256,8 @@ class LearnWithReplayMngr:
             self.tTable.end_run(learnAndSave)
 
         if learnAndSave:
-            print("start training with hist size = ", len(self.rewardHistory), end = ' ')
-            s,a,rVec,s_, terminal = self.PropogateRewardsAndSelectTrainSet()
+            print("start training with hist size = ", len(self.transitions["r"]), end = ' ')
+            s,a,rVec,s_, terminal = self.ExperienceReplay()
             print("after cutting experience training on size =", len(rVec))
             start = datetime.datetime.now() 
             if self.dqn != None:
@@ -385,11 +397,11 @@ class SAR:
 
 class QLearningTable:
 
-    def __init__(self, modelParams, qTableName):
+    def __init__(self, modelParams, qTableName, loadTable = True):
         self.qTableName = qTableName
         self.actions = list(range(modelParams.numActions))  # a list
         self.table = pd.DataFrame(columns=self.actions, dtype=np.float)
-        if os.path.isfile(qTableName + '.gz'):
+        if os.path.isfile(qTableName + '.gz') and loadTable:
             self.ReadTable()
         
         self.params = modelParams
@@ -450,6 +462,8 @@ class QLearningTable:
         for a in self.actions:
             vals.append(state_action[a])
         return vals
+    def NumRuns(self):
+        return self.numTotRuns
 
     def learnReplay(self, statesVec, actionsVec, rewardsVec, nextStateVec):
         for i in range(len(rewardsVec)):
@@ -547,7 +561,6 @@ class QLearningTable:
 
 
     def end_run(self, r, saveTable = False):
-    
         self.avgTotReward = (self.numTotRuns * self.avgTotReward + r) / (self.numTotRuns + 1)
         self.avgExpReward = (self.numExpRuns * self.avgExpReward + r) / (self.numExpRuns + 1)
         
@@ -707,7 +720,7 @@ class RewardTable:
             self.r_table.to_pickle(self.tableName + '.gz', 'gzip') 
 
 class ResultFile:
-    def __init__(self, tableName, numToWrite = 100):
+    def __init__(self, tableName, numToWrite = 100, loadFile = True):
         self.tableName = tableName
         self.numToWrite = numToWrite
 
@@ -717,9 +730,9 @@ class ResultFile:
         self.countCompleteKey = 'countComplete'
         self.prevNumToWriteKey = 'prevNumToWrite'
 
-        self.rewardCol = list(range(1))
+        self.rewardCol = list(range(2))
         self.result_table = pd.DataFrame(columns=self.rewardCol, dtype=np.float)
-        if os.path.isfile(tableName + '.gz'):
+        if os.path.isfile(tableName + '.gz') and loadFile:
             self.result_table = pd.read_pickle(tableName + '.gz', compression='gzip')
 
         self.check_state_exist(self.prevNumToWriteKey)
@@ -731,9 +744,11 @@ class ResultFile:
         if numToWrite != self.result_table.ix[self.prevNumToWriteKey, 0]:
             numToWriteKey = "count_" + str(self.countComplete) + "_numToWrite"
             self.result_table.ix[numToWriteKey, 0] = numToWrite
+            self.result_table.ix[numToWriteKey, 1] = 0
             self.result_table.ix[self.prevNumToWriteKey, 0] = numToWrite
         
         self.sumReward = self.result_table.ix[self.inMiddleValKey, 0]
+        self.sumScore = self.result_table.ix[self.inMiddleValKey, 1]
         self.numRuns = self.result_table.ix[self.inMiddleCountKey, 0]
 
         if self.numRuns >= numToWrite:
@@ -746,25 +761,32 @@ class ResultFile:
 
     def insertEndRun2Table(self):
             avgReward = self.sumReward / self.numRuns
+            avgScore = self.sumScore / self.numRuns
+
             countKey = str(self.countComplete)
+
             self.check_state_exist(countKey)
             self.result_table.ix[countKey, 0] = avgReward
+            self.result_table.ix[countKey, 1] = avgScore
 
             self.countComplete += 1
             self.result_table.ix[self.countCompleteKey, 0] = self.countComplete
 
             self.sumReward = 0
+            self.sumScore = 0
             self.numRuns = 0
-            print("avg results for", self.numToWrite, "trials =", avgReward)
+            print("avg results for", self.numToWrite, "trials: reward =", avgReward, "score =",  avgScore)
 
-    def end_run(self, r, saveTable):
+    def end_run(self, r, score, saveTable):
         self.sumReward += r
+        self.sumScore += score
         self.numRuns += 1
 
         if self.numRuns == self.numToWrite:
             self.insertEndRun2Table()
         
         self.result_table.ix[self.inMiddleValKey, 0] = self.sumReward
+        self.result_table.ix[self.inMiddleValKey, 1] = self.sumScore
         self.result_table.ix[self.inMiddleCountKey, 0] = self.numRuns
         
         if saveTable:

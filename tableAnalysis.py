@@ -200,7 +200,8 @@ def PlotExplorationChange(numTrials):
     plt.plot(naiveTrialNum, naiveArray)
     plt.plot(trialNum, smartArray)
 
-def ResultsFromTable(tableName, newGrouping = -1):
+def ResultsFromTable(tableName, newGrouping = -1, dataIdx = 0):
+
     numSlots = 1
     table = pd.DataFrame(columns=list(range(numSlots)), dtype=np.int)
     table = pd.read_pickle(tableName + '.gz', compression='gzip')
@@ -212,7 +213,7 @@ def ResultsFromTable(tableName, newGrouping = -1):
     for name in names[:]:
         if name.isdigit():
             idx = int(name)
-            resultDict[idx] = table.ix[name, 0]
+            resultDict[idx] = table.ix[name, dataIdx]
         elif name.find('count_') >= 0:
             start = -1
             end = -1
@@ -273,20 +274,20 @@ try:
         tableType = sys.argv[1]
 
     if tableType == "qtable":
-        if len(sys.argv) < 4:
+        if len(sys.argv) < 3:
             print("Error: missing arguments")
             exit(1)
         else:
             tableName = sys.argv[2]
-            numActions = int(sys.argv[3])
 
-        q_table = pd.DataFrame(columns=list(range(numActions)), dtype=np.float)
         q_table = pd.read_pickle(tableName + '.gz', compression='gzip')
+        
 
         f = open(tableName + '.txt', 'w')
         f.write(q_table.to_string())
         f.close()
 
+        numActions = len(q_table.columns)
         names = list(q_table.index)
         sumPositive = 0
         sumNegative = 0
@@ -563,19 +564,14 @@ try:
         fig, ax = plt.subplots()  
         fileName = ""
 
-        allMean = []
-        allStd = []
         for table in tableNames[:]:
-            results = ResultsFromTable(table, newGrouping) 
+            results = ResultsFromTable(table, newGrouping, 1) 
 
             t = np.zeros(len(results), dtype=np.float, order='C')
             for i in range(0, len(results)):
                 t[i] = i * newGrouping
 
             ax.plot(t, results)
-            resultsForBar = ResultsFromTable(table, 500)         
-            allMean.append(np.mean(resultsForBar))
-            allStd.append(np.std(resultsForBar))
             fileName += table + "_"
 
         fileName += ".png"
@@ -585,26 +581,33 @@ try:
 
         ax.grid()
 
-        fileNamePlot = fileName + "_plot.png"
+        fileNamePlot = fileName + "_rewardPlot.png"
         plt.legend(tableNames, loc='upper left')
         fig.savefig(fileNamePlot)
 
-        # plt.figure(1)
-        # fig2, ax2 = plt.subplots()  
+        fig, ax = plt.subplots()  
+        fileName = ""
 
-        # width = 0.35
-        # ind = np.arange(len(allMean))
-        # rects1 = ax2.bar(ind, allMean, width, yerr=allStd)
+        for table in tableNames[:]:
+            results = ResultsFromTable(table, newGrouping) 
 
-        # yLabel = 'avg reward for ' + str(newGrouping) + ' trials'
-        # ax2.set(xlabel='trials', ylabel=yLabel,
-        #     title = 'avg reward for results tables:\n')
+            t = np.zeros(len(results), dtype=np.float, order='C')
+            for i in range(0, len(results)):
+                t[i] = i * newGrouping
 
-        # ax2.set_xticks(ind + width / 2)
-        # ax2.set_xticklabels(tableNames)
+            ax.plot(t, results)
+            fileName += table + "_"
 
-        # fileNameBar = fileName + "_bar.png"
-        # fig2.savefig(fileNameBar)
+        fileName += ".png"
+        yLabel = 'avg score for ' + str(newGrouping) + ' trials'
+        ax.set(xlabel='trials', ylabel=yLabel,
+            title = 'avg score for results tables:\n')
+
+        ax.grid()
+
+        fileNamePlot = fileName + "_scorePlot.png"
+        plt.legend(tableNames, loc='upper left')
+        fig.savefig(fileNamePlot)
 
         plt.show()
 

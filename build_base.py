@@ -260,7 +260,7 @@ class BuildBaseSubAgent:
                     ret2Base = True
                 else:
                     midPnt = FindMiddle(cc_y, cc_x)
-                    maxDiff = max(SC2_Params.SCREEN_SIZE[SC2_Params.X_IDX] / 2 - midPnt[SC2_Params.X_IDX], SC2_Params.SCREEN_SIZE[SC2_Params.Y_IDX] / 2 - midPnt[SC2_Params.Y_IDX])
+                    maxDiff = max(SC2_Params.SCREEN_SIZE / 2 - midPnt[SC2_Params.X_IDX], SC2_Params.SCREEN_SIZE / 2 - midPnt[SC2_Params.Y_IDX])
                     if abs (maxDiff) > 20:
                         ret2Base = True
 

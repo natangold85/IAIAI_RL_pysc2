@@ -1,2 +1,2 @@
-model_checkpoint_path: "moveToBeacon_DoubleDQN_1Update"
-all_model_checkpoint_paths: "moveToBeacon_DoubleDQN_1Update"
+model_checkpoint_path: "meleeAgent1_Sig5Actions_MiddleRewards_DQN"
+all_model_checkpoint_paths: "meleeAgent1_Sig5Actions_MiddleRewards_DQN"

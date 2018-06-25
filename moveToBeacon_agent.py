@@ -33,7 +33,7 @@ from utils import FindMiddle
 from utils import DistForCmp
 
 
-STATE_GRID_SIZE = SC2_Params.SCREEN_SIZE[0]
+STATE_GRID_SIZE = SC2_Params.SCREEN_SIZE
 
 PROCESSED_STATE_GRID_SIZE = 10
 SELF_MAT_START = 0
@@ -123,28 +123,28 @@ def build_nn_4double(x, numActions, w_init, b_init, scope = 'dqn', nameChar = 'l
     with tf.variable_scope(scope):
         # Fully connected layers
         l1 = tf.layers.dense(x, 512, tf.nn.relu, kernel_initializer=w_init, bias_initializer=b_init, name=nameChar+'0')
-        output = tf.layers.dense(l1, numActions, kernel_initializer=w_init, bias_initializer=b_init, name=nameChar+'1')
+        output = tf.nn.sigmoid(tf.layers.dense(l1, numActions, kernel_initializer=w_init, bias_initializer=b_init, name=nameChar+'1')) * 2 - 1
     return output
 
 RUN_TYPES[DOUBLE_DQN_5UPDATE] = {}
 RUN_TYPES[DOUBLE_DQN_5UPDATE][TYPE] = "NN"
 RUN_TYPES[DOUBLE_DQN_5UPDATE][PARAMS] = DQN_PARAMS(stateSize=PROCESSED_STATE_SIZE, numActions=NUM_ACTIONS, nn_Func=build_nn_4double, 
                                                                                 outputGraph=True, isDoubleDQN=True, copyEvalToTarget = 5)
-RUN_TYPES[DOUBLE_DQN_5UPDATE][NN] = "moveToBeacon_DoubleDQN_nn_5Update"
-RUN_TYPES[DOUBLE_DQN_5UPDATE][Q_TABLE] = "moveToBeacon_DoubleDQN_qtable_5Update"
+RUN_TYPES[DOUBLE_DQN_5UPDATE][NN] = "moveToBeacon_5Update_DoubleDQN_nn"
+RUN_TYPES[DOUBLE_DQN_5UPDATE][Q_TABLE] = "moveToBeacon_5Update_DoubleDQN_qtable"
 RUN_TYPES[DOUBLE_DQN_5UPDATE][T_TABLE] = ""
 RUN_TYPES[DOUBLE_DQN_5UPDATE][R_TABLE] = ""
-RUN_TYPES[DOUBLE_DQN_5UPDATE][RESULTS] = "moveToBeacon_DoubleDQN_results_5Update"
+RUN_TYPES[DOUBLE_DQN_5UPDATE][RESULTS] = "moveToBeacon_5Update_DoubleDQN_results"
 
 RUN_TYPES[DOUBLE_DQN_1UPDATE] = {}
 RUN_TYPES[DOUBLE_DQN_1UPDATE][TYPE] = "NN"
 RUN_TYPES[DOUBLE_DQN_1UPDATE][PARAMS] = DQN_PARAMS(stateSize=PROCESSED_STATE_SIZE, numActions=NUM_ACTIONS, nn_Func=build_nn_4double, 
                                                                                 outputGraph=False, isDoubleDQN=True, copyEvalToTarget = 1)
-RUN_TYPES[DOUBLE_DQN_1UPDATE][NN] = "moveToBeacon_DoubleDQN_1Update"
-RUN_TYPES[DOUBLE_DQN_1UPDATE][Q_TABLE] = "moveToBeacon_DoubleDQN_1Update"
+RUN_TYPES[DOUBLE_DQN_1UPDATE][NN] = "moveToBeacon_1Update_DoubleDQN"
+RUN_TYPES[DOUBLE_DQN_1UPDATE][Q_TABLE] = "moveToBeacon_1Update_DoubleDQN"
 RUN_TYPES[DOUBLE_DQN_1UPDATE][T_TABLE] = ""
 RUN_TYPES[DOUBLE_DQN_1UPDATE][R_TABLE] = ""
-RUN_TYPES[DOUBLE_DQN_1UPDATE][RESULTS] = "moveToBeacon_DoubleDQN_1Update"
+RUN_TYPES[DOUBLE_DQN_1UPDATE][RESULTS] = "moveToBeacon_1Update_DoubleDQN"
 
 
 RUN_TYPES[DQN_CMP_NEURAL_NETWORK_FULL_SIGMOID_PROCESSED] = {}
@@ -248,12 +248,14 @@ class Agent(base_agent.BaseAgent):
             print("play type not entered correctly")
             exit(1) 
 
+        self.terminalStates = self.TerminalStates(True)
+
         runType = RUN_TYPES[runTypeArg.pop()]
         if runType[TYPE] == 'all':
             params = runType[PARAMS]
             self.tables = TableMngr(NUM_ACTIONS, STATE_SIZE, runType[Q_TABLE], runType[RESULTS], params[0]) 
         
-        if runType[TYPE] == 'NN' or runType[TYPE] == 'QReplay':
+        elif runType[TYPE] == 'NN' or runType[TYPE] == 'QReplay':
             self.toProcessState = runType[PARAMS].isStateProcessed
             self.terminalStates = self.TerminalStates(self.toProcessState)
             self.tables = LearnWithReplayMngr(runType[TYPE], runType[PARAMS], self.terminalStates, runType[NN], runType[Q_TABLE], runType[RESULTS], runType[T_TABLE])     
@@ -292,8 +294,8 @@ class Agent(base_agent.BaseAgent):
 
         self.numStep += 1
         sc2Action = DO_NOTHING_SC2_ACTION
+        return sc2Action
         r = float(obs.reward) + self.prevReward
-        print(r)
         self.Learn(r)
         self.current_action = self.tables.choose_action(self.current_processed_state)
         time.sleep(STEP_DURATION)
@@ -306,7 +308,9 @@ class Agent(base_agent.BaseAgent):
 
             goTo = []
             for i in range(2):
-                goTo.append(self.selfLocCoord[i] + GOTO_CHANGE[self.current_action][i])
+                loc = self.selfLocCoord[i] + GOTO_CHANGE[self.current_action][i]
+                loc = min(max(loc,0), SC2_Params.SCREEN_SIZE - 1)
+                goTo.append(loc)
                 
             if SC2_Actions.MOVE_IN_SCREEN in obs.observation['available_actions']:
                 sc2Action = actions.FunctionCall(SC2_Actions.MOVE_IN_SCREEN, [SC2_Params.NOT_QUEUED, SwapPnt(goTo)])
@@ -363,7 +367,7 @@ class Agent(base_agent.BaseAgent):
 
     def CreateState(self, obs):
         self.current_state = np.zeros((STATE_GRID_SIZE , STATE_GRID_SIZE), dtype=np.int32, order='C')
-        screenMap = obs.observation["feature_screen"][SC2_Params.PLAYER_RELATIVE]
+        screenMap = obs.observation["screen"][SC2_Params.PLAYER_RELATIVE]
         
         selfLocX = []
         selfLocY = []
@@ -379,7 +383,7 @@ class Agent(base_agent.BaseAgent):
             yMid = int(sum(selfLocY) / len(selfLocY))
             self.selfLocCoord = [yMid, xMid]
         else:
-            selfLocY, selfLocX = (obs.observation["feature_screen"][SC2_Params.UNIT_DENSITY] > 1).nonzero()
+            selfLocY, selfLocX = (obs.observation["screen"][SC2_Params.UNIT_DENSITY] > 1).nonzero()
             if len(selfLocX) > 0:
                 xMid = int(sum(selfLocX) / len(selfLocX))
                 yMid = int(sum(selfLocY) / len(selfLocY))

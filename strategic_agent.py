@@ -220,12 +220,12 @@ class Strategic(base_agent.BaseAgent):
         y = point[SC2_Params.Y_IDX]
 
         while not found:
-            if x + 1 >= SC2_Params.SCREEN_SIZE[SC2_Params.X_IDX]:
+            if x + 1 >= SC2_Params.SCREEN_SIZE:
                 break 
 
             x += 1
             if not buildingMat[y][x]:
-                if y + 1 < SC2_Params.SCREEN_SIZE[SC2_Params.Y_IDX] and buildingMat[y + 1][x]:
+                if y + 1 < SC2_Params.SCREEN_SIZE and buildingMat[y + 1][x]:
                     y += 1
                 elif y > 0 and buildingMat[y - 1][x]:
                     y -= 1

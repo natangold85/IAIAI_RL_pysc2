@@ -6,10 +6,9 @@ import os.path
 
 import tensorflow as tf
 import os
-import sys
 
 class DQN:
-    def __init__(self, modelParams, nnDirectory, learning_rate = 0.001):
+    def __init__(self, modelParams, nnDirectory, loadNN, learning_rate = 0.001):
         # Parameters
         self.params = modelParams
         self.learning_rate = learning_rate
@@ -18,11 +17,8 @@ class DQN:
         self.num_input = modelParams.stateSize
         self.numActions = modelParams.numActions
 
-        if self.params.isStateProcessed:
-            self.inputLayer = tf.placeholder("float", [None, self.num_input]) 
-        else:
-            self.inputLayer = tf.placeholder("float", [None, self.num_input, self.num_input]) 
-        
+        self.inputLayer = tf.placeholder("float", [None, self.num_input]) 
+ 
         self.outputSingle = tf.placeholder(shape=[None], dtype=tf.float32, name="y")
         # Integer id of which action was selected
         self.actionSelected = tf.placeholder(shape=[None], dtype=tf.int32, name="actions")
@@ -59,17 +55,13 @@ class DQN:
         self.saver = tf.train.Saver()
         fnameNNMeta = self.directoryName + ".meta"
         if os.path.isfile(fnameNNMeta):
-            tf.reset_default_graph()
-            if "newDQN" not in sys.argv:
-                print("\n\nload network\n\n")
+            if loadNN:
                 self.saver.restore(self.sess, self.directoryName)
-            else:
-                print("\n\nnew network\n\n")
 
         self.numStates2Check = 5
         self.state2Monitor = np.zeros((self.numStates2Check, modelParams.stateSize), dtype=np.int32, order='C')
         idxSelfLoc = [1, 25, 35, 96, 70]
-        idxBeaconLoc = [0, 15, 0, 86, 10]
+        idxBeaconLoc = [100, 115, 100, 186, 110]
         for i in range(self.numStates2Check):
             self.state2Monitor[i,idxSelfLoc[i]] = 1
             self.state2Monitor[i,idxBeaconLoc[i]] = 1
@@ -96,10 +88,7 @@ class DQN:
 
     def choose_action(self, observation):
         if np.random.uniform() > self.params.ExplorationProb(self.numRuns.eval(session = self.sess)):
-            if self.params.isStateProcessed:
-                vals = self.outputLayer.eval({self.inputLayer: observation.reshape(1,self.num_input)}, session=self.sess)
-            else:
-                vals = self.outputLayer.eval({self.inputLayer: observation.reshape(1,self.num_input,self.num_input)}, session=self.sess)
+            vals = self.outputLayer.eval({self.inputLayer: observation.reshape(1,self.num_input)}, session=self.sess)
 
             maxArgs = np.argwhere(vals[0] == np.amax(vals[0]))
             a = np.random.choice(maxArgs[0])      
@@ -119,21 +108,16 @@ class DQN:
             prevVal.append(list(self.actionValuesVec(state))) 
               
         size = len(a)
-        if self.params.isStateProcessed:
-            rNextState = self.outputLayer.eval({self.inputLayer: s_.reshape(size,self.num_input)}, session=self.sess)
-        else:
-            rNextState = self.outputLayer.eval({self.inputLayer: s_.reshape(size,self.num_input,self.num_input)}, session=self.sess)
         
         # calculate (R = r + d * Q(s_))
+        rNextState = self.outputLayer.eval({self.inputLayer: s_.reshape(size,self.num_input)}, session=self.sess)
         R = r + np.invert(terminal) * self.params.discountFactor * np.max(rNextState, axis=1)
+
         idxArray = np.arange(size)
         for i in range(int(size  / self.params.batchSize)):
             chosen = np.random.choice(idxArray, self.params.batchSize)
+            feedDict = {self.inputLayer: s[chosen].reshape(self.params.batchSize, self.num_input), self.outputSingle: R[chosen], self.actionSelected: a[chosen]}
 
-            if self.params.isStateProcessed:
-                feedDict = {self.inputLayer: s[chosen].reshape(self.params.batchSize, self.num_input), self.outputSingle: R[chosen], self.actionSelected: a[chosen]}
-            else:      
-                feedDict = {self.inputLayer: s[chosen].reshape(self.params.batchSize, self.num_input, self.num_input), self.outputSingle: R[chosen], self.actionSelected: a[chosen]}
             self.sess.run([self.train_op, self.loss_op], feed_dict=feedDict)
 
         for i in range(self.numStates2Check):
@@ -144,12 +128,15 @@ class DQN:
         self.saver.save(self.sess, self.directoryName)
         print("save nn with", self.numRuns.eval(session = self.sess))
 
+    def NumRuns(self):
+        return int(self.numRuns.eval(session = self.sess))
+
     def end_run(self):
         assign = self.numRuns.assign_add(1)
         self.sess.run(assign)
 
 class DoubleDQN:
-    def __init__(self, modelParams, nnDirectory, learning_rate = 0.01):
+    def __init__(self, modelParams, nnDirectory, loadNN, learning_rate = 0.01):
         
         #net scopes 
         self.targetScope = nnDirectory + "_target"
@@ -194,11 +181,8 @@ class DoubleDQN:
         fnameNNMeta = self.directoryName + ".meta"
         if os.path.isfile(fnameNNMeta):
             tf.reset_default_graph()
-            if "newDQN" not in sys.argv:
-                print("\n\nload network\n\n")
+            if loadNN:
                 self.saver.restore(self.sess, self.directoryName)
-            else:
-                print("\n\nnew network\n\n")
 
         self.learnStepCounter = 0
 

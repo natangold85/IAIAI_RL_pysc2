@@ -85,12 +85,10 @@ class SC2_Params:
     Y_IDX = 0
     X_IDX = 1
 
-    MINIMAP_SIZE = [64, 64]
-    MAX_MINIMAP_DIST = MINIMAP_SIZE[X_IDX] * MINIMAP_SIZE[X_IDX] + MINIMAP_SIZE[Y_IDX] * MINIMAP_SIZE[Y_IDX] 
-    MINI_MAP_START = [8, 8]
-    MINI_MAP_END = [61, 50]
+    MINIMAP_SIZE = 64
+    SCREEN_SIZE = 84
+    MAX_MINIMAP_DIST = MINIMAP_SIZE * MINIMAP_SIZE + MINIMAP_SIZE * MINIMAP_SIZE
 
-    SCREEN_SIZE = [84, 84]
 
     TOPLEFT_BASE_LOCATION = [23,18]
     BOTTOMRIGHT_BASE_LOCATION = [45,39]
@@ -222,7 +220,7 @@ def FindMiddle(points_y, points_x):
     return [int(midd_y), int(midd_x)]
 
 def IsInScreen(y,x):
-    return y >= 0 and y < SC2_Params.SCREEN_SIZE[SC2_Params.Y_IDX] and x >= 0 and x < SC2_Params.SCREEN_SIZE[SC2_Params.X_IDX] 
+    return y >= 0 and y < SC2_Params.SCREEN_SIZE and x >= 0 and x < SC2_Params.SCREEN_SIZE
 
 def Flood(location, buildingMap):   
     closeLocs = [[location[SC2_Params.Y_IDX] + 1, location[SC2_Params.X_IDX]], [location[SC2_Params.Y_IDX] - 1, location[SC2_Params.X_IDX]], [location[SC2_Params.Y_IDX], location[SC2_Params.X_IDX] + 1], [location[SC2_Params.Y_IDX], location[SC2_Params.X_IDX] - 1] ]
@@ -243,8 +241,8 @@ def IsolateArea(location, buildingMap):
 
 def Scale2MiniMap(point, camNorthWestCorner, camSouthEastCorner):
     scaledPoint = [0,0]
-    scaledPoint[SC2_Params.Y_IDX] = point[SC2_Params.Y_IDX] * (camSouthEastCorner[SC2_Params.Y_IDX] - camNorthWestCorner[SC2_Params.Y_IDX]) / SC2_Params.SCREEN_SIZE[SC2_Params.Y_IDX] 
-    scaledPoint[SC2_Params.X_IDX] = point[SC2_Params.X_IDX] * (camSouthEastCorner[SC2_Params.X_IDX] - camNorthWestCorner[SC2_Params.X_IDX]) / SC2_Params.SCREEN_SIZE[SC2_Params.X_IDX] 
+    scaledPoint[SC2_Params.Y_IDX] = point[SC2_Params.Y_IDX] * (camSouthEastCorner[SC2_Params.Y_IDX] - camNorthWestCorner[SC2_Params.Y_IDX]) / SC2_Params.SCREEN_SIZE
+    scaledPoint[SC2_Params.X_IDX] = point[SC2_Params.X_IDX] * (camSouthEastCorner[SC2_Params.X_IDX] - camNorthWestCorner[SC2_Params.X_IDX]) / SC2_Params.SCREEN_SIZE
     
     scaledPoint[SC2_Params.Y_IDX] += camNorthWestCorner[SC2_Params.Y_IDX]
     scaledPoint[SC2_Params.X_IDX] += camNorthWestCorner[SC2_Params.X_IDX]
@@ -259,8 +257,8 @@ def Scale2Screen(point, camNorthWestCorner, camSouthEastCorner):
     scaledPoint[SC2_Params.Y_IDX] = point[SC2_Params.Y_IDX] - camNorthWestCorner[SC2_Params.Y_IDX]
     scaledPoint[SC2_Params.X_IDX] = point[SC2_Params.X_IDX] - camNorthWestCorner[SC2_Params.X_IDX]
 
-    scaledPoint[SC2_Params.Y_IDX] = int(scaledPoint[SC2_Params.Y_IDX] * SC2_Params.SCREEN_SIZE[SC2_Params.Y_IDX] / (camSouthEastCorner[SC2_Params.Y_IDX] - camNorthWestCorner[SC2_Params.Y_IDX]))
-    scaledPoint[SC2_Params.X_IDX] = int(scaledPoint[SC2_Params.X_IDX] * SC2_Params.SCREEN_SIZE[SC2_Params.X_IDX] /  (camSouthEastCorner[SC2_Params.X_IDX] - camNorthWestCorner[SC2_Params.X_IDX]))
+    scaledPoint[SC2_Params.Y_IDX] = int(scaledPoint[SC2_Params.Y_IDX] * SC2_Params.SCREEN_SIZE / (camSouthEastCorner[SC2_Params.Y_IDX] - camNorthWestCorner[SC2_Params.Y_IDX]))
+    scaledPoint[SC2_Params.X_IDX] = int(scaledPoint[SC2_Params.X_IDX] * SC2_Params.SCREEN_SIZE /  (camSouthEastCorner[SC2_Params.X_IDX] - camNorthWestCorner[SC2_Params.X_IDX]))
 
     return scaledPoint
 
@@ -278,8 +276,8 @@ def PowerSurroundPnt(point, radius2Include, powerMat):
 def BattleStarted(selfMat, enemyMat):
     attackRange = 1
 
-    for xEnemy in range (attackRange, SC2_Params.MINIMAP_SIZE[SC2_Params.X_IDX] - attackRange):
-        for yEnemy in range (attackRange, SC2_Params.MINIMAP_SIZE[SC2_Params.Y_IDX] - attackRange):
+    for xEnemy in range (attackRange, SC2_Params.MINIMAP_SIZE - attackRange):
+        for yEnemy in range (attackRange, SC2_Params.MINIMAP_SIZE - attackRange):
             if enemyMat[yEnemy,xEnemy]:
                 for xSelf in range(xEnemy - attackRange, xEnemy + attackRange):
                     for ySelf in range(yEnemy - attackRange, yEnemy + attackRange):
@@ -307,8 +305,8 @@ def PrintSpecificMat(mat, points = [], range2Include = 0, maxVal = -1):
         toAdd10 = ' '
         toDivide = 10
 
-    for y in range(range2Include, SC2_Params.SCREEN_SIZE[SC2_Params.Y_IDX] - range2Include):
-        for x in range(range2Include, SC2_Params.SCREEN_SIZE[SC2_Params.X_IDX] - range2Include):
+    for y in range(range2Include, SC2_Params.SCREEN_SIZE - range2Include):
+        for x in range(range2Include, SC2_Params.SCREEN_SIZE - range2Include):
             prnted = False
             for i in range(0, len(points)):
                 if x == points[i][SC2_Params.X_IDX] and y == points[i][SC2_Params.Y_IDX]:
@@ -367,8 +365,8 @@ def HaveSpace(unitType, heightsMap, yStart, xStart, neededSize):
     if height == 0:
         return False
 
-    yEnd = min(yStart + neededSize, SC2_Params.SCREEN_SIZE[SC2_Params.Y_IDX])
-    xEnd = min(xStart + neededSize, SC2_Params.SCREEN_SIZE[SC2_Params.X_IDX])
+    yEnd = min(yStart + neededSize, SC2_Params.SCREEN_SIZE)
+    xEnd = min(xStart + neededSize, SC2_Params.SCREEN_SIZE)
     for y in range (yStart, yEnd):
         for x in range (xStart, xEnd):
             if BlockingType(unitType[y][x]) or height != heightsMap[y][x]:
@@ -381,8 +379,8 @@ def HaveSpaceMiniMap(occupyMat, heightsMap, yStart, xStart, neededSize):
     if height == 0:
         return False
 
-    yEnd = min(yStart + neededSize, SC2_Params.MINIMAP_SIZE[SC2_Params.Y_IDX])
-    xEnd = min(xStart + neededSize, SC2_Params.MINIMAP_SIZE[SC2_Params.X_IDX])
+    yEnd = min(yStart + neededSize, SC2_Params.MINIMAP_SIZE)
+    xEnd = min(xStart + neededSize, SC2_Params.MINIMAP_SIZE)
     for y in range (yStart, yEnd):
         for x in range (xStart, xEnd):
             if occupyMat[y][x] or height != heightsMap[y][x]:
@@ -394,8 +392,8 @@ def PrintMiniMap(obs, cameraCornerNorthWest, cameraCornerSouthEast):
     selfPnt_y, selfPnt_x = (obs.observation['minimap'][SC2_Params.PLAYER_RELATIVE] == SC2_Params.PLAYER_SELF).nonzero()
     enemyPnt_y, enemyPnt_x = (obs.observation['minimap'][SC2_Params.PLAYER_RELATIVE] == SC2_Params.PLAYER_HOSTILE).nonzero()
 
-    for y in range(SC2_Params.MINI_MAP_START[SC2_Params.Y_IDX], SC2_Params.MINI_MAP_END[SC2_Params.Y_IDX]):
-        for x in range(SC2_Params.MINI_MAP_START[SC2_Params.X_IDX], SC2_Params.MINI_MAP_END[SC2_Params.X_IDX]):
+    for y in range(SC2_Params.MINIMAP_SIZE):
+        for x in range(SC2_Params.MINIMAP_SIZE):
             isSelf = False
             for i in range (0, len(selfPnt_y)):
                 if (y == selfPnt_y[i] and x == selfPnt_x[i]):
@@ -418,8 +416,8 @@ def PrintMiniMap(obs, cameraCornerNorthWest, cameraCornerSouthEast):
 
 def PrintScreen(unitType, addPoints = [], valToPrint = -1):
     nonPrintedVals = []
-    for y in range(0, SC2_Params.SCREEN_SIZE[SC2_Params.Y_IDX]):
-        for x in range(0, SC2_Params.SCREEN_SIZE[SC2_Params.X_IDX]):        
+    for y in range(0, SC2_Params.SCREEN_SIZE):
+        for x in range(0, SC2_Params.SCREEN_SIZE):        
             foundInPnts = False
             for i in range(0, len (addPoints)):
                 if addPoints[i][SC2_Params.X_IDX] == x and addPoints[i][SC2_Params.Y_IDX] == y:
@@ -462,8 +460,8 @@ def GetLocationForBuildingMiniMap(obs, commandCenterLoc, buildingType):
 
     location = [-1, -1]
     minDist = SC2_Params.MAX_MINIMAP_DIST
-    for y in range(0, SC2_Params.MINIMAP_SIZE[SC2_Params.Y_IDX] - neededSize):
-        for x in range(0, SC2_Params.MINIMAP_SIZE[SC2_Params.X_IDX] - neededSize):
+    for y in range(0, SC2_Params.MINIMAP_SIZE - neededSize):
+        for x in range(0, SC2_Params.MINIMAP_SIZE - neededSize):
             foundLoc = HaveSpaceMiniMap(occupyMat, height_map, y, x, neededSize)       
             if foundLoc:
                 currLocation = [y + int(neededSize / 2), x + int(neededSize / 2)]
@@ -551,8 +549,8 @@ def GetLocationForBuilding(obs, cameraCornerNorthWest, cameraCornerSouthEast, bu
 
     foundLoc = False
     location = [-1, -1]
-    for y in range(0, SC2_Params.SCREEN_SIZE[SC2_Params.Y_IDX] - neededSize):
-        for x in range(0, SC2_Params.SCREEN_SIZE[SC2_Params.X_IDX] - neededSize):                
+    for y in range(0, SC2_Params.SCREEN_SIZE - neededSize):
+        for x in range(0, SC2_Params.SCREEN_SIZE - neededSize):                
             toPrint = False
             if HaveSpace(unitType, cameraHeightMap, y, x, neededSize) and not BlockingResourceGather(unitType, y, x, neededSize):
                 foundLoc = True
@@ -614,13 +612,13 @@ def GetLocationForBuildingAddition(obs, buildingType, camNorthWest, camSouthEast
     # find right edge of building
     if len(defaultPnt) > 0:
         y, x = FindBuildingRightEdge(unitType, buildingType, defaultPnt)
-        if y < SC2_Params.SCREEN_SIZE[SC2_Params.Y_IDX] and x < SC2_Params.SCREEN_SIZE[SC2_Params.X_IDX] and HaveSpace(unitType, cameraHeightMap, y, x, additionSize):
+        if y < SC2_Params.SCREEN_SIZE and x < SC2_Params.SCREEN_SIZE and HaveSpace(unitType, cameraHeightMap, y, x, additionSize):
             return defaultPnt
 
     foundLoc = False
     location = [-1, -1]
-    for y in range(0, SC2_Params.SCREEN_SIZE[SC2_Params.Y_IDX] - neededSize):
-        for x in range(0, SC2_Params.SCREEN_SIZE[SC2_Params.X_IDX] - neededSize - additionSize):
+    for y in range(0, SC2_Params.SCREEN_SIZE - neededSize):
+        for x in range(0, SC2_Params.SCREEN_SIZE - neededSize - additionSize):
             if HaveSpace(unitType, cameraHeightMap, y, x, neededSize):
                 additionY = y + int((neededSize / 2) - (additionSize / 2))
                 additionX = x + neededSize
@@ -642,12 +640,12 @@ def FindBuildingRightEdge(unitType, buildingType, point):
     y = point[SC2_Params.Y_IDX]
 
     while not found:
-        if x + 1 >= SC2_Params.SCREEN_SIZE[SC2_Params.X_IDX]:
+        if x + 1 >= SC2_Params.SCREEN_SIZE:
             break 
 
         x += 1
         if not buildingMat[y][x]:
-            if y + 1 < SC2_Params.SCREEN_SIZE[SC2_Params.Y_IDX] and buildingMat[y + 1][x]:
+            if y + 1 < SC2_Params.SCREEN_SIZE and buildingMat[y + 1][x]:
                 y += 1
             elif y > 0 and buildingMat[y - 1][x]:
                 y -= 1
