@@ -58,13 +58,7 @@ class DQN:
             if loadNN:
                 self.saver.restore(self.sess, self.directoryName)
 
-        self.numStates2Check = 5
-        self.state2Monitor = np.zeros((self.numStates2Check, modelParams.stateSize), dtype=np.int32, order='C')
-        idxSelfLoc = [1, 25, 35, 96, 70]
-        idxBeaconLoc = [100, 115, 100, 186, 110]
-        for i in range(self.numStates2Check):
-            self.state2Monitor[i,idxSelfLoc[i]] = 1
-            self.state2Monitor[i,idxBeaconLoc[i]] = 1
+        self.numStates2Check = len(self.params.state2Monitor)
 
     # Define the neural network
     def build_dqn(self, NN_Func, scope):
@@ -72,22 +66,18 @@ class DQN:
             return NN_Func(self.inputLayer, self.numActions, scope)   
 
         with tf.variable_scope(scope):
-            # Three convolutional layers
-            conv1 = tf.contrib.layers.conv2d(self.inputLayer, 32, 8, 4, activation_fn=tf.nn.relu)
-            conv2 = tf.contrib.layers.conv2d(conv1, 64, 4, 2, activation_fn=tf.nn.relu)
-            conv3 = tf.contrib.layers.conv2d(conv2, 64, 3, 1, activation_fn=tf.nn.relu)
-
-            # Fully connected layers
-            flattened = tf.contrib.layers.flatten(conv3)
-            fc1 = tf.contrib.layers.fully_connected(flattened, 512)
-            output = tf.contrib.layers.fully_connected(fc1, self.numActions)
+            fc1 = tf.contrib.layers.fully_connected(self.inputLayer, 512)
+            output = tf.contrib.layers.fully_connected(fc1, self.numActions, activation_fn = tf.nn.sigmoid) * 2 - 1
         return output
 
     def RegularizationFactor(self):
         return 0
 
+    def ExploreProb(self):
+        return self.params.ExploreProb(self.numRuns.eval(session = self.sess))
+        
     def choose_action(self, observation):
-        if np.random.uniform() > self.params.ExplorationProb(self.numRuns.eval(session = self.sess)):
+        if np.random.uniform() > self.params.ExploreProb(self.numRuns.eval(session = self.sess)):
             vals = self.outputLayer.eval({self.inputLayer: observation.reshape(1,self.num_input)}, session=self.sess)
 
             maxArgs = np.argwhere(vals[0] == np.amax(vals[0]))
@@ -101,12 +91,7 @@ class DQN:
         allVals = self.outputLayer.eval({self.inputLayer: state.reshape(1,self.num_input)}, session=self.sess)
         return allVals[0]
         
-    def learn(self, s, a, r, s_, terminal):  
-        prevVal = []
-        for i in range(self.numStates2Check):
-            state = self.state2Monitor[i,:]
-            prevVal.append(list(self.actionValuesVec(state))) 
-              
+    def learn(self, s, a, r, s_, terminal):             
         size = len(a)
         
         # calculate (R = r + d * Q(s_))
@@ -121,8 +106,8 @@ class DQN:
             self.sess.run([self.train_op, self.loss_op], feed_dict=feedDict)
 
         for i in range(self.numStates2Check):
-            state = self.state2Monitor[i,:]
-            print(prevVal[i], "-->", list(self.actionValuesVec(state)))     
+            state = self.params.state2Monitor[i]
+            print(list(self.actionValuesVec(state)), end = "\n\n")     
 
     def save_network(self):
         self.saver.save(self.sess, self.directoryName)
@@ -186,13 +171,7 @@ class DoubleDQN:
 
         self.learnStepCounter = 0
 
-        self.numStates2Check = 5
-        self.state2Monitor = np.zeros((self.numStates2Check, modelParams.stateSize), dtype=np.int32, order='C')
-        idxSelfLoc = [1, 25, 35, 96, 70]
-        idxBeaconLoc = [0, 15, 0, 86, 10]
-        for i in range(self.numStates2Check):
-            self.state2Monitor[i,idxSelfLoc[i]] = 1
-            self.state2Monitor[i,idxBeaconLoc[i]] = 1
+        self.numStates2Check = len(self.params.state2Monitor)
         
     # Define the neural network
     def build_net(self, NN_Func):
@@ -216,7 +195,7 @@ class DoubleDQN:
         self.train_op = tf.train.RMSPropOptimizer(self.learning_rate).minimize(self.loss_op, name="train_func")
 
     def choose_action(self, observation):
-        if np.random.uniform() > self.params.ExplorationProb(self.numRuns.eval(session = self.sess)):
+        if np.random.uniform() > self.params.ExploreProb(self.numRuns.eval(session = self.sess)):
             # forward feed the observation and get q value for every actions
             actions_value = self.sess.run(self.targetNN, feed_dict={self.s_: observation.reshape(1,self.num_input)})
             action = np.argmax(actions_value)
@@ -236,20 +215,22 @@ class DoubleDQN:
     def learn(self, s, a, r, s_, terminal):
 
         if (self.learnStepCounter % self.params.copyEvalToTarget) == 0:
+            
             prevVal = []
             evalVal = []
             for i in range(self.numStates2Check):
-                state = self.state2Monitor[i,:]
+                state = self.params.state2Monitor[i]
                 prevVal.append(list(self.TargetOut(state))) 
-                evalVal.append(list(self.EvalOut(state))) 
             self.sess.run(self.target_replace_op)
             updatedVal = []
+
             for i in range(self.numStates2Check):
-                state = self.state2Monitor[i,:]
+                state = self.params.state2Monitor[i]
                 updatedVal.append(list(self.TargetOut(state))) 
             print('\n\ntarget_params_replaced\n')
+            
             for i in range(self.numStates2Check):
-                print(prevVal[i], "-->", updatedVal[i], 'eval:', evalVal[i])               
+                print(prevVal[i], "-->", updatedVal[i])               
         
         size = len(a)
         idxArray = np.arange(size)

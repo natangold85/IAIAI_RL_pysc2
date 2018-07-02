@@ -1,0 +1,4 @@
+local actions (5 actions)
+regions:
+self: center = [24,28], size = [4,6]
+enemy: center = [37,28], size = [14,15]

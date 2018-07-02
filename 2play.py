@@ -33,7 +33,7 @@ class Play(base_agent.BaseAgent):
         t = datetime.datetime.now()
         if self.prevTime != None:
             diff = t - self.prevTime
-            print("time(ms) = ", diff.seconds * 1000 + diff.microseconds / 1000)
+            #print("time(ms) = ", diff.seconds * 1000 + diff.microseconds / 1000)
         self.prevTime = t
 
         sc2Action = DO_NOTHING_SC2_ACTION

@@ -109,20 +109,42 @@ class TerranUnit:
     FLYING_BARRACKS = 46
     FLYING_FACTORY = 43
 
+    # building specific:
+    class BuildingDetails:
+        def __init__(self,name, screenPixels, screenPixels1Axis, char4Print, miniMapSize, buildingValues, sc2ActionBuild = None):
+            self.name = name
+            self.numScreenPixels = screenPixels
+            self.screenPixels1Axis = screenPixels1Axis
+            self.char4Print = char4Print   
+            self.miniMapSize = miniMapSize    
+            self.sc2ActionBuild = sc2ActionBuild
+            self.buildingValues = buildingValues
+    
     # army specific:
+
     class UnitDetails:
-        def __init__(self,name, screenPixels, foodCapacity):
+        def __init__(self,name, screenPixels, foodCapacity, char4Print):
             self.name = name
             self.numScreenPixels = screenPixels
             self.foodCapacity = foodCapacity
-
+            self.char4Print = char4Print
+            
+    
+    BUILDING_SPEC = {}
+    # buildings
+    BUILDING_SPEC[COMMANDCENTER] = BuildingDetails("CommandCenter", 293, 18, 'C', 5, 5)
+    BUILDING_SPEC[SUPPLY_DEPOT] = BuildingDetails("SupplyDepot", 81, 9, 'S', 4, 1)
+    BUILDING_SPEC[BARRACKS] = BuildingDetails("Barracks", 144, 12, 'B', 4, 3)
+    BUILDING_SPEC[FACTORY] = BuildingDetails("Factory", 144, 12, 'F', 4, 3)
+    
     UNIT_SPEC = {}
-    UNIT_SPEC[48] = UnitDetails("marine", 9, 1)
+    # army
+    UNIT_SPEC[48] = UnitDetails("marine", 9, 1, 'm')
     # UNIT_SPEC[56] = UnitDetails("raven", 12, 2)
-    UNIT_SPEC[49] = UnitDetails("reaper", 9, 1)
-    UNIT_SPEC[51] = UnitDetails("marauder", 12, 2)
-    UNIT_SPEC[53] = UnitDetails("hellion", 12, 2)
-    UNIT_SPEC[33] = UnitDetails("siege tank", 32, 3)
+    UNIT_SPEC[49] = UnitDetails("reaper", 9, 1, 'r')
+    UNIT_SPEC[51] = UnitDetails("marauder", 12, 2, 'a')
+    UNIT_SPEC[53] = UnitDetails("hellion", 12, 2, 'h')
+    UNIT_SPEC[33] = UnitDetails("siege tank", 32, 3, 't')
 
 
 
@@ -144,7 +166,6 @@ class TerranUnit:
     BUILDING_NAMES[REACTOR] = "Reactor"
     BUILDING_NAMES[TECHLAB] = "TechLab"
 
-    BUILDING_SIZES[COMMANDCENTER] = 18
     BUILDING_SIZES[SUPPLY_DEPOT] = 9
     BUILDING_SIZES[BARRACKS] = 12
     BUILDING_SIZES[FACTORY] = 12
@@ -653,3 +674,79 @@ def FindBuildingRightEdge(unitType, buildingType, point):
                 found = True
 
     return y,x
+
+def CenterPoints(y, x, numPixels1Unit = 1):
+    groups = Grouping(y, x)
+    def Avg(group):
+        sumG = [0,0]
+        for p in group:
+            sumG[0] += p[0]
+            sumG[1] += p[1]
+
+        return [int(sumG[0] / len(group)), int(sumG[1] / len(group))]
+    
+    points= []
+    groupSizes = []
+    for g in groups:
+        pnt = Avg(g)
+        points.append(pnt)
+        groupSizes.append(math.ceil(len(g) / numPixels1Unit))
+
+    
+    return points, groupSizes
+
+def Grouping(y, x):
+
+    groups = []  
+    def inGroup(groups, pnt):
+        for g in groups:
+            if pnt in g:
+                return True
+        return False
+
+    def isNearGroup(g, pnt):
+        for p in g:
+            diff = abs(p[0] - pnt[0]) + abs(p[1] - pnt[1])
+            if diff == 1:
+                return True
+        return False
+
+    def nearGroup(groups, pnt):
+        for i in range(len(groups)):
+            if isNearGroup(groups[i],pnt):
+                return i
+        return -1
+        
+    for i in range(0, len(y)):
+        pnt = [y[i], x[i]]
+        if not inGroup(groups, pnt):
+            g = nearGroup(groups, pnt)
+            if g >= 0 :
+                groups[g].append(pnt)
+            else:
+                groups.append([pnt])
+
+    def toJoin(g1, g2):
+        for p in g1:
+            if isNearGroup(g2,p):
+                return True
+        return False
+
+    joinedGroup = True
+    while joinedGroup:
+        toRemove = []
+        for i in range(len(groups)):
+            for j in range(i + 1,len(groups)):
+                if toJoin(groups[i], groups[j]):
+                    groups[i] += groups[j]
+                    toRemove.append(j)
+
+        
+        joinedGroup = len(toRemove) > 0
+        newGroups = []
+        for i in range(len(groups)):
+            if i not in toRemove:
+                newGroups.append(groups[i].copy())
+        groups = newGroups
+
+    return groups

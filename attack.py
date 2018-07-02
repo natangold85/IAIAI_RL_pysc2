@@ -55,8 +55,8 @@ class AttackCmd:
         self.m_attackEnded = False
 
 def ScaleLoc2Grid(x, y):
-    x /= (SC2_Params.MINIMAP_SIZE[SC2_Params.X_IDX] / STATE_GRID_SIZE)
-    y /= (SC2_Params.MINIMAP_SIZE[SC2_Params.Y_IDX] / STATE_GRID_SIZE)
+    x /= (SC2_Params.MINIMAP_SIZE / STATE_GRID_SIZE)
+    y /= (SC2_Params.MINIMAP_SIZE / STATE_GRID_SIZE)
     return int(x) + int(y) * STATE_GRID_SIZE
 
 class AttackSubAgent:
@@ -112,7 +112,7 @@ class AttackSubAgent:
                 isInBase = True   
                 if self.previous_state[STATE_ENEMY_ARMY_LOCATION_IDX] != STATE_NON_VALID_NUM:
                     isInBase = False
-                    target = GetCoord(self.previous_state[STATE_ENEMY_ARMY_LOCATION_IDX], SC2_Params.MINIMAP_SIZE[SC2_Params.X_IDX])
+                    target = GetCoord(self.previous_state[STATE_ENEMY_ARMY_LOCATION_IDX], SC2_Params.MINIMAP_SIZE)
 
                 elif self.enemyBaseDestroyed:
                     # find target
@@ -166,7 +166,7 @@ class AttackSubAgent:
             y = enemy_y[i]
             x = enemy_x[i]
 
-            if (y > SC2_Params.MINIMAP_SIZE[SC2_Params.Y_IDX] / 2 and x > SC2_Params.MINIMAP_SIZE[SC2_Params.X_IDX] / 2):
+            if (y > SC2_Params.MINIMAP_SIZE / 2 and x > SC2_Params.MINIMAP_SIZE / 2):
                 enemyBasePower += 1
             else:
                 enemyArmyPower += 1 
@@ -183,7 +183,7 @@ class AttackSubAgent:
             self.current_state[STATE_ENEMY_ARMY_LOCATION_IDX] = STATE_NON_VALID_NUM
         else:
             self.current_state[STATE_ENEMY_ARMY_POWER_IDX] = enemyArmyPower
-            self.current_state[STATE_ENEMY_ARMY_LOCATION_IDX] = enemy_x[closestEnemyLocationIdx] + enemy_y[closestEnemyLocationIdx] * SC2_Params.MINIMAP_SIZE[SC2_Params.X_IDX]
+            self.current_state[STATE_ENEMY_ARMY_LOCATION_IDX] = enemy_x[closestEnemyLocationIdx] + enemy_y[closestEnemyLocationIdx] * SC2_Params.MINIMAP_SIZE
         
         if enemyBasePower == 0:
             self.current_state[STATE_ENEMY_BASE_POWER_IDX] = STATE_NON_VALID_NUM 
@@ -199,7 +199,7 @@ class AttackSubAgent:
 
         loc = self.current_state[STATE_ENEMY_ARMY_LOCATION_IDX]
         if loc != STATE_NON_VALID_NUM:
-            y, x = GetCoord(loc, SC2_Params.MINIMAP_SIZE[SC2_Params.X_IDX])
+            y, x = GetCoord(loc, SC2_Params.MINIMAP_SIZE)
 
             self.current_scaled_state[STATE_ENEMY_ARMY_LOCATION_IDX] = ScaleLoc2Grid(x, y)
             self.current_scaled_state[STATE_ENEMY_ARMY_POWER_IDX] = math.ceil(self.current_state[STATE_ENEMY_ARMY_POWER_IDX] / STATE_POWER_BUCKETING) * STATE_POWER_BUCKETING  

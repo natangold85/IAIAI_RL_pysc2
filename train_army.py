@@ -191,7 +191,7 @@ class TrainArmySubAgent:
         
         for i in range(0, len(pnt_y)):
             nearX = pnt_x[i] + 1
-            if nearX < SC2_Params.SCREEN_SIZE[SC2_Params.X_IDX] and additionMat[pnt_y[i]][nearX]:
+            if nearX < SC2_Params.SCREEN_SIZE and additionMat[pnt_y[i]][nearX]:
                 return True
 
         return False

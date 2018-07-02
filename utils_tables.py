@@ -15,47 +15,47 @@ from hallucination import HallucinationMngrPSFunc
 
 from multiprocessing import Process, Lock, Value, Array, Manager
 
-# dqn params
-class DQN_PARAMS:
-    def __init__(self, stateSize, numActions, historyProportion4Learn = 1, nn_Func = None, outputGraph = False, isDoubleDQN = False, discountFactor = 0.95, batchSize = 32, maxReplaySize = 50000, minReplaySize = 1000, copyEvalToTarget = 5, explorationProb = 0.1, descendingExploration = True, exploreChangeRate = 0.0005):
+# params base
+class ParamsBase:
+    def __init__(self, stateSize, numActions, historyProportion4Learn = 1, propogateReward = False, discountFactor = 0.95, maxReplaySize = 50000, minReplaySize = 1000):
         self.stateSize = stateSize
         self.numActions = numActions
         self.historyProportion4Learn = historyProportion4Learn
-        self.nn_Func = nn_Func
+        self.propogateReward = propogateReward
         self.discountFactor = discountFactor
-        self.batchSize = batchSize
         self.maxReplaySize = maxReplaySize
         self.minReplaySize = minReplaySize
+
+# dqn params
+class DQN_PARAMS(ParamsBase):
+    def __init__(self, stateSize, numActions, historyProportion4Learn = 1, nn_Func = None, propogateReward = False, outputGraph = False, discountFactor = 0.95, batchSize = 32, maxReplaySize = 50000, minReplaySize = 1000, copyEvalToTarget = 5, explorationProb = 0.1, descendingExploration = True, exploreChangeRate = 0.0005, state2Monitor = []):
+        super(DQN_PARAMS, self).__init__(stateSize, numActions, historyProportion4Learn, propogateReward, discountFactor, maxReplaySize, minReplaySize)
+        
+        self.nn_Func = nn_Func
+        self.batchSize = batchSize
+
         self.outputGraph = outputGraph
-        self.isDoubleDQN = isDoubleDQN
+        self.isDoubleDQN = False
+        
         self.copyEvalToTarget = copyEvalToTarget
 
         self.explorationProb = explorationProb
         self.descendingExploration = descendingExploration
         self.exploreChangeRate = exploreChangeRate
+        self.state2Monitor = state2Monitor
 
-    def ExplorationProb(self, numRuns):
+    def ExploreProb(self, numRuns, resultRatio = 1):
         if self.descendingExploration:
-            return self.explorationProb + (1 - self.explorationProb) * np.exp(-self.exploreChangeRate * numRuns)
+            return self.explorationProb + (1 - self.explorationProb) * np.exp(-self.exploreChangeRate * resultRatio * numRuns)
         else:
             return self.explorationProb
 
 #qtable params
-class QTableParams:
-    def __init__(self, stateSize, numActions, historyProportion4Learn = 1, learning_rate=0.01, discountFactor=0.95, explorationProb=0.1, maxReplaySize = 50000, minReplaySize = 200):
-        self.stateSize = stateSize
-        self.numActions = numActions
+class QTableParams(ParamsBase):
+    def __init__(self, stateSize, numActions, historyProportion4Learn = 1, propogateReward = False, learning_rate=0.01, discountFactor=0.95, explorationProb=0.1, maxReplaySize = 50000, minReplaySize = 1000):
+        super(QTableParams, self).__init__(stateSize, numActions, historyProportion4Learn, propogateReward, discountFactor, maxReplaySize, minReplaySize)    
         self.learningRate = learning_rate
-        self.discountFactor = discountFactor
-        self.explorationProb = explorationProb
-
-        self.historyProportion4Learn = historyProportion4Learn
-
-        self.maxReplaySize = maxReplaySize
-        self.minReplaySize = minReplaySize
-
-        self.isStateProcessed = True
-        
+        self.explorationProb = explorationProb        
     
     def ExploreProb(self, numRuns):
         return self.explorationProb
@@ -66,15 +66,16 @@ class QTableParams:
     def PropogtionUsingTTable(self):
         return False
 
-class QTableParamsWithChangeInExploration:
-    def __init__(self, exploreRate = 0.0001, exploreStart = 1, exploreStop = 0.01, learning_rate=0.01, discountFactor=0.95):
-        self.learningRate = learning_rate
-        self.discountFactor = discountFactor
-        self.exploreStart = exploreStart
+class QTableParamsExplorationDecay(ParamsBase):
+    def __init__(self, stateSize, numActions, historyProportion4Learn = 1, propogateReward = False, learning_rate=0.01, discountFactor=0.95, exploreRate = 0.0005, exploreStop = 0.1, maxReplaySize = 50000, minReplaySize = 1000):
+        super(QTableParamsExplorationDecay, self).__init__(stateSize, numActions, historyProportion4Learn, propogateReward, discountFactor, maxReplaySize, minReplaySize) 
+
+        self.learningRate = learning_rate        
+        self.exploreStart = 1
         self.exploreStop = exploreStop
         self.exploreRate = exploreRate
 
-    def exploreProb(self, numRuns):
+    def ExploreProb(self, numRuns):
         return self.exploreStop + (self.exploreStart - self.exploreStop) * np.exp(-self.exploreRate * numRuns)
 
     def LearnAtEnd(self):
@@ -110,27 +111,24 @@ class UserPlay:
         if self.playWithInput:
             a = input("insert action: ")
         else:
-            a = 0
+            a = 25
         return int(a)
 
     def learn(self, s, a, r, s_, terminal = False):
-        if r != 0:
-            print(r)
+        # if r != 0:
+        #     print(r)
         return None
     def actionValuesVec(self,state):
         return []
-    def end_run(self, r):
+    def end_run(self, r, score = 0 ,steps = 0):
         return False
 
-TYPES = ["NN" , "Q"]
+TYPES = ["NN" , "QReplay"]
 class LearnWithReplayMngr:
     def __init__(self, modelType, modelParams, terminalStates, nnDirectory = '', qTableName = '', resultFileName = '', historyFileName = '', numTrials2Learn = 100):
         self.numTrials2Learn = numTrials2Learn
         self.trialNum = 0
-        self.discountFactor = modelParams.discountFactor
-        self.historyProportion4Learn = modelParams.historyProportion4Learn
-        self.maxReplaySize = modelParams.maxReplaySize
-        self.minReplaySize = modelParams.minReplaySize
+        self.params = modelParams
 
         self.terminalStates = terminalStates
 
@@ -181,6 +179,11 @@ class LearnWithReplayMngr:
             self.resultFile = None
     
 
+    def ExploreProb(self):
+        if self.chooseActionFromNN:
+            return self.dqn.ExploreProb()
+        else:
+            return self.qTable.ExploreProb()
 
     def choose_action(self, observation):
         if self.chooseActionFromNN:
@@ -208,7 +211,7 @@ class LearnWithReplayMngr:
         self.transitions["terminal"].append(terminal)
 
     def ExperienceReplay(self):            
-        while len(self.transitions["r"]) > self.maxReplaySize:
+        while len(self.transitions["r"]) > self.params.maxReplaySize:
             self.transitions["s"].pop(0)
             self.transitions["a"].pop(0)
             self.transitions["r"].pop(0)
@@ -218,7 +221,7 @@ class LearnWithReplayMngr:
 
         idx4Shuffle = np.arange(len(self.transitions["r"]))
         np.random.shuffle(idx4Shuffle)
-        size = int(len(idx4Shuffle) * self.historyProportion4Learn)
+        size = int(len(idx4Shuffle) * self.params.historyProportion4Learn)
         chosenIdx = idx4Shuffle[0:size]
         
         s = np.array(self.transitions["s"])[chosenIdx]
@@ -237,7 +240,7 @@ class LearnWithReplayMngr:
             if np.array_equal(s, v):
                 return True
         return False
-    def end_run(self, r, score):
+    def end_run(self, r, score, steps):
         print("for trial#", self.NumRuns(), ": reward =", r, "score =", score)
 
         learnAndSave = False
@@ -247,7 +250,7 @@ class LearnWithReplayMngr:
             learnAndSave = True
 
         if self.resultFile != None:
-            self.resultFile.end_run(r, score, learnAndSave)
+            self.resultFile.end_run(r, score, steps, learnAndSave)
         if self.dqn != None:
             self.dqn.end_run()
         if self.qTable != None:
@@ -255,22 +258,39 @@ class LearnWithReplayMngr:
         if self.tTable != None:
             self.tTable.end_run(learnAndSave)
 
+        if self.params.propogateReward:
+            self.PropogateReward()
+
         if learnAndSave:
             print("start training with hist size = ", len(self.transitions["r"]), end = ' ')
             s,a,rVec,s_, terminal = self.ExperienceReplay()
             print("after cutting experience training on size =", len(rVec))
+
             start = datetime.datetime.now() 
             if self.dqn != None:
-                if len(a) > self.minReplaySize:
+                if len(a) > self.params.minReplaySize:
                     self.dqn.learn(s,a,rVec,s_, terminal)
                     self.dqn.save_network()
             if self.qTable != None:
-                self.qTable.learnReplay(s,a,rVec,s_)
+                self.qTable.learnReplay(s,a,rVec,s_, terminal)
                 self.qTable.SaveTable()
             diff = datetime.datetime.now() - start
             print("duration(ms) for learning and saving:", diff.seconds * 1000 + diff.microseconds / 1000)
 
         return True 
+
+    def PropogateReward(self):
+        lastIdx = len(self.transitions["r"]) - 1
+        prevReward = self.transitions["r"][lastIdx]
+
+        for i in range(lastIdx - 1, -1, -1):
+            if self.transitions["terminal"][i]:
+                break
+            
+            prevReward *= self.params.discountFactor
+            self.transitions["r"][i] += prevReward
+            prevReward = self.transitions["r"][i]
+
     def PrintValues(self, s):
         valsDqn = self.dqn.actionValuesVec(s)
         valsQ = self.qTable.actionValuesVec(str(s))
@@ -288,8 +308,8 @@ class TestTableMngr:
     def learn(self, s, a, r, s_, sToInitValues = None, s_ToInitValues = None):
         return 
 
-    def end_run(self, r):
-        self.resultFile.end_run(r, True)
+    def end_run(self, r, score, steps):
+        self.resultFile.end_run(r, score, steps, True)
 
         return True 
 
@@ -353,7 +373,7 @@ class TableMngr:
             self.sharedMemoryPS["updateStateFlag"] = True
             self.sharedMemoryPS["nextState"] = s_
 
-    def end_run(self, r):
+    def end_run(self, r, score, steps):
         saveTable = False
         self.numTrials += 1
         if self.numTrials == self.numTrials2Save:
@@ -369,7 +389,7 @@ class TableMngr:
             self.rTable.end_run(saveTable)
 
         if self.createResultFile:
-            self.resultFile.end_run(r, saveTable)
+            self.resultFile.end_run(r, score, steps, saveTable)
 
         if self.onlineHallucination and saveTable:
             self.sharedMemoryPS["updateTableFlag"] = True
@@ -439,8 +459,22 @@ class QLearningTable:
 
     def SaveTable(self):
         self.table.to_pickle(self.qTableName + '.gz', 'gzip') 
+    
+    def choose_absolute_action(self, observation):
+        self.check_state_exist(observation)
+        state_action = self.table.ix[observation, :]
+        
+        state_actionReindex = state_action.reindex(np.random.permutation(state_action.index))
+        action = state_actionReindex.idxmax()
+
+        return action, state_action[action]
+
+    def ExploreProb(self):
+        return self.params.ExploreProb(self.numTotRuns)
+
     def choose_action(self, observation):
         self.check_state_exist(observation)
+
         exploreProb = self.params.ExploreProb(self.numTotRuns)
 
         if np.random.uniform() > exploreProb:
@@ -456,6 +490,7 @@ class QLearningTable:
             action = np.random.choice(self.actions)
             
         return action
+
     def actionValuesVec(self, s):
         state_action = self.table.ix[s, :]
         vals = []
@@ -465,19 +500,18 @@ class QLearningTable:
     def NumRuns(self):
         return self.numTotRuns
 
-    def learnReplay(self, statesVec, actionsVec, rewardsVec, nextStateVec):
+    def learnReplay(self, statesVec, actionsVec, rewardsVec, nextStateVec, terminal):
         for i in range(len(rewardsVec)):
             s = str(statesVec[i])
             s_ = str(nextStateVec[i])
             self.check_state_exist(s)
             self.check_state_exist(s_)
-            self.learnIMP(s, actionsVec[i], rewardsVec[i], s_)
+            self.learnIMP(s, actionsVec[i], rewardsVec[i], s_, terminal[i])
 
-
-    def learnIMP(self, s, a, r, s_ = "terminal"):
+    def learnIMP(self, s, a, r, s_, terminal):
         q_predict = self.table.ix[s, a]
         
-        if s_ not in self.terminalStates:
+        if not terminal:
             q_target = r + self.params.discountFactor * self.table.ix[s_, :].max()
         else:
             q_target = r  # next state is terminal
@@ -492,50 +526,50 @@ class QLearningTable:
         for idx in range(lastIdx, -1, -1):
             r = self.history[idx][2] + rProp
             s = self.history[idx][0]
-
-            self.learnIMP(s, self.history[idx][1], r, s_)
+            terminal = s_ in self.terminalStates
+            self.learnIMP(s, self.history[idx][1], r, s_, terminal)
 
             s_ = s
             rProp *= self.params.discountFactor
     
         self.history = []
 
-    def RewardPropUsingTTable(self, s, a, r):
-        def StateInList(state, sarList):
-            for sar2cmp in sarList:
-                if sar2cmp.s == state:
-                    return True
-            return False
+    # def RewardPropUsingTTable(self, s, a, r):
+    #     def StateInList(state, sarList):
+    #         for sar2cmp in sarList:
+    #             if sar2cmp.s == state:
+    #                 return True
+    #         return False
 
-        startTime = datetime.datetime.now()
-        depth = 0
-        stateChecked = 0
+    #     startTime = datetime.datetime.now()
+    #     depth = 0
+    #     stateChecked = 0
 
-        openList = [SAR(s,a,r)]
-        closedList = []
-        currTime = datetime.datetime.now()
-        while (currTime - startTime).total_seconds() <= self.timeoutPropogation and len(openList) > 0:
-            depth += 1
-            for sar in openList:
-                closedList.append(sar)
-                self.learnIMP(sar.s, sar.a, sar.r)
-                if sar.s in self.ttable.table[self.reverseTable]:
-                    currTable = self.ttable.table[self.reverseTable][sar.s][0]
-                    prevStates = list(currTable.index)
-                    for prevS in prevStates:
-                        stateChecked += 1
-                        if not StateInList(prevS, closedList):
-                            state_action = self.table.ix[prevS, :]
-                            state_action = state_action.reindex(np.random.permutation(state_action.index))    
-                            actionChosen = state_action.idxmax()
-                            if currTable.ix[prevS, actionChosen] > 0:
-                                openList.append(SAR(prevS, actionChosen, r * self.params.discountFactor))
+    #     openList = [SAR(s,a,r)]
+    #     closedList = []
+    #     currTime = datetime.datetime.now()
+    #     while (currTime - startTime).total_seconds() <= self.timeoutPropogation and len(openList) > 0:
+    #         depth += 1
+    #         for sar in openList:
+    #             closedList.append(sar)
+    #             self.learnIMP(sar.s, sar.a, sar.r)
+    #             if sar.s in self.ttable.table[self.reverseTable]:
+    #                 currTable = self.ttable.table[self.reverseTable][sar.s][0]
+    #                 prevStates = list(currTable.index)
+    #                 for prevS in prevStates:
+    #                     stateChecked += 1
+    #                     if not StateInList(prevS, closedList):
+    #                         state_action = self.table.ix[prevS, :]
+    #                         state_action = state_action.reindex(np.random.permutation(state_action.index))    
+    #                         actionChosen = state_action.idxmax()
+    #                         if currTable.ix[prevS, actionChosen] > 0:
+    #                             openList.append(SAR(prevS, actionChosen, r * self.params.discountFactor))
                 
-                openList.remove(sar)
+    #             openList.remove(sar)
             
-            currTime = datetime.datetime.now()
+    #         currTime = datetime.datetime.now()
 
-        return depth, len(closedList), stateChecked
+    #     return depth, len(closedList), stateChecked
 
 
     def learn(self, s, a, r, s_, sToInitValues, s_ToInitValues):
@@ -544,7 +578,8 @@ class QLearningTable:
             self.check_state_exist(s_, s_ToInitValues) 
 
         if not self.params.LearnAtEnd():
-            self.learnIMP(s, a, r, s_)
+            terminal = s_ in self.terminalStates
+            self.learnIMP(s, a, r, s_, terminal)
         else:
             if not self.params.PropogtionUsingTTable():
                 self.history.append([s, a, r])
@@ -552,7 +587,7 @@ class QLearningTable:
                     self.RewardProp(s_)
             else:
                 if s_ not in self.terminalStates:
-                    self.learnIMP(s, a, r, s_)
+                    self.learnIMP(s, a, r, s_, False)
                 else:
                     start = datetime.datetime.now()
                     depth,size, checked = self.RewardPropUsingTTable(s, a, r)
@@ -587,6 +622,9 @@ class QLearningTable:
             
             if stateToInitValues in self.table.index:
                 self.table.ix[state,:] = self.table.ix[stateToInitValues, :]
+            return True
+
+        return False
 
 class TransitionTable:
     def __init__(self, numActions, tableName):
@@ -724,6 +762,72 @@ class ResultFile:
         self.tableName = tableName
         self.numToWrite = numToWrite
 
+        self.rewardCol = list(range(4))
+        self.result_table = pd.DataFrame(columns=self.rewardCol, dtype=np.float)
+        if os.path.isfile(tableName + '.gz') and loadFile:
+            self.result_table = pd.read_pickle(tableName + '.gz', compression='gzip')
+        
+        self.countCompleteKey = 'countComplete'
+        self.check_state_exist(self.countCompleteKey)
+
+        self.countIdx = 0
+        self.rewardIdx = 1
+        self.scoreIdx = 2
+        self.stepsIdx = 3
+
+        self.countComplete = int(self.result_table.ix[self.countCompleteKey, 0])
+
+        self.sumReward = 0
+        self.sumScore = 0
+        self.sumSteps = 0
+        self.numRuns = 0
+
+    def check_state_exist(self, state):
+        if state not in self.result_table.index:
+            # append new state to q table
+            self.result_table = self.result_table.append(pd.Series([0] * len(self.rewardCol), index=self.result_table.columns, name=state))
+
+    def insertEndRun2Table(self):
+            avgReward = self.sumReward / self.numRuns
+            avgScore = self.sumScore / self.numRuns
+            avgSteps = self.sumSteps / self.numRuns
+            
+            countKey = str(self.countComplete)
+
+            self.check_state_exist(countKey)
+
+            self.result_table.ix[countKey, self.countIdx] = self.numRuns
+            self.result_table.ix[countKey, self.rewardIdx] = avgReward
+            self.result_table.ix[countKey, self.scoreIdx] = avgScore
+            self.result_table.ix[countKey, self.stepsIdx] = avgSteps
+
+            self.countComplete += 1
+            self.result_table.ix[self.countCompleteKey, 0] = self.countComplete
+
+            self.sumReward = 0
+            self.sumScore = 0
+            self.numRuns = 0
+            self.sumSteps = 0
+            print("avg results for", self.numToWrite, "trials: reward =", avgReward, "score =",  avgScore)
+
+    def end_run(self, r, score, steps, saveTable):
+        self.sumSteps += steps
+        self.sumReward += r
+        self.sumScore += score
+        self.numRuns += 1
+
+        if self.numRuns == self.numToWrite:
+            self.insertEndRun2Table()
+            
+        if saveTable:
+            self.result_table.to_pickle(self.tableName + '.gz', 'gzip') 
+
+
+class ResultFile_Old:
+    def __init__(self, tableName, numToWrite = 100, loadFile = True):
+        self.tableName = tableName
+        self.numToWrite = numToWrite
+
         # keys
         self.inMiddleValKey = 'middleCalculationVal'
         self.inMiddleCountKey = 'middleCalculationCount'
@@ -777,7 +881,7 @@ class ResultFile:
             self.numRuns = 0
             print("avg results for", self.numToWrite, "trials: reward =", avgReward, "score =",  avgScore)
 
-    def end_run(self, r, score, saveTable):
+    def end_run(self, r, score, steps, saveTable):
         self.sumReward += r
         self.sumScore += score
         self.numRuns += 1

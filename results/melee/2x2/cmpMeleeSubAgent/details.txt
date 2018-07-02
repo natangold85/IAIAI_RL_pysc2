@@ -1,0 +1,4 @@
+input for sub-agent - meleeAgent_qGS5_qtable (all using but directAttack)
+
+self: center = [24,28], size = [4,6]
+enemy: center = [37,28], size = [14,15]

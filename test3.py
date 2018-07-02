@@ -181,7 +181,15 @@ Run(3000)
 
 
 
-
+def callGrouping(size):
+    x = []
+    y = []
+    for i in range(size):
+        xi = random.randint(0,84)
+        yi = random.randint(0,84)
+        x.append(xi)
+        y.append(yi)
+    return Grouping(y,x)
 
 
 

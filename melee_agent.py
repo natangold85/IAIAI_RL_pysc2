@@ -21,25 +21,24 @@ from utils_tables import TableMngr
 from utils_tables import TestTableMngr
 from utils_tables import LearnWithReplayMngr
 from utils_tables import UserPlay
+from utils_tables import QLearningTable
 
 from utils_tables import DQN_PARAMS
 from utils_tables import QTableParams
-
+from utils_tables import QTableParamsExplorationDecay
 
 from utils import SwapPnt
 from utils import PrintScreen
 from utils import PrintSpecificMat
 from utils import FindMiddle
 from utils import DistForCmp
+from utils import CenterPoints
 
-NUM_ENEMIES = 2
-
-STATE_GRID_SIZE = 10
-SELF_MAT_START = 0
-ENEMY_MAT_START = STATE_GRID_SIZE * STATE_GRID_SIZE
+DEFAULT_STATE_GRID_SIZE = 10
 TIME_LINE_BUCKETING = 25
-STATE_TIME_LINE_IDX = 2 * STATE_GRID_SIZE * STATE_GRID_SIZE
-STATE_SIZE = 2 * STATE_GRID_SIZE * STATE_GRID_SIZE + 1
+
+def NumStateVal(gridSize):
+    return 2 * gridSize * gridSize + 1
 
 ACTION_DO_NOTHING = 0
 ACTION_NORTH = 1
@@ -62,26 +61,16 @@ for key,value in TerranUnit.UNIT_SPEC.items():
     if value.name == "marine":
         NUM_UNIT_SCREEN_PIXELS = value.numScreenPixels
 
-
 # possible types of play
-QTABLE_SIMPLE = "QTable"
-DQN_NN_SIGMOID = "dqn_Sig"
-DQN_NN_SIGMOID_MIDDLE_REWARDS = "dqn_SigRewards"
-
-QTABLE_5ACTIONS = "QTable_5Actions"
-DQN_NN_SIGMOID_5ACTIONS = "dqn_Sig_5Actions"
-DQN_NN_SIGMOID_MIDDLE_REWARDS_5ACTIONS = "dqn_SigRewards_5Actions"
-
-REWARD_PROPAGATION = 'Q_rewardPropogation'
-
-TEST = "test"
+DQN_NN_SIGMOID_GS10 = "dqnSigGS10"
+DQN_NN_SIGMOID_GS5 = "dqnSigGS5"
+QTABLE_GS10 = 'qGS10'
+QTABLE_GS5 = 'qGS5'
+QTABLE_GS5_TEST = 'qGS5Test'
 
 USER_PLAY = 'play'
 
-ALL_TYPES = set([TEST, USER_PLAY,
-            QTABLE_SIMPLE, DQN_NN_SIGMOID, 
-            DQN_NN_SIGMOID_5ACTIONS, QTABLE_5ACTIONS, DQN_NN_SIGMOID_MIDDLE_REWARDS_5ACTIONS,
-            DQN_NN_SIGMOID_MIDDLE_REWARDS])
+ALL_TYPES = set([USER_PLAY, QTABLE_GS10, QTABLE_GS5, DQN_NN_SIGMOID_GS10, DQN_NN_SIGMOID_GS5, QTABLE_GS5_TEST])
 
 # table type
 TYPE = "type"
@@ -92,7 +81,8 @@ HISTORY = "hist"
 R_TABLE = "r"
 RESULTS = "results"
 PARAMS = 'params'
-REWARDS = "rewards"
+GS_key = 'gridsize'
+
 # table names
 RUN_TYPES = {}
 
@@ -106,7 +96,7 @@ def build_nn_sigmoid(x, numActions, scope = 'dqn', nameChar = 'l'):
         # Fully connected layers
         flattened = tf.contrib.layers.flatten(conv3)
         fc1 = tf.contrib.layers.fully_connected(flattened, 512, name=nameChar+'3')
-        output = tf.nn.sigmoid(tf.contrib.layers.fully_connected(fc1, numActions), name=nameChar+'o') * 2 - 1
+        output = tf.contrib.layers.fully_connected(fc1, numActions, activation_fn = tf.nn.sigmoid, name=nameChar+'o') * 2 - 1
     return output
 
 def build_nn_sig_processedState(x, numActions, scope = 'dqn', nameChar = 'l'):
@@ -114,8 +104,6 @@ def build_nn_sig_processedState(x, numActions, scope = 'dqn', nameChar = 'l'):
         # Fully connected layers
         fc1 = tf.contrib.layers.fully_connected(x, 512)
         output = tf.contrib.layers.fully_connected(fc1, numActions, activation_fn = tf.nn.sigmoid) * 2 - 1
-
-        #output = tf.nn.sigmoid(tf.contrib.layers.fully_connected(fc1, numActions)) * 2 - 1
     return output
 
 def build_nn_processedState(x, numActions, scope = 'dqn', nameChar = 'l'):
@@ -125,79 +113,72 @@ def build_nn_processedState(x, numActions, scope = 'dqn', nameChar = 'l'):
         output = tf.contrib.layers.fully_connected(fc1, numActions)
     return output
 
-def build_nn_4double(x, numActions, w_init, b_init, scope = 'dqn', nameChar = 'l'):
-    with tf.variable_scope(scope):
-        # Fully connected layers
-        l1 = tf.layers.dense(x, 512, tf.nn.relu, kernel_initializer=w_init, bias_initializer=b_init, name=nameChar+'0')
-        output = tf.nn.sigmoid(tf.layers.dense(l1, numActions, kernel_initializer=w_init, bias_initializer=b_init, name=nameChar+'1')) * 2 - 1
-    return output
+def States2Check(gridSize):
+    eOffset = gridSize * gridSize
+    tIdx = 2* gridSize * gridSize
+    ret = []
+    s = np.zeros(1 + 2* gridSize * gridSize, dtype = int)
+    
+    s[1] = 2
+    s[eOffset + 15] = 1
+    s[tIdx] = 1
+    ret.append(s)
 
-# RUN_TYPES[TEST] = {}
-# RUN_TYPES[TEST][TYPE] = "NN"
-# RUN_TYPES[TEST][PARAMS] = DQN_PARAMS(STATE_SIZE, NUM_ACTIONS, 1, build_nn_sig_processedState, True)
-# RUN_TYPES[TEST][NN] = "test_DQN"
-# RUN_TYPES[TEST][REWARDS] = [-0.1, 0.1]
-# RUN_TYPES[TEST][Q_TABLE] = ""
-# RUN_TYPES[TEST][HISTORY] = ""
-# RUN_TYPES[TEST][R_TABLE] = ""
-# RUN_TYPES[TEST][RESULTS] = ""
+    s1 = np.zeros(1 + 2* gridSize * gridSize, dtype = int)
+    s1[1] = 2
+    s1[eOffset + 15] = 1
+    s1[tIdx] = 9
+    ret.append(s1)
 
+    s2 = np.zeros(1 + 2* gridSize * gridSize, dtype = int)
+    
+    s2[14] = 2
+    s2[eOffset + 15] = 1
+    ret.append(s2)
 
-RUN_TYPES[DQN_NN_SIGMOID] = {}
-RUN_TYPES[DQN_NN_SIGMOID][TYPE] = "NN"
-RUN_TYPES[DQN_NN_SIGMOID][PARAMS] = DQN_PARAMS(STATE_SIZE, NUM_ACTIONS, 1, build_nn_sig_processedState, True)
-RUN_TYPES[DQN_NN_SIGMOID][NN] = "meleeAgent1_Sig_DQN"
-RUN_TYPES[DQN_NN_SIGMOID][Q_TABLE] = "meleeAgent1_Sig_qtable"
-RUN_TYPES[DQN_NN_SIGMOID][HISTORY] = "meleeAgent1_Sig_historyReplay"
-RUN_TYPES[DQN_NN_SIGMOID][R_TABLE] = ""
-RUN_TYPES[DQN_NN_SIGMOID][RESULTS] = "meleeAgent1_Sig_result"
-
-RUN_TYPES[DQN_NN_SIGMOID_5ACTIONS] = {}
-RUN_TYPES[DQN_NN_SIGMOID_5ACTIONS][TYPE] = "NN"
-RUN_TYPES[DQN_NN_SIGMOID_5ACTIONS][PARAMS] = DQN_PARAMS(STATE_SIZE, 5, 1, build_nn_sig_processedState, True)
-RUN_TYPES[DQN_NN_SIGMOID_5ACTIONS][NN] = "meleeAgent1_Sig5Actions_DQN"
-RUN_TYPES[DQN_NN_SIGMOID_5ACTIONS][Q_TABLE] = "meleeAgent1_Sig5Actions_qtable"
-RUN_TYPES[DQN_NN_SIGMOID_5ACTIONS][HISTORY] = "meleeAgent1_Sig5Actions_historyReplay"
-RUN_TYPES[DQN_NN_SIGMOID_5ACTIONS][R_TABLE] = ""
-RUN_TYPES[DQN_NN_SIGMOID_5ACTIONS][RESULTS] = "meleeAgent1_Sig5Actions_result"
-
-RUN_TYPES[QTABLE_5ACTIONS] = {}
-RUN_TYPES[QTABLE_5ACTIONS][TYPE] = "QReplay"
-RUN_TYPES[QTABLE_5ACTIONS][PARAMS] = QTableParams(STATE_SIZE, 5)
-RUN_TYPES[QTABLE_5ACTIONS][NN] = ""
-RUN_TYPES[QTABLE_5ACTIONS][Q_TABLE] = "meleeAgent1_Q5Actions_qtable"
-RUN_TYPES[QTABLE_5ACTIONS][HISTORY] = "meleeAgent1_Q5Actions_history"
-RUN_TYPES[QTABLE_5ACTIONS][RESULTS] = "meleeAgent1_Q5Actions_result"
+    return ret
 
 
-RUN_TYPES[QTABLE_SIMPLE] = {}
-RUN_TYPES[QTABLE_SIMPLE][TYPE] = "QReplay"
-RUN_TYPES[QTABLE_SIMPLE][PARAMS] = QTableParams(STATE_SIZE, NUM_ACTIONS)
-RUN_TYPES[QTABLE_SIMPLE][NN] = ""
-RUN_TYPES[QTABLE_SIMPLE][Q_TABLE] = "meleeAgent1_Q_qtable"
-RUN_TYPES[QTABLE_SIMPLE][HISTORY] = "meleeAgent1_Q_history"
-RUN_TYPES[QTABLE_SIMPLE][RESULTS] = "meleeAgent1_Q_result"
-
-RUN_TYPES[DQN_NN_SIGMOID_MIDDLE_REWARDS_5ACTIONS] = {}
-RUN_TYPES[DQN_NN_SIGMOID_MIDDLE_REWARDS_5ACTIONS][TYPE] = "NN"
-RUN_TYPES[DQN_NN_SIGMOID_MIDDLE_REWARDS_5ACTIONS][PARAMS] = DQN_PARAMS(STATE_SIZE, 5, 1, build_nn_sig_processedState, True)
-RUN_TYPES[DQN_NN_SIGMOID_MIDDLE_REWARDS_5ACTIONS][REWARDS] = [-0.1, 0.1, 0]
-RUN_TYPES[DQN_NN_SIGMOID_MIDDLE_REWARDS_5ACTIONS][NN] = "meleeAgent1_Sig5Actions_MiddleRewards_DQN"
-RUN_TYPES[DQN_NN_SIGMOID_MIDDLE_REWARDS_5ACTIONS][Q_TABLE] = "meleeAgent1_Sig5Actions_MiddleRewards_qtable"
-RUN_TYPES[DQN_NN_SIGMOID_MIDDLE_REWARDS_5ACTIONS][HISTORY] = "meleeAgent1_Sig5Actions_MiddleRewards_historyReplay"
-RUN_TYPES[DQN_NN_SIGMOID_MIDDLE_REWARDS_5ACTIONS][R_TABLE] = ""
-RUN_TYPES[DQN_NN_SIGMOID_MIDDLE_REWARDS_5ACTIONS][RESULTS] = "meleeAgent1_Sig5Actions_MiddleRewards_result"
+RUN_TYPES[DQN_NN_SIGMOID_GS10] = {}
+RUN_TYPES[DQN_NN_SIGMOID_GS10][TYPE] = "NN"
+RUN_TYPES[DQN_NN_SIGMOID_GS10][PARAMS] = DQN_PARAMS(NumStateVal(10), NUM_ACTIONS, nn_Func = build_nn_sig_processedState)
+RUN_TYPES[DQN_NN_SIGMOID_GS10][NN] = "meleeAgent_Sig_GS10_DQN"
+RUN_TYPES[DQN_NN_SIGMOID_GS10][Q_TABLE] = "meleeAgent_Sig_GS10_qtable"
+RUN_TYPES[DQN_NN_SIGMOID_GS10][HISTORY] = "meleeAgent_Sig_GS10_historyReplay"
+RUN_TYPES[DQN_NN_SIGMOID_GS10][RESULTS] = "meleeAgent_Sig_GS10_result"
 
 
-RUN_TYPES[DQN_NN_SIGMOID_MIDDLE_REWARDS] = {}
-RUN_TYPES[DQN_NN_SIGMOID_MIDDLE_REWARDS][TYPE] = "NN"
-RUN_TYPES[DQN_NN_SIGMOID_MIDDLE_REWARDS][PARAMS] = DQN_PARAMS(STATE_SIZE, NUM_ACTIONS, 1, build_nn_sig_processedState, True)
-RUN_TYPES[DQN_NN_SIGMOID_MIDDLE_REWARDS][REWARDS] = [-0.1, 0.1, 0]
-RUN_TYPES[DQN_NN_SIGMOID_MIDDLE_REWARDS][NN] = "meleeAgent1_Sig_MiddleRewards_DQN"
-RUN_TYPES[DQN_NN_SIGMOID_MIDDLE_REWARDS][Q_TABLE] = "meleeAgent1_Sig_MiddleRewards_qtable"
-RUN_TYPES[DQN_NN_SIGMOID_MIDDLE_REWARDS][HISTORY] = "meleeAgent1_Sig_MiddleRewards_historyReplay"
-RUN_TYPES[DQN_NN_SIGMOID_MIDDLE_REWARDS][R_TABLE] = ""
-RUN_TYPES[DQN_NN_SIGMOID_MIDDLE_REWARDS][RESULTS] = "meleeAgent1_Sig_MiddleRewards_result"
+RUN_TYPES[DQN_NN_SIGMOID_GS5] = {}
+RUN_TYPES[DQN_NN_SIGMOID_GS5][TYPE] = "NN"
+RUN_TYPES[DQN_NN_SIGMOID_GS5][PARAMS] = DQN_PARAMS(NumStateVal(5), NUM_ACTIONS, nn_Func = build_nn_sig_processedState, state2Monitor=States2Check(5))
+RUN_TYPES[DQN_NN_SIGMOID_GS5][NN] = "meleeAgent_Sig_GS5_DQN"
+RUN_TYPES[DQN_NN_SIGMOID_GS5][Q_TABLE] = "meleeAgent_Sig_GS5_qtable"
+RUN_TYPES[DQN_NN_SIGMOID_GS5][HISTORY] = "meleeAgent_Sig_GS5_historyReplay"
+RUN_TYPES[DQN_NN_SIGMOID_GS5][RESULTS] = "meleeAgent_Sig_GS5_result"
+RUN_TYPES[DQN_NN_SIGMOID_GS5][GS_key] = 5
+
+RUN_TYPES[QTABLE_GS10] = {}
+RUN_TYPES[QTABLE_GS10][TYPE] = "QReplay"
+RUN_TYPES[QTABLE_GS10][PARAMS] = QTableParamsExplorationDecay(NumStateVal(10), NUM_ACTIONS, propogateReward = False)
+RUN_TYPES[QTABLE_GS10][NN] = ""
+RUN_TYPES[QTABLE_GS10][Q_TABLE] = "meleeAgent_qGS10_qtable"
+RUN_TYPES[QTABLE_GS10][HISTORY] = "meleeAgent_qGS10_replayHistory"
+RUN_TYPES[QTABLE_GS10][RESULTS] = "meleeAgent_qGS10_result"
+
+RUN_TYPES[QTABLE_GS5] = {}
+RUN_TYPES[QTABLE_GS5][TYPE] = "QReplay"
+RUN_TYPES[QTABLE_GS5][GS_key] = 5
+RUN_TYPES[QTABLE_GS5][PARAMS] = QTableParamsExplorationDecay(NumStateVal(5), NUM_ACTIONS, propogateReward = False)
+RUN_TYPES[QTABLE_GS5][NN] = ""
+RUN_TYPES[QTABLE_GS5][Q_TABLE] = "meleeAgent_qGS5_qtable"
+RUN_TYPES[QTABLE_GS5][HISTORY] = "meleeAgent_qGS5_replayHistory"
+RUN_TYPES[QTABLE_GS5][RESULTS] = "meleeAgent_qGS5_result"
+
+RUN_TYPES[QTABLE_GS5_TEST] = {}
+RUN_TYPES[QTABLE_GS5_TEST][TYPE] = "QTest"
+RUN_TYPES[QTABLE_GS5_TEST][GS_key] = 5
+RUN_TYPES[QTABLE_GS5_TEST][PARAMS] = QTableParams(NumStateVal(5), NUM_ACTIONS, propogateReward = False, explorationProb=0.0)
+RUN_TYPES[QTABLE_GS5_TEST][Q_TABLE] = "meleeAgent_qGS5_qtable"
 
 RUN_TYPES[USER_PLAY] = {}
 RUN_TYPES[USER_PLAY][TYPE] = "play"
@@ -221,7 +202,6 @@ GOTO_CHANGE[ACTION_SOUTH_WEST] = [TO_MOVE , -TO_MOVE]
 class Attack(base_agent.BaseAgent):
     def __init__(self):        
         super(Attack, self).__init__()
-        self.terminalStates = self.TerminalStates()
 
         runTypeArg = ALL_TYPES.intersection(sys.argv)
         if len(runTypeArg) != 1:
@@ -229,38 +209,37 @@ class Attack(base_agent.BaseAgent):
             exit(1) 
 
         runType = RUN_TYPES[runTypeArg.pop()]
+
+        # insert state params
+        if GS_key in runType.keys():
+            self.gridSize = runType[GS_key]
+        else:
+            self.gridSize = DEFAULT_STATE_GRID_SIZE
+
+        self.state_startSelfMat = 0
+        self.state_startEnemyMat = self.gridSize * self.gridSize
+        self.state_timeLineIdx = 2 * self.gridSize * self.gridSize
+        self.state_size = 2 * self.gridSize * self.gridSize + 1
+
+        self.terminalStates = self.TerminalStates()
+
+        # create learning mngr
         if runType[TYPE] == 'all':
             params = runType[PARAMS]
-            self.tables = TableMngr(NUM_ACTIONS, STATE_SIZE, runType[Q_TABLE], runType[RESULTS], params[0]) 
-        
+            self.tables = TableMngr(NUM_ACTIONS, self.state_size, runType[Q_TABLE], runType[RESULTS], params[0]) 
         elif runType[TYPE] == 'NN' or runType[TYPE] == 'QReplay':
-            self.tables = LearnWithReplayMngr(runType[TYPE], runType[PARAMS], self.terminalStates, runType[NN], runType[Q_TABLE], runType[RESULTS], runType[HISTORY])   
-            if REWARDS in runType.keys():
-                self.rewardIlligalMove = runType[REWARDS][0]
-                self.rewardKill = runType[REWARDS][1]
-                self.rewardDeath = runType[REWARDS][2]
-            else:
-                self.rewardIlligalMove = 0
-                self.rewardKill = 0
-                self.rewardDeath = 0
-
+            self.tables = LearnWithReplayMngr(runType[TYPE], runType[PARAMS], self.terminalStates, runType[NN], runType[Q_TABLE], runType[RESULTS], runType[HISTORY])     
         elif runType[TYPE] == 'play':
-            self.rewardIlligalMove = -0.1
-            self.rewardKill = 0.1
-            self.tables = UserPlay(False)
+            self.tables = UserPlay()
+        elif runType[TYPE] == 'QTest':
+            self.tables = QLearningTable(runType[PARAMS], runType[Q_TABLE])
+
 
         # states and action:
         self.current_action = None
 
-        self.current_state = np.zeros(STATE_SIZE, dtype=np.int32, order='C')
-        self.previous_state = np.zeros(STATE_SIZE, dtype=np.int32, order='C')
-           
-        self.selfLocCoord = []
-        
-        self.numEpisode = 0
-
-        self.prevReward = 0
-        self.prevScore = 0
+        self.current_state = np.zeros(self.state_size, dtype=np.int32, order='C')
+        self.previous_state = np.zeros(self.state_size, dtype=np.int32, order='C')
 
     def step(self, obs):
         super(Attack, self).step(obs)
@@ -273,24 +252,15 @@ class Attack(base_agent.BaseAgent):
         self.sumReward += obs.reward
         self.CreateState(obs)
 
+
         if self.errorOccur:
             return DO_NOTHING_SC2_ACTION
 
         self.numStep += 1
         sc2Action = DO_NOTHING_SC2_ACTION
-        self.AddKillReward(obs)
-        
-        self.Learn(self.prevReward)
-        self.current_action = self.tables.choose_action(self.current_state)
-
-        if self.numEpisode % 100 == 99:
-            print("\n\nstate: time=", self.current_state[STATE_TIME_LINE_IDX], "action=" , self.current_action, "vals =", self.tables.actionValuesVec(self.current_state))
-            for i in range(STATE_GRID_SIZE * STATE_GRID_SIZE):
-                print(self.current_state[i], end = ' ')
-            print("")
-            for i in range(STATE_GRID_SIZE * STATE_GRID_SIZE):
-                print(self.current_state[100 + i], end = ' ')
-            print("")
+        self.Learn()
+        #self.current_action = self.tables.choose_action(self.current_state)
+        self.current_action, _ = self.tables.choose_absolute_action(str(self.current_state))
 
         time.sleep(STEP_DURATION)
 
@@ -300,12 +270,6 @@ class Attack(base_agent.BaseAgent):
                 loc = self.selfLocCoord[i] + GOTO_CHANGE[self.current_action][i]
                 loc = min(max(loc,0), SC2_Params.SCREEN_SIZE - 1)
                 goTo.append(loc)
-            
-            self_y, self_x = (obs.observation["screen"][SC2_Params.PLAYER_RELATIVE] == SC2_Params.PLAYER_SELF).nonzero()
-            
-            if self.MoveOutOfBounds(goTo):
-                self.prevReward += self.rewardIlligalMove
-                
 
             if SC2_Actions.MOVE_IN_SCREEN in obs.observation['available_actions']:
                 sc2Action = actions.FunctionCall(SC2_Actions.MOVE_IN_SCREEN, [SC2_Params.NOT_QUEUED, SwapPnt(goTo)])
@@ -315,12 +279,12 @@ class Attack(base_agent.BaseAgent):
     def FirstStep(self, obs):
         self.numStep = 0
 
-        self.current_state = np.zeros(STATE_SIZE, dtype=np.int32, order='C')
-        self.previous_state = np.zeros(STATE_SIZE, dtype=np.int32, order='C')
+        self.current_state = np.zeros(self.state_size, dtype=np.int32, order='C')
+        self.previous_state = np.zeros(self.state_size, dtype=np.int32, order='C')
 
-        self.selfLocCoord = None
-        self.enemyCoord = None
-                
+        self.selfLocCoord = None      
+        self.enemyLocCoord = None  
+
         self.errorOccur = False
 
         self.sumReward = 0
@@ -338,81 +302,70 @@ class Attack(base_agent.BaseAgent):
             reward = -1
             s_ = self.terminalStates["tie"]
 
-        if self.current_action is not None:
-            self.tables.learn(self.current_state.copy(), self.current_action, float(reward), s_, True)
+        # if self.current_action is not None:
+        #     self.tables.learn(self.current_state.copy(), self.current_action, float(reward), s_, True)
 
-        score = obs.observation["score_cumulative"][0]
-        self.tables.end_run(reward, score)
+        # score = obs.observation["score_cumulative"][0]
+        # self.tables.end_run(reward, score)
 
-        self.numEpisode += 1
-
-    def MoveOutOfBounds(self, coord):
-        for i in range(len(coord)):
-            if coord[i] < SCREEN_MIN[i] or coord[i] > SCREEN_MAX[i]:
-                return True
-        
-        return False
-
-    def Learn(self, r):
-        if self.current_action is not None:
-            self.tables.learn(self.previous_state.copy(), self.current_action, r, self.current_state.copy())
+    def Learn(self):
+        # if self.current_action is not None:
+        #     self.tables.learn(self.previous_state.copy(), self.current_action, 0, self.current_state.copy())
 
         self.previous_state[:] = self.current_state[:]
-        self.prevReward = 0
 
     def CreateState(self, obs):
-        self.current_state = np.zeros(STATE_SIZE, dtype=np.int32, order='C')
-        screenMap = obs.observation["screen"][SC2_Params.PLAYER_RELATIVE]
-        
-        self.GetSelfLoc(screenMap)     
-        self.GetEnemyLoc(screenMap)
-
-        self.current_state[STATE_TIME_LINE_IDX] = int(self.numStep / TIME_LINE_BUCKETING)
-
-    def GetSelfLoc(self, screenMap):
-        self_y, self_x = (screenMap == SC2_Params.PLAYER_SELF).nonzero()
-        if len(self_x) > 0:
-            xMid = int(sum(self_x) / len(self_x))
-            yMid = int(sum(self_y) / len(self_y))
-            
-            scaled_y = int(yMid * STATE_GRID_SIZE / SC2_Params.SCREEN_SIZE)
-            scaled_x = int(xMid * STATE_GRID_SIZE / SC2_Params.SCREEN_SIZE)        
-            
-            idx = scaled_x + scaled_y * STATE_GRID_SIZE
-            self.current_state[SELF_MAT_START + idx] = 1
-            self.selfLocCoord = [yMid, xMid]
-
-    def GetEnemyLoc(self, screenMap):
-        e_y, e_x = (screenMap == SC2_Params.PLAYER_HOSTILE).nonzero()
-        enemyLocations = {}
-        for i in range(len(e_y)):
-            scaled_y = int(e_y[i] * STATE_GRID_SIZE / SC2_Params.SCREEN_SIZE)
-            scaled_x = int(e_x[i] * STATE_GRID_SIZE / SC2_Params.SCREEN_SIZE)
-            
-            idx = scaled_x + scaled_y * STATE_GRID_SIZE
-            if idx not in enemyLocations.keys():
-                enemyLocations[idx] = 1
-            else:
-                enemyLocations[idx] += 1
-        
-
-        nonComplete = 0
-        for key,val in enemyLocations.items():
-            if val >= NUM_UNIT_SCREEN_PIXELS:
-                c = int(val / NUM_UNIT_SCREEN_PIXELS)
-                self.current_state[ENEMY_MAT_START + key] = c
-                val -= c * NUM_UNIT_SCREEN_PIXELS
-            if val > 0:
-                nonComplete += val
-                if nonComplete > int(0.5 * NUM_UNIT_SCREEN_PIXELS):
-                    self.current_state[ENEMY_MAT_START + key] += 1
-                    nonComplete -= NUM_UNIT_SCREEN_PIXELS
-
-            enemyLocations[key] = 0         
+        self.current_state = np.zeros(self.state_size, dtype=np.int32, order='C')
     
+        selfPower, enemyPower = self.GetLocationsAndPower(obs)
+
+        selfIdx  = self.state_startSelfMat + self.GetScaledIdx(self.selfLocCoord)
+        self.current_state[selfIdx] = selfPower
+
+        enemyIdx = self.state_startEnemyMat + self.GetScaledIdx(self.enemyLocCoord)
+        self.current_state[enemyIdx] = enemyPower
+
+        self.current_state[self.state_timeLineIdx] = int(self.numStep / TIME_LINE_BUCKETING)
+
+    def GetLocationsAndPower(self, obs):
+        screenMap = obs.observation["screen"][SC2_Params.PLAYER_RELATIVE]
+
+        selfLocY, selfLocX = (screenMap == SC2_Params.PLAYER_SELF).nonzero()
+        enemyLocY , enemyLocX = (screenMap == SC2_Params.PLAYER_HOSTILE).nonzero()
+        
+        if len(selfLocX) > 0:
+            xMid = int(sum(selfLocX) / len(selfLocX))
+            yMid = int(sum(selfLocY) / len(selfLocY))
+            self.selfLocCoord = [yMid, xMid]
+        else:
+            selfLocY, selfLocX = (obs.observation["screen"][SC2_Params.UNIT_DENSITY] > 1).nonzero()
+            if len(selfLocX) > 0:
+                xMid = int(sum(selfLocX) / len(selfLocX))
+                yMid = int(sum(selfLocY) / len(selfLocY))
+                self.selfLocCoord = [yMid, xMid]
+
+        if len(enemyLocY) > 0:
+            xMid = int(sum(enemyLocX) / len(enemyLocX))
+            yMid = int(sum(enemyLocY) / len(enemyLocY))
+            self.enemyLocCoord = [yMid, xMid]
+
+        selfPower = math.ceil(len(selfLocY) /  NUM_UNIT_SCREEN_PIXELS)
+        enemyPower = math.ceil(len(enemyLocY) /  NUM_UNIT_SCREEN_PIXELS)
+        return selfPower, enemyPower
+
+    def GetScaledIdx(self, screenCord):
+        locX = screenCord[SC2_Params.X_IDX]
+        locY = screenCord[SC2_Params.Y_IDX]
+
+        yScaled = int((locY / SC2_Params.SCREEN_SIZE) * self.gridSize)
+        xScaled = int((locX / SC2_Params.SCREEN_SIZE) * self.gridSize)
+
+        return xScaled + yScaled * self.gridSize
+
     def TerminalStates(self):
         tStates = {}
-        state = np.zeros(STATE_SIZE, dtype=np.int32, order='C')
+
+        state = np.zeros(self.state_size, dtype=np.int32, order='C')
         state[0] = -1
         tStates["win"] = state.copy()
         state[0] = -2
@@ -422,11 +375,18 @@ class Attack(base_agent.BaseAgent):
 
         return tStates
         
-    def AddKillReward(self , obs):
-        cumulativeScore = obs.observation["score_cumulative"][0]
-        if cumulativeScore > self.prevScore:
-            self.prevReward += self.rewardKill
-        
-        self.prevScore = cumulativeScore
+    def PrintState(self):
+        print("\n\nstate: timeline =", self.current_state[self.state_timeLineIdx])
+        for y in range(self.gridSize):
+            for x in range(self.gridSize):
+                idx = self.state_startSelfMat + x + y * self.gridSize
+                print(self.current_state[idx], end = '')
+            print(end = '  |  ')
+            
+            for x in range(self.gridSize):
+                idx = self.state_startEnemyMat + x + y * self.gridSize
+                print(self.current_state[idx], end = '')
+            print('||')
+
         
 

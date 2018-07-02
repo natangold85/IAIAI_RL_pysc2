@@ -22,7 +22,7 @@ from utils import SC2_Actions
 from utils import SwapPnt
 
 from utils_tables import TableMngr
-from utils_tables import QTableParamsWOChangeInExploration
+from utils_tables import QTableParams
 
 from build_base import BuildBaseSubAgent
 from train_army import TrainArmySubAgent
@@ -80,8 +80,8 @@ class Strategic(base_agent.BaseAgent):
         self.m_trainArmySubAgent = TrainArmySubAgent(Q_TABLE_TRAINARMY_FILE)
         self.m_attackSubAgent = AttackSubAgent(Q_TABLE_ATTACK_FILE)
 
-
-        self.tables = TableMngr(NUM_ACTIONS, STATE_SIZE, Q_TABLE_STRATEGIC_FILE)
+        params = QTableParams(STATE_SIZE, NUM_ACTIONS)
+        self.tables = TableMngr(params, Q_TABLE_STRATEGIC_FILE)
 
         # states and action:
         self.current_action = None

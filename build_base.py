@@ -18,7 +18,7 @@ from utils_tables import TableMngr
 from utils_tables import QLearningTable
 from utils_tables import TransitionTable
 
-from utils_tables import QTableParamsWOChangeInExploration
+from utils_tables import QTableParams
 
 from utils import SwapPnt
 from utils import FindMiddle
@@ -112,7 +112,8 @@ class BuildBaseSubAgent:
             self.trainArmySubAgent = TrainArmySubAgent()
 
         # tables:
-        self.tables = TableMngr(self.num_Actions, STATE_SIZE, qTableName)
+        params = QTableParams(STATE_SIZE, self.num_Actions)
+        self.tables = TableMngr(params, qTableName)
 
         if tTableName != '':
             self.use_tTable = True
@@ -306,7 +307,6 @@ class BuildBaseSubAgent:
         
         elif self.move_number == 1:
             self.move_number += 1
-            
             buildingType = ACTION_2_BUILDING_TRANSITION[self.current_action]
             sc2Action = TerranUnit.BUIILDING_2_SC2ACTIONS[buildingType]
             if sc2Action in obs.observation['available_actions']:

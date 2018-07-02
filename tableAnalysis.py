@@ -12,9 +12,6 @@ import matplotlib.pyplot as plt
 
 import cProfile
 
-from utils_tables import DQN_PARAMS
-from utils_tables import QTableParamsWithChangeInExploration
-
 from utils_dqn import DQN
 
 MAX_VAL = 0
@@ -181,90 +178,72 @@ def PrintObjLocationCloud(locations, gridSize):
                 print('_', end = '')
 
         print("|")
-                
-def PlotExplorationChange(numTrials):
-    smart = QTableParamsWithChangeInExploration()
-    
-    trialNum = np.arange(0, numTrials, 10)
-    smartArray = np.zeros(len(trialNum), dtype=np.float, order='C')
-    for i in range(0, len(trialNum)):
-        smartArray[i] = smart.exploreStop + (smart.exploreStart - smart.exploreStop) * np.exp(-smart.exploreRate * trialNum[i])
+            
+def ResultsFromTable(tableName, grouping, dataIdx):
 
-    naive = QTableParamsWOChangeInExploration()
-    naiveTrialNum = np.zeros(2, dtype=np.float, order='C')
-    naiveArray = np.zeros(2, dtype=np.float, order='C')
-    naiveArray[0] = naive.explorationProb
-    naiveArray[1] = naive.explorationProb
-    naiveTrialNum[1] = numTrials
-
-    plt.plot(naiveTrialNum, naiveArray)
-    plt.plot(trialNum, smartArray)
-
-def ResultsFromTable(tableName, newGrouping = -1, dataIdx = 0):
-
-    numSlots = 1
-    table = pd.DataFrame(columns=list(range(numSlots)), dtype=np.int)
     table = pd.read_pickle(tableName + '.gz', compression='gzip')
 
     names = list(table.index)
-    
-    resultDict = {}
-    oldGrouping = []
+    tableSize = len(names) -1
+    results = np.zeros((2, tableSize), dtype  = float)
+    trialNum = 0
+    sumVal = 0
+    subGroupingSizeAll = 0
     for name in names[:]:
         if name.isdigit():
             idx = int(name)
-            resultDict[idx] = table.ix[name, dataIdx]
-        elif name.find('count_') >= 0:
-            start = -1
-            end = -1
-            for i in range(0, len(name)):
-                if start == -1:
-                    if name[i].isdigit():
-                        start = i
-                elif not name[i].isdigit():
-                    end = i
-                    break
+            currResult = table.ix[name, dataIdx]
+            subGroupSize = table.ix[name, 0]
+            results[0, idx] = subGroupSize
+            results[1, idx] = currResult
+
+            if subGroupSize > subGroupingSizeAll:
+                subGroupingSizeAll = subGroupSize
+            if subGroupSize != subGroupingSizeAll:
+                print("\n\nerror in sub grouping size\n\n")
+                exit()
             
-            s = name[start:end]
-            oldGrouping.append([int(s), int(table.ix[name, 0])])
+    groupSizes = int(math.ceil(grouping / subGroupingSizeAll))
+    idxArray = np.arange(groupSizes)
+    
+    groupResults = []
+    timeLine = []
+    t = 0
+    for i in range(groupSizes - 1, tableSize):
+        res = sum(results[1, idxArray]) / groupSizes 
+        groupResults.append(res)
+        timeLine.append(t)
+        idxArray += 1
+        t += subGroupingSizeAll
+    
 
-    if newGrouping <= 0:
-        newGrouping = oldGrouping[0][1]
+    return np.array(groupResults), np.array(timeLine)
 
-    if newGrouping > 0:
-        oldGrouping.append([len(resultDict), -1])
-        oldGrouping.sort()
-        newDict = {}
 
-        currGroupIdx = 0
-        currGrouping = oldGrouping[0][1]
-        
-        currCount = 0
-        newVal = 0
-        idx = 0
-        for key, value in sorted(resultDict.items()):
-            currCount += currGrouping
-            newVal += value * currGrouping
-            if currCount >= newGrouping:
-                newDict[idx] = newVal / currCount
-                idx += 1
-                currCount = 0
-                newVal = 0
+    # table = pd.read_pickle(tableName + '.gz', compression='gzip')
+
+    # names = list(table.index)
+    
+    # results = []
+    # trialNum = 0
+    # sumVal = 0
+    # for name in names[:]:
+    #     if name.isdigit():
+    #         idx = int(name)
+    #         subGroupSize = table.ix[name, 0]
+    #         currResult = table.ix[name, dataIdx]
             
-            if key >= oldGrouping[currGroupIdx + 1][0]:
-                currGroupIdx += 1
-                currGrouping = oldGrouping[currGroupIdx][1]
-        
-        resultDict = newDict
+    #         trialNum += subGroupSize
+    #         sumVal += subGroupSize * currResult
 
+    #         if trialNum >= grouping:
+    #             avgResult = sumVal / trialNum
+    #             results.append(avgResult)
+                
+    #             trialNum = 0
+    #             sumVal = 0
 
-    results = np.zeros(len(resultDict), dtype=np.float, order='C')
-    t = np.zeros(len(resultDict), dtype=np.float, order='C')
-    for key, value in sorted(resultDict.items()):
-        results[key] = value
-        t[key] = key * newGrouping
-
-    return results
+    # return np.array(results)        
 
 try:
     if len(sys.argv) < 2:
@@ -530,86 +509,62 @@ try:
         #     for stateVal in range(0, numStateVals):
         #         print(actionsTransition[a][stateVal][0] / actionsTransition[a][stateVal][2], actionsTransition[a][stateVal][1] / actionsTransition[a][stateVal][2])
 
-    elif tableType == "rtable":
-        if len(sys.argv) < 3:
-            print("Error: missing arguments")
-            exit(1)
-        else:
-            tableName = sys.argv[2]
-
-        numSlots = 1
-        r_table = pd.DataFrame(columns=list(range(numSlots)), dtype=np.int)
-        r_table = pd.read_pickle(tableName + '.gz', compression='gzip')
-
-        f = open(tableName + '.txt', 'w')
-        f.write(r_table.to_string())
-        f.close()
 
     elif tableType == "results":
         if sys.argv[len(sys.argv) - 1].isdigit():
-            newGrouping = int(sys.argv[len(sys.argv) - 1])
+            grouping = int(sys.argv[len(sys.argv) - 1])
         else:
-            newGrouping = -1
-
+            print("\ninsert group size")
+            exit()
 
         tableNames = []
         for i in range(2, len(sys.argv)):
             if not sys.argv[i].isdigit():
                 tableNames.append(sys.argv[i])
 
-        
-        # plt.figure(1)
-        # PlotExplorationChange(30000)
+        tableCol = ['count', 'reward', 'score', '# of steps']
+        fig = plt.figure(1)
 
-        fig, ax = plt.subplots()  
-        fileName = ""
+        for idx in range(1, 4):
+            plt.subplot(2,2,idx)  
+            for table in tableNames[:]:
+                results, t = ResultsFromTable(table, grouping, idx) 
+                plt.plot(t, results)
+                
+            plt.ylabel('avg '+ tableCol[idx] + ' for ' + str(grouping) + ' trials')
+            plt.xlabel('#trials')
+            plt.title('Average ' + tableCol[idx])
+            plt.grid(True)
+            plt.legend(tableNames, loc='best')
 
+        fileName = "results_"
         for table in tableNames[:]:
-            results = ResultsFromTable(table, newGrouping, 1) 
-
-            t = np.zeros(len(results), dtype=np.float, order='C')
-            for i in range(0, len(results)):
-                t[i] = i * newGrouping
-
-            ax.plot(t, results)
             fileName += table + "_"
-
         fileName += ".png"
-        yLabel = 'avg reward for ' + str(newGrouping) + ' trials'
-        ax.set(xlabel='trials', ylabel=yLabel,
-            title = 'avg reward for results tables:\n')
 
-        ax.grid()
-
-        fileNamePlot = fileName + "_rewardPlot.png"
-        plt.legend(tableNames, loc='upper left')
-        fig.savefig(fileNamePlot)
-
-        fig, ax = plt.subplots()  
-        fileName = ""
-
-        for table in tableNames[:]:
-            results = ResultsFromTable(table, newGrouping) 
-
-            t = np.zeros(len(results), dtype=np.float, order='C')
-            for i in range(0, len(results)):
-                t[i] = i * newGrouping
-
-            ax.plot(t, results)
-            fileName += table + "_"
-
-        fileName += ".png"
-        yLabel = 'avg score for ' + str(newGrouping) + ' trials'
-        ax.set(xlabel='trials', ylabel=yLabel,
-            title = 'avg score for results tables:\n')
-
-        ax.grid()
-
-        fileNamePlot = fileName + "_scorePlot.png"
-        plt.legend(tableNames, loc='upper left')
-        fig.savefig(fileNamePlot)
+        fig.savefig(fileName)
 
         plt.show()
+
+    elif tableType == "resultChangeFormat":
+        tableName = sys.argv[2]
+        grouping = int(sys.argv[3])
+        table = pd.read_pickle(tableName + '.gz', compression='gzip')
+        
+        rewardCol = list(range(4))
+        newTable = pd.DataFrame(columns=rewardCol, dtype=np.float)
+
+        names = list(table.index)
+        for name in names:
+            if name.isdigit():
+                newTable = newTable.append(pd.Series([0] * len(rewardCol), index=newTable.columns, name=name))
+                newTable.ix[name,0] = grouping
+                newTable.ix[name,1] = table.ix[name,0]
+            elif name == 'countComplete':
+                newTable = newTable.append(pd.Series([0] * len(rewardCol), index=newTable.columns, name=name))
+                newTable.ix[name,0] = table.ix[name,0]
+
+        newTable.to_pickle(tableName + '.gz', compression='gzip')
 
     elif tableType == "cmpNNToQ":
         NNFName = sys.argv[2]

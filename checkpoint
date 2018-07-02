@@ -1,2 +1,2 @@
-model_checkpoint_path: "meleeAgent1_Sig5Actions_MiddleRewards_DQN"
-all_model_checkpoint_paths: "meleeAgent1_Sig5Actions_MiddleRewards_DQN"
+model_checkpoint_path: "battleMngr_dqnGS5_ArmyAttack_NoIlligal0Init_DQN"
+all_model_checkpoint_paths: "battleMngr_dqnGS5_ArmyAttack_NoIlligal0Init_DQN"
