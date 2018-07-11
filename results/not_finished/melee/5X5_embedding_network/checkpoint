@@ -1,0 +1,2 @@
+model_checkpoint_path: "battleMngr_dqnGS5_ArmyAttack_NoIlligalDoNothing_Embedding_DQN"
+all_model_checkpoint_paths: "battleMngr_dqnGS5_ArmyAttack_NoIlligalDoNothing_Embedding_DQN"

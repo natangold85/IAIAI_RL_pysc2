@@ -193,10 +193,52 @@ def callGrouping(size):
 
 
 
+import tensorflow as tf
+import numpy as np
+from utils_tables import DQN_PARAMS
+from utils_dqn import DQN
+import random
 
+def build_dqn_0init(x, numActions, scope):
+    with tf.variable_scope(scope):
+        # Fully connected layers
+        fc1 = tf.contrib.layers.fully_connected(x, 512, activation_fn = tf.nn.softplus, weights_initializer=tf.zeros_initializer())
+        output = tf.contrib.layers.fully_connected(fc1, numActions, activation_fn = tf.nn.sigmoid, weights_initializer=tf.zeros_initializer()) * 2 - 1
+    return output
 
+p = DQN_PARAMS(2,4, nn_Func = build_dqn_0init)
+dqn = DQN(p,'test', False)
 
+size = 64
+s = np.zeros(size, dtype= int)
+s_ = np.zeros(size, dtype= int)
+r = np.zeros(size, dtype= float)
+a = np.zeros(size, dtype= int)
+t = np.zeros(size, dtype= bool)
 
+for i in range(64):
+    s[i] = random.randint(-2,2)
+    a[i] = random.randint(0,1)
+
+for i in range(64):
+    if a[i] == 0:
+        s_[i] = s[i] + 1
+    else:
+        s_[i] = s[i] - 1
+
+for i in range(64):
+    if s_[i] == 0:
+        t[i] = True
+        r[i] = 1.0
+    elif s_[i] > 2 or s_[i] < -2:
+        t[i] = True
+        r[i] = -1.0
+    else:
+        t[i] = False
+        r[i] = 0.0
+
+allVars = tf.all_variables()
+dqn.learn(s,a,r,s_,t)
 # from multiprocessing import Process
 # import datetime
 # def PSFunc():

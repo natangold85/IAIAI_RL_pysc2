@@ -9,15 +9,13 @@ import sys
 import tensorflow as tf
 
 from utils_dqn import DQN
-from utils_dqn import DoubleDQN
-
 from hallucination import HallucinationMngrPSFunc
 
 from multiprocessing import Process, Lock, Value, Array, Manager
 
 # params base
 class ParamsBase:
-    def __init__(self, stateSize, numActions, historyProportion4Learn = 1, propogateReward = False, discountFactor = 0.95, maxReplaySize = 50000, minReplaySize = 1000):
+    def __init__(self, stateSize, numActions, historyProportion4Learn = 1, propogateReward = False, discountFactor = 0.95, maxReplaySize = 50000, minReplaySize = 1000, states2Monitor = []):
         self.stateSize = stateSize
         self.numActions = numActions
         self.historyProportion4Learn = historyProportion4Learn
@@ -25,24 +23,26 @@ class ParamsBase:
         self.discountFactor = discountFactor
         self.maxReplaySize = maxReplaySize
         self.minReplaySize = minReplaySize
+        self.states2Monitor = states2Monitor
 
 # dqn params
 class DQN_PARAMS(ParamsBase):
-    def __init__(self, stateSize, numActions, historyProportion4Learn = 1, nn_Func = None, propogateReward = False, outputGraph = False, discountFactor = 0.95, batchSize = 32, maxReplaySize = 50000, minReplaySize = 1000, copyEvalToTarget = 5, explorationProb = 0.1, descendingExploration = True, exploreChangeRate = 0.0005, state2Monitor = []):
+    def __init__(self, stateSize, numActions, historyProportion4Learn = 1, nn_Func = None, propogateReward = False, outputGraph = False, discountFactor = 0.95, batchSize = 32, maxReplaySize = 50000, minReplaySize = 1000, copyEvalToTarget = 5, explorationProb = 0.1, descendingExploration = True, exploreChangeRate = 0.0005, states2Monitor = [], scopeVarName = ''):
         super(DQN_PARAMS, self).__init__(stateSize, numActions, historyProportion4Learn, propogateReward, discountFactor, maxReplaySize, minReplaySize)
         
         self.nn_Func = nn_Func
         self.batchSize = batchSize
 
         self.outputGraph = outputGraph
-        self.isDoubleDQN = False
         
         self.copyEvalToTarget = copyEvalToTarget
 
         self.explorationProb = explorationProb
         self.descendingExploration = descendingExploration
-        self.exploreChangeRate = exploreChangeRate
-        self.state2Monitor = state2Monitor
+        self.exploreChangeRate = exploreChangeRate 
+
+        self.type = "DQN"
+        self.scopeVarName = scopeVarName
 
     def ExploreProb(self, numRuns, resultRatio = 1):
         if self.descendingExploration:
@@ -50,10 +50,17 @@ class DQN_PARAMS(ParamsBase):
         else:
             return self.explorationProb
 
+class DQN_EMBEDDING_PARAMS(DQN_PARAMS):
+    def __init__(self, stateSize, embeddingInputSize, numActions, historyProportion4Learn = 1, nn_Func = None, propogateReward = False, outputGraph = False, discountFactor = 0.95, batchSize = 32, maxReplaySize = 50000, minReplaySize = 1000, copyEvalToTarget = 5, explorationProb = 0.1, descendingExploration = True, exploreChangeRate = 0.0005, states2Monitor = [], scopeVarName = ''):
+        super(DQN_EMBEDDING_PARAMS, self).__init__(stateSize, numActions, historyProportion4Learn, nn_Func, propogateReward, outputGraph, discountFactor, batchSize, maxReplaySize, minReplaySize, copyEvalToTarget, explorationProb, descendingExploration, exploreChangeRate, states2Monitor, scopeVarName)
+        
+        self.embeddingInputSize = embeddingInputSize
+        self.type = "DQN_Embedding"
+
 #qtable params
 class QTableParams(ParamsBase):
-    def __init__(self, stateSize, numActions, historyProportion4Learn = 1, propogateReward = False, learning_rate=0.01, discountFactor=0.95, explorationProb=0.1, maxReplaySize = 50000, minReplaySize = 1000):
-        super(QTableParams, self).__init__(stateSize, numActions, historyProportion4Learn, propogateReward, discountFactor, maxReplaySize, minReplaySize)    
+    def __init__(self, stateSize, numActions, historyProportion4Learn = 1, propogateReward = False, learning_rate=0.01, discountFactor=0.95, explorationProb=0.1, maxReplaySize = 50000, minReplaySize = 1000, states2Monitor = []):
+        super(QTableParams, self).__init__(stateSize, numActions, historyProportion4Learn, propogateReward, discountFactor, maxReplaySize, minReplaySize, states2Monitor)    
         self.learningRate = learning_rate
         self.explorationProb = explorationProb        
     
@@ -67,8 +74,8 @@ class QTableParams(ParamsBase):
         return False
 
 class QTableParamsExplorationDecay(ParamsBase):
-    def __init__(self, stateSize, numActions, historyProportion4Learn = 1, propogateReward = False, learning_rate=0.01, discountFactor=0.95, exploreRate = 0.0005, exploreStop = 0.1, maxReplaySize = 50000, minReplaySize = 1000):
-        super(QTableParamsExplorationDecay, self).__init__(stateSize, numActions, historyProportion4Learn, propogateReward, discountFactor, maxReplaySize, minReplaySize) 
+    def __init__(self, stateSize, numActions, historyProportion4Learn = 1, propogateReward = False, learning_rate=0.01, discountFactor=0.95, exploreRate = 0.0005, exploreStop = 0.1, maxReplaySize = 50000, minReplaySize = 1000, states2Monitor = []):
+        super(QTableParamsExplorationDecay, self).__init__(stateSize, numActions, historyProportion4Learn, propogateReward, discountFactor, maxReplaySize, minReplaySize, states2Monitor) 
 
         self.learningRate = learning_rate        
         self.exploreStart = 1
@@ -99,11 +106,6 @@ class QTablePropogation:
     def PropogtionUsingTTable(self):
         return False
 
-
-class QTablePropogationUsingTTable(QTablePropogation):
-    def PropogtionUsingTTable(self):
-        return True
-
 class UserPlay:
     def __init__(self, playWithInput = True):
         self.playWithInput = playWithInput
@@ -125,12 +127,10 @@ class UserPlay:
 
 TYPES = ["NN" , "QReplay"]
 class LearnWithReplayMngr:
-    def __init__(self, modelType, modelParams, terminalStates, nnDirectory = '', qTableName = '', resultFileName = '', historyFileName = '', numTrials2Learn = 100):
+    def __init__(self, modelType, modelParams, nnDirectory = '', qTableName = '', resultFileName = '', historyFileName = '', numTrials2Learn = 100, newRun = False):
         self.numTrials2Learn = numTrials2Learn
         self.trialNum = 0
         self.params = modelParams
-
-        self.terminalStates = terminalStates
 
         self.transitions = {}
         self.transitions["s"] = []
@@ -139,17 +139,14 @@ class LearnWithReplayMngr:
         self.transitions["s_"] = []
         self.transitions["terminal"] = []
 
-        if "new" in sys.argv:
+        if "new" in sys.argv or newRun:
             loadFiles = False
         else:
             loadFiles = True
 
         self.chooseActionFromNN = modelType == "NN"
         if self.chooseActionFromNN:
-            if modelParams.isDoubleDQN:
-                self.dqn = DoubleDQN(modelParams, nnDirectory, loadFiles)
-            else:
-                self.dqn = DQN(modelParams, nnDirectory, loadFiles)
+            self.dqn = DQN(modelParams, nnDirectory, loadFiles)
         else:
             self.dqn = None
 
@@ -235,11 +232,6 @@ class LearnWithReplayMngr:
 
         return s, a, r, s_, terminal
 
-    def TerminalState(self, s):
-        for v in self.terminalStates.values():
-            if np.array_equal(s, v):
-                return True
-        return False
     def end_run(self, r, score, steps):
         print("for trial#", self.NumRuns(), ": reward =", r, "score =", score)
 
@@ -492,10 +484,12 @@ class QLearningTable:
         return action
 
     def actionValuesVec(self, s):
+        self.check_state_exist(s)
         state_action = self.table.ix[s, :]
-        vals = []
-        for a in self.actions:
-            vals.append(state_action[a])
+        vals = np.zeros(len(self.actions), dtype=float)
+        for a in range(len(self.actions)):
+            vals[a] = state_action[self.actions[a]]
+
         return vals
     def NumRuns(self):
         return self.numTotRuns
@@ -507,6 +501,14 @@ class QLearningTable:
             self.check_state_exist(s)
             self.check_state_exist(s_)
             self.learnIMP(s, actionsVec[i], rewardsVec[i], s_, terminal[i])
+
+        for i in range(len(self.params.states2Monitor)):
+            state = str(self.params.states2Monitor[i][0])
+            actions2Print = self.params.states2Monitor[i][1]
+            vals = self.actionValuesVec(state)
+            for a in actions2Print:
+                print(vals[a], end = ", ")           
+            print("\n")
 
     def learnIMP(self, s, a, r, s_, terminal):
         q_predict = self.table.ix[s, a]

@@ -186,8 +186,6 @@ def ResultsFromTable(tableName, grouping, dataIdx):
     names = list(table.index)
     tableSize = len(names) -1
     results = np.zeros((2, tableSize), dtype  = float)
-    trialNum = 0
-    sumVal = 0
     subGroupingSizeAll = 0
     for name in names[:]:
         if name.isdigit():
@@ -208,7 +206,7 @@ def ResultsFromTable(tableName, grouping, dataIdx):
     
     groupResults = []
     timeLine = []
-    t = 0
+    t = grouping
     for i in range(groupSizes - 1, tableSize):
         res = sum(results[1, idxArray]) / groupSizes 
         groupResults.append(res)
@@ -537,9 +535,9 @@ try:
             plt.grid(True)
             plt.legend(tableNames, loc='best')
 
-        fileName = "results_"
+        fileName = "results"
         for table in tableNames[:]:
-            fileName += table + "_"
+            fileName += "_" + table 
         fileName += ".png"
 
         fig.savefig(fileName)
