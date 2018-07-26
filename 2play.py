@@ -12,7 +12,7 @@ from utils import TerranUnit
 from utils import SC2_Params
 from utils import SC2_Actions
 
-STEP_DURATION = 0
+STEP_DURATION = 0.2
 
 DO_NOTHING_SC2_ACTION = actions.FunctionCall(SC2_Actions.NO_OP, [])
 

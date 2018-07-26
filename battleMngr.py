@@ -7,32 +7,34 @@ import os.path
 
 import numpy as np
 import pandas as pd
+import tensorflow as tf
 
 from pysc2.agents import base_agent
 from pysc2.lib import actions
 
-import tensorflow as tf
+
+#sub-agents
+from baseAttack import BaseAttack
+from armyAttack import ArmyAttack
 
 from utils import TerranUnit
 from utils import SC2_Params
 from utils import SC2_Actions
 
-from utils_tables import TableMngr
-from utils_tables import TestTableMngr
-from utils_tables import LearnWithReplayMngr
-from utils_tables import QLearningTable
-from utils_tables import ResultFile
-from utils_tables import UserPlay
+#decision makers
+from utils_decisionMaker import LearnWithReplayMngr
+from utils_decisionMaker import UserPlay
 
-from utils_tables import DQN_PARAMS
-from utils_tables import DQN_EMBEDDING_PARAMS
-from utils_tables import QTableParams
-from utils_tables import QTableParamsExplorationDecay
+from utils_results import ResultFile
+from utils_results import PlotMngr
+
+# params
+from utils_dqn import DQN_PARAMS
+from utils_dqn import DQN_EMBEDDING_PARAMS
+from utils_qtable import QTableParams
+from utils_qtable import QTableParamsExplorationDecay
 
 from utils import SwapPnt
-from utils import PrintScreen
-from utils import PrintSpecificMat
-from utils import FindMiddle
 from utils import DistForCmp
 from utils import CenterPoints
 
@@ -46,6 +48,14 @@ def NumStateLocationsVal(gridSize):
 def NumStateVal(gridSize):
     return 3 * gridSize * gridSize + 1
 
+
+def NNFunc_2Layers(x, numActions, scope):
+    with tf.variable_scope(scope):
+        # Fully connected layers
+        fc1 = tf.contrib.layers.fully_connected(x, 256)
+        fc2 = tf.contrib.layers.fully_connected(fc1, 256)
+        output = tf.contrib.layers.fully_connected(fc2, numActions, activation_fn = tf.nn.sigmoid) * 2 - 1
+    return output
 
 #physical actions from q table
 ACTION_DO_NOTHING = 0
@@ -71,21 +81,16 @@ for key,value in TerranUnit.UNIT_SPEC.items():
 
 # possible types of play
 
-DQN_GS5_ARMY_ATTACK_NOILLIGAL = 'dqnGS5_ArmyAttack_NoIlligal'
-DQN_GS5_ARMY_ATTACK_NOILLIGAL_DONOTHING = 'dqnGS5_ArmyAttack_NoIlligalDoNothing'
-DQN_GS5_BASE_ATTACK_NOILLIGAL = 'dqnGS5_BaseAttack_NoIlligal'
-DQN_GS5_DIRECT_BASE_BUILDING_WEIGHTS = 'dqnGS5_DirectBase_buildingWeights'
-DQN_GS5_EMBEDDING_LOCATIONS = 'dqnGS5_ArmyAttack_NoIlligalDoNothing_Embedding' 
+QTABLE_GS5 = 'qGS5'
+DQN_GS5_ARMY = 'dqnGS5'
+DQN_GS5_EMBEDDING_LOCATIONS = 'dqnGS5_Embedding' 
+DQN_GS5_2LAYERS = 'dqnGS5_2Layers' 
 
-DQN_GS5_BASE = 'dqnGS5_BaseAttack'
-DQN_GS5_BASE_EMBEDDING_LOCATIONS = 'dqnGS5_BaseAttack_Embedding' 
-DQN_GS5_BASE_EMBEDDING_LOCATIONS_REUSE = 'dqnGS5_BaseAttack_EmbeddingReuse' 
+NAIVE_DECISION = 'naive'
 
 USER_PLAY = 'play'
 
-ALL_TYPES = set([USER_PLAY, DQN_GS5_DIRECT_BASE_BUILDING_WEIGHTS, DQN_GS5_ARMY_ATTACK_NOILLIGAL, DQN_GS5_BASE_ATTACK_NOILLIGAL, 
-            DQN_GS5_ARMY_ATTACK_NOILLIGAL_DONOTHING, DQN_GS5_EMBEDDING_LOCATIONS,
-            DQN_GS5_BASE, DQN_GS5_BASE_EMBEDDING_LOCATIONS, DQN_GS5_BASE_EMBEDDING_LOCATIONS_REUSE])
+ALL_TYPES = set([USER_PLAY, QTABLE_GS5, DQN_GS5_ARMY, DQN_GS5_EMBEDDING_LOCATIONS, DQN_GS5_2LAYERS, NAIVE_DECISION])
 
 def BaseTestSet(gridSize):    
     testSet = []
@@ -121,7 +126,7 @@ def BaseTestSet(gridSize):
 
     return testSet
 
-# table type
+# data for run type
 TYPE = "type"
 NN = "nn"
 Q_TABLE_INPUT = "q_using"
@@ -133,136 +138,102 @@ RESULTS = "results"
 PARAMS = 'params'
 GRIDSIZE_key = 'gridsize'
 BUILDING_VALUES_key = 'buildingValues'
+DIRECTORY = 'directory'
 
 # table names
 RUN_TYPES = {}
 
-def build_nn_sig(x, numActions, scope = 'dqn', nameChar = 'l'):
-    with tf.variable_scope(scope):
-        # Fully connected layers
-        fc1 = tf.contrib.layers.fully_connected(x, 512)
-        output = tf.contrib.layers.fully_connected(fc1, numActions, activation_fn = tf.nn.sigmoid) * 2 - 1
-    return output
 
-def build_nn_processedState(x, numActions, scope = 'dqn', nameChar = 'l'):
-    with tf.variable_scope(scope):
-        # Fully connected layers
-        fc1 = tf.contrib.layers.fully_connected(x, 512)
-        output = tf.contrib.layers.fully_connected(fc1, numActions)
-    return output
+RUN_TYPES[QTABLE_GS5] = {}
+RUN_TYPES[QTABLE_GS5][TYPE] = "QReplay"
+RUN_TYPES[QTABLE_GS5][GRIDSIZE_key] = 5
+RUN_TYPES[QTABLE_GS5][PARAMS] = QTableParamsExplorationDecay(NumStateVal(5), NumActions(5), states2Monitor = BaseTestSet(5))
+RUN_TYPES[QTABLE_GS5][NN] = ""
+RUN_TYPES[QTABLE_GS5][Q_TABLE] = "battleMngr_qGS5_qtable"
+RUN_TYPES[QTABLE_GS5][HISTORY] = "battleMngr_qGS5_replayHistory"
+RUN_TYPES[QTABLE_GS5][RESULTS] = "battleMngr_qGS5_result"
 
-    # Define the neural network
-def build_dqn_0init(x, numActions, scope):
-    with tf.variable_scope(scope):
-        # Fully connected layers
-        fc1 = tf.contrib.layers.fully_connected(x, 512, activation_fn = tf.nn.softplus, weights_initializer=tf.zeros_initializer())
-        output = tf.contrib.layers.fully_connected(fc1, numActions, activation_fn = tf.nn.sigmoid, weights_initializer=tf.zeros_initializer()) * 2 - 1
-    return output
-
-RUN_TYPES[DQN_GS5_ARMY_ATTACK_NOILLIGAL] = {}
-RUN_TYPES[DQN_GS5_ARMY_ATTACK_NOILLIGAL][TYPE] = "NN"
-RUN_TYPES[DQN_GS5_ARMY_ATTACK_NOILLIGAL][GRIDSIZE_key] = 5
-RUN_TYPES[DQN_GS5_ARMY_ATTACK_NOILLIGAL][PARAMS] = DQN_PARAMS(NumStateVal(5), NumActions(5), states2Monitor = BaseTestSet(5))
-RUN_TYPES[DQN_GS5_ARMY_ATTACK_NOILLIGAL][NN] = "battleMngr_dqnGS5_ArmyAttack_NoIlligal_DQN"
-RUN_TYPES[DQN_GS5_ARMY_ATTACK_NOILLIGAL][Q_TABLE] = ""
-RUN_TYPES[DQN_GS5_ARMY_ATTACK_NOILLIGAL][HISTORY] = "battleMngr_dqnGS5_ArmyAttack_NoIlligal_replayHistory"
-RUN_TYPES[DQN_GS5_ARMY_ATTACK_NOILLIGAL][RESULTS] = "battleMngr_dqnGS5_ArmyAttack_NoIlligal_result"
-
-RUN_TYPES[DQN_GS5_ARMY_ATTACK_NOILLIGAL_DONOTHING] = {}
-RUN_TYPES[DQN_GS5_ARMY_ATTACK_NOILLIGAL_DONOTHING][TYPE] = "NN"
-RUN_TYPES[DQN_GS5_ARMY_ATTACK_NOILLIGAL_DONOTHING][GRIDSIZE_key] = 5
-RUN_TYPES[DQN_GS5_ARMY_ATTACK_NOILLIGAL_DONOTHING][PARAMS] = DQN_PARAMS(NumStateVal(5), NumActions(5), states2Monitor = BaseTestSet(5))
-RUN_TYPES[DQN_GS5_ARMY_ATTACK_NOILLIGAL_DONOTHING][NN] = "battleMngr_dqnGS5_ArmyAttack_NoIlligalDoNothing_DQN"
-RUN_TYPES[DQN_GS5_ARMY_ATTACK_NOILLIGAL_DONOTHING][Q_TABLE] = ""
-RUN_TYPES[DQN_GS5_ARMY_ATTACK_NOILLIGAL_DONOTHING][HISTORY] = "battleMngr_dqnGS5_ArmyAttack_NoIlligalDoNothing_replayHistory"
-RUN_TYPES[DQN_GS5_ARMY_ATTACK_NOILLIGAL_DONOTHING][RESULTS] = "battleMngr_dqnGS5_ArmyAttack_NoIlligalDoNothing_result"
+RUN_TYPES[DQN_GS5_ARMY] = {}
+RUN_TYPES[DQN_GS5_ARMY][TYPE] = "NN"
+RUN_TYPES[DQN_GS5_ARMY][GRIDSIZE_key] = 5
+RUN_TYPES[DQN_GS5_ARMY][PARAMS] = DQN_PARAMS(NumStateVal(5), 3, states2Monitor = BaseTestSet(5))
+RUN_TYPES[DQN_GS5_ARMY][NN] = "battleMngr_dqnGS5_DQN"
+RUN_TYPES[DQN_GS5_ARMY][Q_TABLE] = ""
+RUN_TYPES[DQN_GS5_ARMY][HISTORY] = "battleMngr_dqnGS5_replayHistory"
+RUN_TYPES[DQN_GS5_ARMY][RESULTS] = "battleMngr_dqnGS5_result"
 
 RUN_TYPES[DQN_GS5_EMBEDDING_LOCATIONS] = {}
 RUN_TYPES[DQN_GS5_EMBEDDING_LOCATIONS][TYPE] = "NN"
 RUN_TYPES[DQN_GS5_EMBEDDING_LOCATIONS][GRIDSIZE_key] = 5
-RUN_TYPES[DQN_GS5_EMBEDDING_LOCATIONS][PARAMS] = DQN_EMBEDDING_PARAMS(NumStateVal(5), NumStateLocationsVal(5), NumActions(5), states2Monitor = BaseTestSet(5))
-RUN_TYPES[DQN_GS5_EMBEDDING_LOCATIONS][NN] = "battleMngr_dqnGS5_ArmyAttack_NoIlligalDoNothing_Embedding_DQN"
+RUN_TYPES[DQN_GS5_EMBEDDING_LOCATIONS][PARAMS] = DQN_EMBEDDING_PARAMS(NumStateVal(5), NumStateLocationsVal(5), 3, states2Monitor = BaseTestSet(5))
+RUN_TYPES[DQN_GS5_EMBEDDING_LOCATIONS][NN] = "battleMngr_dqnGS5_Embedding_DQN"
 RUN_TYPES[DQN_GS5_EMBEDDING_LOCATIONS][Q_TABLE] = ""
-RUN_TYPES[DQN_GS5_EMBEDDING_LOCATIONS][HISTORY] = "battleMngr_dqnGS5_ArmyAttack_NoIlligalDoNothing_Embedding_replayHistory"
-RUN_TYPES[DQN_GS5_EMBEDDING_LOCATIONS][RESULTS] = "battleMngr_dqnGS5_ArmyAttack_NoIlligalDoNothing_Embedding_result"
+RUN_TYPES[DQN_GS5_EMBEDDING_LOCATIONS][HISTORY] = "battleMngr_dqnGS5_Embedding_replayHistory"
+RUN_TYPES[DQN_GS5_EMBEDDING_LOCATIONS][RESULTS] = "battleMngr_dqnGS5_Embedding_result"
 
-RUN_TYPES[DQN_GS5_BASE_ATTACK_NOILLIGAL] = {}
-RUN_TYPES[DQN_GS5_BASE_ATTACK_NOILLIGAL][TYPE] = "NN"
-RUN_TYPES[DQN_GS5_BASE_ATTACK_NOILLIGAL][GRIDSIZE_key] = 5
-RUN_TYPES[DQN_GS5_BASE_ATTACK_NOILLIGAL][PARAMS] = DQN_PARAMS(NumStateVal(5), NumActions(5), states2Monitor = BaseTestSet(5))
-RUN_TYPES[DQN_GS5_BASE_ATTACK_NOILLIGAL][NN] = "battleMngr_dqnGS5_BaseAttack_NoIlligal_DQN"
-RUN_TYPES[DQN_GS5_BASE_ATTACK_NOILLIGAL][Q_TABLE] = ""
-RUN_TYPES[DQN_GS5_BASE_ATTACK_NOILLIGAL][HISTORY] = "battleMngr_dqnGS5_BaseAttack_NoIlligal_replayHistory"
-RUN_TYPES[DQN_GS5_BASE_ATTACK_NOILLIGAL][RESULTS] = "battleMngr_dqnGS5_BaseAttack_NoIlligal_result"
-
-
-
-RUN_TYPES[DQN_GS5_DIRECT_BASE_BUILDING_WEIGHTS] = {}
-RUN_TYPES[DQN_GS5_DIRECT_BASE_BUILDING_WEIGHTS][TYPE] = "NN"
-RUN_TYPES[DQN_GS5_DIRECT_BASE_BUILDING_WEIGHTS][BUILDING_VALUES_key] = True
-RUN_TYPES[DQN_GS5_DIRECT_BASE_BUILDING_WEIGHTS][GRIDSIZE_key] = 5
-RUN_TYPES[DQN_GS5_DIRECT_BASE_BUILDING_WEIGHTS][PARAMS] = DQN_PARAMS(NumStateVal(5), NumActions(5), states2Monitor = BaseTestSet(5))
-RUN_TYPES[DQN_GS5_DIRECT_BASE_BUILDING_WEIGHTS][NN] = "battleMngr_dqnGS5_DirectBaseAttack_BuildingWeights_DQN"
-RUN_TYPES[DQN_GS5_DIRECT_BASE_BUILDING_WEIGHTS][Q_TABLE] = ""
-RUN_TYPES[DQN_GS5_DIRECT_BASE_BUILDING_WEIGHTS][HISTORY] = "battleMngr_dqnGS5_DirectBaseAttack_BuildingWeights_replayHistory"
-RUN_TYPES[DQN_GS5_DIRECT_BASE_BUILDING_WEIGHTS][RESULTS] = "battleMngr_dqnGS5_DirectBaseAttack_BuildingWeights_result"
-
-RUN_TYPES[DQN_GS5_BASE] = {}
-RUN_TYPES[DQN_GS5_BASE][TYPE] = "NN"
-RUN_TYPES[DQN_GS5_BASE][GRIDSIZE_key] = 5
-RUN_TYPES[DQN_GS5_BASE][PARAMS] = DQN_PARAMS(NumStateVal(5), NumActions(5), states2Monitor = BaseTestSet(5))
-RUN_TYPES[DQN_GS5_BASE][NN] = "battleMngr_dqnGS5_BaseAttack_DQN"
-RUN_TYPES[DQN_GS5_BASE][Q_TABLE] = ""
-RUN_TYPES[DQN_GS5_BASE][HISTORY] = "battleMngr_dqnGS5_BaseAttack_replayHistory"
-RUN_TYPES[DQN_GS5_BASE][RESULTS] = "battleMngr_dqnGS5_BaseAttack_result"
-
-
-RUN_TYPES[DQN_GS5_BASE_EMBEDDING_LOCATIONS] = {}
-RUN_TYPES[DQN_GS5_BASE_EMBEDDING_LOCATIONS][TYPE] = "NN"
-RUN_TYPES[DQN_GS5_BASE_EMBEDDING_LOCATIONS][GRIDSIZE_key] = 5
-RUN_TYPES[DQN_GS5_BASE_EMBEDDING_LOCATIONS][PARAMS] = DQN_EMBEDDING_PARAMS(NumStateVal(5), NumStateLocationsVal(5), NumActions(5), states2Monitor = BaseTestSet(5))
-RUN_TYPES[DQN_GS5_BASE_EMBEDDING_LOCATIONS][NN] = "battleMngr_dqnGS5_BaseAttack_Embedding_DQN"
-RUN_TYPES[DQN_GS5_BASE_EMBEDDING_LOCATIONS][Q_TABLE] = ""
-RUN_TYPES[DQN_GS5_BASE_EMBEDDING_LOCATIONS][HISTORY] = "battleMngr_dqnGS5_BaseAttack_Embedding_replayHistory"
-RUN_TYPES[DQN_GS5_BASE_EMBEDDING_LOCATIONS][RESULTS] = "battleMngr_dqnGS5_BaseAttack_Embedding_result"
-
-# trained network after 15400 games in armyattack
-RUN_TYPES[DQN_GS5_BASE_EMBEDDING_LOCATIONS_REUSE] = {}
-RUN_TYPES[DQN_GS5_BASE_EMBEDDING_LOCATIONS_REUSE][TYPE] = "NN"
-RUN_TYPES[DQN_GS5_BASE_EMBEDDING_LOCATIONS_REUSE][GRIDSIZE_key] = 5
-RUN_TYPES[DQN_GS5_BASE_EMBEDDING_LOCATIONS_REUSE][PARAMS] = DQN_EMBEDDING_PARAMS(NumStateVal(5), NumStateLocationsVal(5), NumActions(5), states2Monitor = BaseTestSet(5))
-RUN_TYPES[DQN_GS5_BASE_EMBEDDING_LOCATIONS_REUSE][NN] = "battleMngr_dqnGS5_ArmyAttack_NoIlligalDoNothing_Embedding_DQN"
-RUN_TYPES[DQN_GS5_BASE_EMBEDDING_LOCATIONS_REUSE][Q_TABLE] = ""
-RUN_TYPES[DQN_GS5_BASE_EMBEDDING_LOCATIONS_REUSE][HISTORY] = "battleMngr_dqnGS5_BaseAttack_EmbeddingReuse_replayHistory"
-RUN_TYPES[DQN_GS5_BASE_EMBEDDING_LOCATIONS_REUSE][RESULTS] = "battleMngr_dqnGS5_BaseAttack_EmbeddingReuse_result"
+RUN_TYPES[DQN_GS5_2LAYERS] = {}
+RUN_TYPES[DQN_GS5_2LAYERS][TYPE] = "NN"
+RUN_TYPES[DQN_GS5_2LAYERS][GRIDSIZE_key] = 5
+RUN_TYPES[DQN_GS5_2LAYERS][PARAMS] = DQN_PARAMS(NumStateVal(5), 3, states2Monitor = BaseTestSet(5), nn_Func = NNFunc_2Layers)
+RUN_TYPES[DQN_GS5_2LAYERS][NN] = "battleMngr_dqnGS5_2Layers_DQN"
+RUN_TYPES[DQN_GS5_2LAYERS][Q_TABLE] = ""
+RUN_TYPES[DQN_GS5_2LAYERS][HISTORY] = "battleMngr_dqnGS5_2Layers_replayHistory"
+RUN_TYPES[DQN_GS5_2LAYERS][RESULTS] = "battleMngr_dqnGS5_2Layers_result"
 
 
 RUN_TYPES[USER_PLAY] = {}
 RUN_TYPES[USER_PLAY][GRIDSIZE_key] = 5
-RUN_TYPES[USER_PLAY][Q_TABLE_INPUT] = "meleeAgent_qGS5_qtable"
 RUN_TYPES[USER_PLAY][TYPE] = "play"
-    
-DO_NOTHING_SC2_ACTION = actions.FunctionCall(SC2_Actions.NO_OP, [])
+
+RUN_TYPES[NAIVE_DECISION] = {}
+RUN_TYPES[NAIVE_DECISION][GRIDSIZE_key] = 5
+RUN_TYPES[NAIVE_DECISION][RESULTS] = "battleMngr_naive_result"
+RUN_TYPES[NAIVE_DECISION][TYPE] = "naive"
+
+class NaiveDecisionMakerMngr:
+    def __init__(self, gridSize, resultFName, armyAttackAction = 1, buildingAttackAction = 2, doNothingAction = 0):
+        self.resultsFile = ResultFile(resultFName)
+        
+        self.gridSize = gridSize
+        self.startEnemyMat = gridSize * gridSize
+        self.startBuildingMat = 2 * gridSize * gridSize
+        self.endBuildingMat = 3 * gridSize * gridSize
+
+        self.armyAttackAction = armyAttackAction
+        self.buildingAttackAction = buildingAttackAction
+        self.doNothingAction = doNothingAction
+        self.numActions = 3
+
+    def choose_action(self, observation):
+        if (observation[self.startEnemyMat:self.startBuildingMat] > 0).any():
+            return self.armyAttackAction
+        elif (observation[self.startBuildingMat:self.endBuildingMat] > 0).any():
+            return self.buildingAttackAction
+        else:
+            return self.doNothingAction
+
+    def learn(self, s, a, r, s_, terminal = False):
+        # if r != 0:
+        #     print(r)
+        return None
+    def actionValuesVec(self,state):
+        return np.zeros(self.numActions,dtype = float)
+    def end_run(self, r, score = 0 ,steps = 0):
+        self.resultsFile.end_run(r,score,steps, True)
+        return True
+    def ExploreProb(self):
+        return 0
+
 
 STEP_DURATION = 0
 
-#Local actions coordinates
-TO_MOVE = 4
-GOTO_CHANGE = {}
-GOTO_CHANGE[ACTION_NORTH] = [-TO_MOVE , 0]
-GOTO_CHANGE[ACTION_SOUTH] = [TO_MOVE , 0]
-GOTO_CHANGE[ACTION_EAST] = [0 , TO_MOVE]
-GOTO_CHANGE[ACTION_WEST] = [0 , -TO_MOVE]
-GOTO_CHANGE[ACTION_NORTH_EAST] = [-TO_MOVE , TO_MOVE]
-GOTO_CHANGE[ACTION_NORTH_WEST] = [-TO_MOVE , -TO_MOVE]
-GOTO_CHANGE[ACTION_SOUTH_EAST] = [TO_MOVE , TO_MOVE]
-GOTO_CHANGE[ACTION_SOUTH_WEST] = [TO_MOVE , -TO_MOVE]
+DO_NOTHING_SC2_ACTION = actions.FunctionCall(SC2_Actions.NO_OP, [])
+STOP_SC2_ACTION = actions.FunctionCall(SC2_Actions.STOP, [SC2_Params.NOT_QUEUED])
 
-
-
+TRAIN_POSSIBIITIES = ["mngr", "army", "base"]
 class Attack(base_agent.BaseAgent):
     def __init__(self):        
-        super(Attack, self).__init__()
+        super(Attack, self).__init__()   
 
         runTypeArg = ALL_TYPES.intersection(sys.argv)
         if len(runTypeArg) != 1:
@@ -270,13 +241,88 @@ class Attack(base_agent.BaseAgent):
             exit() 
 
         runArg = runTypeArg.pop()
+
+        if "mngr" in sys.argv:
+            self.battleMngr = Mngr(True, runArg)
+            self.isMngrTrain = True
+            self.mainAgent = self.battleMngr
+        else:
+            self.battleMngr = Mngr(False, runArg)
+            self.isMngrTrain = False
+
+
+        #sess = self.battleMngr.decisionMaker.dqn.sess
+        if "army" in sys.argv:
+            self.armyAttack = ArmyAttack(True, runArg)
+            self.mainAgent = self.armyAttack
+        else:
+            self.armyAttack = ArmyAttack(False, "dqnGS5_Embedding")
+            #self.armyAttack = ArmyAttack(False, runArg)
+
+        if "base" in sys.argv: 
+            self.baseAttack = BaseAttack(True, runArg)
+            self.mainAgent = self.baseAttack
+        else:
+            self.baseAttack = BaseAttack(False, "dqnGS5_Embedding")
+            #self.baseAttack = BaseAttack(False, runArg)
+
+    def step(self, obs):
+        super(Attack, self).step(obs)
+        if self.isMngrTrain:
+            if obs.first():
+                self.baseAttack.FirstStep(obs)
+                self.armyAttack.FirstStep(obs)
+            
+            a = self.mainAgent.step(obs)
+            return self.Action2SC2Action(obs,a)
+        else:
+            return self.mainAgent.step(obs)
+
+    def Action2SC2Action(self, obs, a):
+        if a == self.battleMngr.action_BaseAttack:
+            subAction = self.baseAttack.step(obs)
+            sc2Action = self.baseAttack.Action2SC2Action(obs, subAction)
+        elif a == self.battleMngr.action_ArmyAttack:
+            subAction = self.armyAttack.step(obs)
+            sc2Action = self.armyAttack.Action2SC2Action(obs, subAction)
+        else:
+            if SC2_Actions.STOP in obs.observation['available_actions']:
+                sc2Action = STOP_SC2_ACTION
+            else:
+                sc2Action = DO_NOTHING_SC2_ACTION
+        
+        return sc2Action
+
+
+
+class Mngr(base_agent.BaseAgent):
+    def __init__(self, mainAgent = True, runArg = '', tfSession = None):        
+        super(Mngr, self).__init__()
+
+        self.mainAgent = mainAgent
+
+        self.illigalmoveSolveInModel = True
+
+        if runArg == '':
+            runTypeArg = ALL_TYPES.intersection(sys.argv)
+            if len(runTypeArg) != 1:
+                print("\n\nplay type not entered correctly\n\n")
+                exit() 
+
+            runArg = runTypeArg.pop()
+
         runType = RUN_TYPES[runArg]
 
+        self.current_action = None
+        self.armyExist = True
+        self.buildingsExist = True
         # state and actions:
 
-        self.current_action = None
         self.gridSize = runType[GRIDSIZE_key]
-        self.numActions = self.gridSize * self.gridSize + 1
+        self.numActions = 3
+        self.action_DoNothing = 0
+        self.action_ArmyAttack = 1
+        self.action_BaseAttack = 2
 
         self.state_startSelfMat = 0
         self.state_startEnemyMat = self.gridSize * self.gridSize
@@ -284,23 +330,8 @@ class Attack(base_agent.BaseAgent):
         self.state_timeLineIdx = 3 * self.gridSize * self.gridSize
 
         self.state_size = 3 * self.gridSize * self.gridSize + 1
-        self.terminalStates = self.TerminalStates()
+        self.terminalState = np.zeros(self.state_size, dtype=np.int, order='C')
         
-        self.doNtohingStop = True
-        self.illigalmoveSolveInModel = True
-        self.illigalMoveReward = 0
-        # if runArg.find("NoIlligal") >= 0:
-        #     self.illigalMoveReward = 0
-        #     self.illigalmoveSolveInModel = True
-        # else:
-        #     self.illigalMoveReward = -1.0
-        #     self.illigalmoveSolveInModel = False
-
-        # if runArg.find("DoNothing") >= 0:
-        #     self.doNtohingStop = True
-        # else:
-        #     self.doNtohingStop = False
-
         self.BuildingValues = {}
         if BUILDING_VALUES_key in runType.keys():
             for spec in TerranUnit.BUILDING_SPEC.values():
@@ -314,97 +345,64 @@ class Attack(base_agent.BaseAgent):
             runType[PARAMS].stateSize = self.state_size
             self.decisionMaker = LearnWithReplayMngr(runType[TYPE], runType[PARAMS], runType[NN], runType[Q_TABLE], runType[RESULTS], runType[HISTORY])     
         elif runType[TYPE] == 'play':
-            self.doNtohingAction = actions.FunctionCall(SC2_Actions.STOP, [SC2_Params.NOT_QUEUED])
             self.decisionMaker = UserPlay(False)
+        elif runType[TYPE] == 'naive':
+            self.illigalmoveSolveInModel = False
+            self.decisionMaker = NaiveDecisionMakerMngr(self.gridSize, runType[RESULTS])
         else:
             print("\n\ninvalid run type\n\n")
             exit()
 
-        self.lastValidAttackAction = None
-        self.enemyArmyGridLoc2ScreenLoc = {}
-        self.enemyBuildingGridLoc2ScreenLoc = {}
-
-
     def step(self, obs):
-        super(Attack, self).step(obs)
+        super(Mngr, self).step(obs)   
+        
         if obs.first():
             return self.FirstStep(obs)
         elif obs.last():
              self.LastStep(obs)
              return DO_NOTHING_SC2_ACTION
             
-        self.sumReward += obs.reward
-        self.CreateState(obs)
-        if self.doNtohingStop and SC2_Actions.STOP in obs.observation['available_actions']:
-            sc2Action = actions.FunctionCall(SC2_Actions.STOP, [SC2_Params.NOT_QUEUED])
-        else:
-            sc2Action = DO_NOTHING_SC2_ACTION
-        if self.errorOccur:
-            return sc2Action
-        # print("\n")
-        # self.PrintState()
-        # print(self.enemyArmyGridLoc2ScreenLoc)
-        # print(self.enemyBuildingGridLoc2ScreenLoc)
 
-        self.numStep += 1
-        self.Learn()
+        self.CreateState(obs)
+        if self.mainAgent:
+            self.Learn()
+            time.sleep(STEP_DURATION)
         
         self.current_action = self.ChooseAction()
+
+        self.numStep += 1        
         time.sleep(STEP_DURATION)
 
-        if self.current_action < self.gridSize * self.gridSize:
-            validAction = False
-            if self.current_action in self.enemyArmyGridLoc2ScreenLoc.keys():   
-                goTo = self.enemyArmyGridLoc2ScreenLoc[self.current_action].copy()
-                validAction = True
-            elif self.current_action in self.enemyBuildingGridLoc2ScreenLoc.keys(): 
-                goTo = self.enemyBuildingGridLoc2ScreenLoc[self.current_action].copy()
-                validAction = True  
-                
-            if validAction:
-                if SC2_Actions.ATTACK_SCREEN in obs.observation['available_actions']:
-                    self.lastValidAttackAction = self.current_action
-                    sc2Action = actions.FunctionCall(SC2_Actions.ATTACK_SCREEN, [SC2_Params.NOT_QUEUED, SwapPnt(goTo)])
-            else:
-                self.prevReward += self.illigalMoveReward
+        # print("\n")
+        # self.PrintState()
+        return self.current_action
 
-                
-        return sc2Action
-
-    def FirstStep(self, obs):
+    def FirstStep(self, obs):        
         self.numStep = 0
 
         self.current_state = np.zeros(self.state_size, dtype=np.int, order='C')
         self.previous_state = np.zeros(self.state_size, dtype=np.int, order='C')
         
         self.current_action = None
-        self.lastValidAttackAction = self.gridSize * self.gridSize
-        self.enemyArmyGridLoc2ScreenLoc = {}
-        self.enemyBuildingGridLoc2ScreenLoc = {} 
-        self.selfLocCoord = None      
-        self.errorOccur = False
 
-        self.sumReward = 0
         self.prevReward = 0
 
         return actions.FunctionCall(SC2_Actions.SELECT_ARMY, [SC2_Params.NOT_QUEUED])
 
     def LastStep(self, obs):
-        if obs.reward > 0:
-            reward = 1
-            s_ = self.terminalStates["win"]
-        elif obs.reward < 0:
-            reward = -1
-            s_ = self.terminalStates["loss"]
-        else:
-            reward = -1
-            s_ = self.terminalStates["tie"]
+        if self.mainAgent:
+            if obs.reward > 0:
+                reward = 1
+            elif obs.reward < 0:
+                reward = -1
+            else:
+                reward = -1
 
-        if self.current_action is not None:
-            self.decisionMaker.learn(self.current_state.copy(), self.current_action, float(reward), s_, True)
+            if self.current_action is not None:
+                self.decisionMaker.learn(self.current_state.copy(), self.current_action, float(reward), self.terminalState.copy(), True)
 
-        score = obs.observation["score_cumulative"][0]
-        self.decisionMaker.end_run(reward, score, self.numStep)
+            score = obs.observation["score_cumulative"][0]
+            self.decisionMaker.end_run(reward, score, self.numStep)
     
     def Learn(self):
         if self.current_action is not None:
@@ -425,6 +423,7 @@ class Attack(base_agent.BaseAgent):
                 action = np.random.choice(validActions) 
         else:
             action = self.decisionMaker.choose_action(self.current_state)
+
         return action
 
     def CreateState(self, obs):
@@ -460,16 +459,12 @@ class Attack(base_agent.BaseAgent):
             unitPoints, unitPower = CenterPoints(enemyArmy_y, enemyArmy_x, spec.numScreenPixels)
             enemyPoints += unitPoints
             enemyPower += unitPower
-            
-        self.enemyArmyGridLoc2ScreenLoc = {}
+        
+        self.armyExist = False
         for i in range(len(enemyPoints)):
+            self.armyExist = True
             idx = self.GetScaledIdx(enemyPoints[i])
-            if idx in self.enemyArmyGridLoc2ScreenLoc.keys():
-                self.current_state[self.state_startEnemyMat + idx] += enemyPower[i]
-                self.enemyArmyGridLoc2ScreenLoc[idx] = self.Closest2Self(self.enemyArmyGridLoc2ScreenLoc[idx], enemyPoints[i])
-            else:
-                self.current_state[self.state_startEnemyMat + idx] = enemyPower[i]
-                self.enemyArmyGridLoc2ScreenLoc[idx] = enemyPoints[i]
+            self.current_state[self.state_startEnemyMat + idx] += enemyPower[i]
 
     def GetEnemyBuildingLoc(self, obs):
         playerType = obs.observation["screen"][SC2_Params.PLAYER_RELATIVE]
@@ -483,15 +478,12 @@ class Attack(base_agent.BaseAgent):
             enemyBuildingPoints += buildingPoints
             enemyBuildingPower += buildingPower * self.BuildingValues[spec.name]
         
-        self.enemyBuildingGridLoc2ScreenLoc = {}
+        self.buildingsExist = False
         for i in range(len(enemyBuildingPoints)):
+            self.buildingsExist = True
             idx = self.GetScaledIdx(enemyBuildingPoints[i])
-            if idx in self.enemyBuildingGridLoc2ScreenLoc.keys():
-                self.current_state[self.state_startBuildingMat + idx] += enemyBuildingPower[i]
-                self.enemyBuildingGridLoc2ScreenLoc[idx] = self.Closest2Self(self.enemyBuildingGridLoc2ScreenLoc[idx], enemyBuildingPoints[i])
-            else:
-                self.current_state[self.state_startBuildingMat + idx] = enemyBuildingPower[i]
-                self.enemyBuildingGridLoc2ScreenLoc[idx] = enemyBuildingPoints[i]        
+            self.current_state[self.state_startBuildingMat + idx] += enemyBuildingPower[i]
+     
        
     def GetScaledIdx(self, screenCord):
         locX = screenCord[SC2_Params.X_IDX]
@@ -511,26 +503,16 @@ class Attack(base_agent.BaseAgent):
             return p2
     
     def ValidActions(self):
-        locEnemy = list(self.enemyArmyGridLoc2ScreenLoc.keys())
-        locBuildings = list(self.enemyBuildingGridLoc2ScreenLoc.keys())
-            
-        return list(set(locEnemy + locBuildings + [self.gridSize * self.gridSize]))
-
-    def TerminalStates(self):
-        tStates = {}
-
-        state = np.zeros(self.state_size, dtype=np.int32, order='C')
-        state[0] = -1
-        tStates["win"] = state.copy()
-        state[0] = -2
-        tStates["tie"] = state.copy()
-        state[0] = -3
-        tStates["loss"] = state.copy()
-
-        return tStates
+        valid = [self.action_DoNothing]
+        if self.armyExist:
+            valid.append(self.action_ArmyAttack)
+        if self.buildingsExist:
+            valid.append(self.action_BaseAttack)
+        
+        return valid
 
     def PrintState(self):
-        print("\n\nstate: timeline =", self.current_state[self.state_timeLineIdx], "last attack action =", self.lastValidAttackAction)
+        print("\n\nstate: timeline =", self.current_state[self.state_timeLineIdx])
         for y in range(self.gridSize):
             for x in range(self.gridSize):
                 idx = self.state_startSelfMat + x + y * self.gridSize
@@ -553,3 +535,25 @@ class Attack(base_agent.BaseAgent):
 
             print('||')
 
+
+if __name__ == "__main__":
+    if "plotResults" in sys.argv:
+        runTypeArg = list(ALL_TYPES.intersection(sys.argv))
+        runTypeArg.sort()
+        resultFnames = []
+        directoryNames = []
+        for arg in runTypeArg:
+            runType = RUN_TYPES[arg]
+            fName = runType[RESULTS]
+            
+            if DIRECTORY in runType.keys():
+                dirName = runType[DIRECTORY]
+            else:
+                dirName = ''
+
+            resultFnames.append(fName)
+            directoryNames.append(dirName)
+
+        grouping = int(sys.argv[len(sys.argv) - 1])
+        plot = PlotMngr(resultFnames, directoryNames, runTypeArg)
+        plot.Plot(grouping)

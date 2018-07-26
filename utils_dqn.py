@@ -7,9 +7,44 @@ import os.path
 import tensorflow as tf
 import os
 
+from utils import ParamsBase
+
+# dqn params
+class DQN_PARAMS(ParamsBase):
+    def __init__(self, stateSize, numActions, historyProportion4Learn = 1, nn_Func = None, propogateReward = False, outputGraph = False, discountFactor = 0.95, batchSize = 32, maxReplaySize = 50000, minReplaySize = 1000, copyEvalToTarget = 5, explorationProb = 0.1, descendingExploration = True, exploreChangeRate = 0.0005, states2Monitor = [], scopeVarName = ''):
+        super(DQN_PARAMS, self).__init__(stateSize, numActions, historyProportion4Learn, propogateReward, discountFactor, maxReplaySize, minReplaySize)
+        
+        self.nn_Func = nn_Func
+        self.batchSize = batchSize
+
+        self.outputGraph = outputGraph
+        
+        self.copyEvalToTarget = copyEvalToTarget
+
+        self.explorationProb = explorationProb
+        self.descendingExploration = descendingExploration
+        self.exploreChangeRate = exploreChangeRate 
+
+        self.type = "DQN"
+        self.scopeVarName = scopeVarName
+        self.tfSession = None
+
+    def ExploreProb(self, numRuns, resultRatio = 1):
+        if self.descendingExploration:
+            return self.explorationProb + (1 - self.explorationProb) * np.exp(-self.exploreChangeRate * resultRatio * numRuns)
+        else:
+            return self.explorationProb
+
+class DQN_EMBEDDING_PARAMS(DQN_PARAMS):
+    def __init__(self, stateSize, embeddingInputSize, numActions, historyProportion4Learn = 1, nn_Func = None, propogateReward = False, outputGraph = False, discountFactor = 0.95, batchSize = 32, maxReplaySize = 50000, minReplaySize = 1000, copyEvalToTarget = 5, explorationProb = 0.1, descendingExploration = True, exploreChangeRate = 0.0005, states2Monitor = [], scopeVarName = ''):
+        super(DQN_EMBEDDING_PARAMS, self).__init__(stateSize, numActions, historyProportion4Learn, nn_Func, propogateReward, outputGraph, discountFactor, batchSize, maxReplaySize, minReplaySize, copyEvalToTarget, explorationProb, descendingExploration, exploreChangeRate, states2Monitor, scopeVarName)
+        
+        self.embeddingInputSize = embeddingInputSize
+        self.type = "DQN_Embedding"
+
 
 class DQN:
-    def __init__(self, modelParams, nnDirectory, loadNN, learning_rate = 0.001):
+    def __init__(self, modelParams, nnName, nnDirectory, loadNN, learning_rate = 0.001):
         # Parameters
         self.params = modelParams
         self.learning_rate = learning_rate
@@ -18,17 +53,21 @@ class DQN:
         self.num_input = modelParams.stateSize
         self.numActions = modelParams.numActions
 
-        self.inputLayer = tf.placeholder("float", [None, self.num_input]) 
- 
-        self.outputSingle = tf.placeholder(shape=[None], dtype=tf.float32, name="y")
-        # Integer id of which action was selected
-        self.actionSelected = tf.placeholder(shape=[None], dtype=tf.int32, name="actions")
+        self.directoryName = nnDirectory + nnName
 
         if self.params.scopeVarName == '':
-            scope = nnDirectory
+            scope = nnName
         else:
             scope = self.params.scopeVarName
-        self.numRuns =tf.get_variable(scope + ".numRuns", shape=(), initializer=tf.zeros_initializer())
+
+        with tf.variable_scope(scope):
+            self.inputLayer = tf.placeholder("float", [None, self.num_input]) 
+ 
+            self.outputSingle = tf.placeholder(shape=[None], dtype=tf.float32, name="y")
+        # Integer id of which action was selected
+            self.actionSelected = tf.placeholder(shape=[None], dtype=tf.int32, name="actions")
+
+            self.numRuns =tf.get_variable("numRuns", shape=(), initializer=tf.zeros_initializer())
     
         # Construct network
         if modelParams.type == "DQN_Embedding":
@@ -36,35 +75,41 @@ class DQN:
         else:
             self.outputLayer = self.build_dqn(modelParams.nn_Func, scope)
 
-        batch_size = tf.shape(self.inputLayer)[0]
+        with tf.variable_scope(scope):
+            batch_size = tf.shape(self.inputLayer)[0]
 
-        gather_indices = tf.range(batch_size) * tf.shape(self.outputLayer)[1] + self.actionSelected
-        action_predictions = tf.gather(tf.reshape(self.outputLayer, [-1]), gather_indices, name="action_selected_value")
-        boundedPrediction = tf.clip_by_value(action_predictions, -1.0, 1.0, name="clipped_action_selected_value")
+            gather_indices = tf.range(batch_size) * tf.shape(self.outputLayer)[1] + self.actionSelected
+            action_predictions = tf.gather(tf.reshape(self.outputLayer, [-1]), gather_indices, name="action_selected_value")
+            boundedPrediction = tf.clip_by_value(action_predictions, -1.0, 1.0, name="clipped_action_selected_value")
 
-        # Define loss and optimizer
-        lossFunc = tf.squared_difference(self.outputSingle, boundedPrediction)
-        self.loss_op = tf.reduce_mean(lossFunc + self.RegularizationFactor(), name="loss_func")
+            # Define loss and optimizer
+            lossFunc = tf.squared_difference(self.outputSingle, boundedPrediction)
+            self.loss_op = tf.reduce_mean(lossFunc + self.RegularizationFactor(), name="loss_func")
 
-        optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
-        self.train_op = optimizer.minimize(self.loss_op, name="train_func")
+            optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
+            self.train_op = optimizer.minimize(self.loss_op, name="train_func")
 
+
+        if modelParams.tfSession == None:
+            self.sess = tf.Session()    
+            if modelParams.outputGraph:
+                # $ tensorboard --logdir=logs
+                tf.summary.FileWriter(nnDirectory + "/", self.sess.graph)
+        
+        else: 
+            self.sess = modelParams.tfSession
+        
+        
         # Initializing session and variables
         init = tf.global_variables_initializer()
-
-        self.sess = tf.Session()
-        if modelParams.outputGraph:
-            # $ tensorboard --logdir=logs
-            tf.summary.FileWriter("logs/", self.sess.graph)
-        self.sess.run(init)        
-        
+        self.sess.run(init)  
 
         self.saver = tf.train.Saver()
-        self.directoryName = "./" + nnDirectory
         fnameNNMeta = self.directoryName + ".meta"
-        if os.path.isfile(fnameNNMeta):
-            if loadNN:
-                self.saver.restore(self.sess, self.directoryName)
+        if os.path.isfile(fnameNNMeta) and loadNN:
+            self.saver.restore(self.sess, self.directoryName)
+        else:
+            self.save_network()
 
         self.numStates2Check = len(self.params.states2Monitor)
 
@@ -82,11 +127,12 @@ class DQN:
     # Define the neural network
     def build_dqn_withEmbedding(self, NN_Func, scope):
         
-        embedSize = self.params.embeddingInputSize
-        restSize = self.params.stateSize - embedSize
-        
-        embeddingInput = tf.slice(self.inputLayer, [0,0], [-1,embedSize])
-        otherInput = tf.slice(self.inputLayer, [0,embedSize], [-1,restSize])
+        with tf.variable_scope(scope):
+            embedSize = self.params.embeddingInputSize
+            restSize = self.params.stateSize - embedSize
+            
+            embeddingInput = tf.slice(self.inputLayer, [0,0], [-1,embedSize])
+            otherInput = tf.slice(self.inputLayer, [0,embedSize], [-1,restSize])
         
         if NN_Func != None:
             return NN_Func(embeddingInput, otherInput, self.numActions, scope)   
@@ -97,6 +143,7 @@ class DQN:
             hiddenLayerInput = tf.concat([embeddingOut, otherInput], axis = 1)
             hiddenLayerOutput = tf.contrib.layers.fully_connected(hiddenLayerInput, 256)
             output = tf.contrib.layers.fully_connected(hiddenLayerOutput, self.numActions, activation_fn = tf.nn.sigmoid) * 2 - 1
+
         return output
 
     def RegularizationFactor(self):

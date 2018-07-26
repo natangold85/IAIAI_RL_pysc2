@@ -1,2 +1,2 @@
-model_checkpoint_path: "armyBattle_dqnGS5_DQN"
-all_model_checkpoint_paths: "armyBattle_dqnGS5_DQN"
+model_checkpoint_path: "maze_DTN"
+all_model_checkpoint_paths: "maze_DTN"

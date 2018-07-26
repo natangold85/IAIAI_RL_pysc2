@@ -521,7 +521,7 @@ try:
                 tableNames.append(sys.argv[i])
 
         tableCol = ['count', 'reward', 'score', '# of steps']
-        fig = plt.figure(1)
+        fig = plt.figure(figsize=(19.0, 11.0))
 
         for idx in range(1, 4):
             plt.subplot(2,2,idx)  
@@ -539,9 +539,10 @@ try:
         for table in tableNames[:]:
             fileName += "_" + table 
         fileName += ".png"
-
+        # full screen
+        mng = plt.get_current_fig_manager()
+        mng.window.state('zoomed')
         fig.savefig(fileName)
-
         plt.show()
 
     elif tableType == "resultChangeFormat":

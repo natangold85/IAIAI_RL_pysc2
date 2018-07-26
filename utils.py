@@ -6,42 +6,22 @@ from pysc2.agents import base_agent
 from pysc2.lib import actions
 from pysc2.lib import features
 
-class SC2_Actions:
-    # general actions
-    NO_OP = actions.FUNCTIONS.no_op.id
-    SELECT_POINT = actions.FUNCTIONS.select_point.id
-    SELECT_RECTANGLE = actions.FUNCTIONS.select_rect.id
-    STOP = actions.FUNCTIONS.Stop_quick.id
+#base class for all shared data classes
+class EmptySharedData:
+    def __init__(self):
+        return
 
-    MOVE_CAMERA = actions.FUNCTIONS.move_camera.id
-    HARVEST_GATHER = actions.FUNCTIONS.Harvest_Gather_screen.id
-    SELECT_IDLE_WORKER = actions.FUNCTIONS.select_idle_worker.id
-
-    # build actions
-    BUILD_SUPPLY_DEPOT = actions.FUNCTIONS.Build_SupplyDepot_screen.id
-    BUILD_BARRACKS = actions.FUNCTIONS.Build_Barracks_screen.id
-    BUILD_FACTORY = actions.FUNCTIONS.Build_Factory_screen.id
-    BUILD_OIL_REFINERY = actions.FUNCTIONS.Build_Refinery_screen.id
-
-    # building additions
-    BUILD_REACTOR = actions.FUNCTIONS.Build_Reactor_screen.id
-    BUILD_TECHLAB = actions.FUNCTIONS.Build_TechLab_screen.id
-
-    # train army action
-    TRAIN_REAPER = actions.FUNCTIONS.Train_Reaper_quick.id
-    TRAIN_MARINE = actions.FUNCTIONS.Train_Marine_quick.id
-
-    TRAIN_HELLION = actions.FUNCTIONS.Train_Hellion_quick.id
-    TRAIN_SIEGE_TANK = actions.FUNCTIONS.Train_SiegeTank_quick.id
-
-    SELECT_ARMY = actions.FUNCTIONS.select_army.id
-    MOVE_IN_SCREEN = actions.FUNCTIONS.Move_screen.id
-    ATTACK_MINIMAP = actions.FUNCTIONS.Attack_minimap.id
-    ATTACK_SCREEN = actions.FUNCTIONS.Attack_screen.id
-
-    
-
-
+# params base
+class ParamsBase:
+    def __init__(self, stateSize, numActions, historyProportion4Learn = 1, propogateReward = False, discountFactor = 0.95, maxReplaySize = 50000, minReplaySize = 1000, states2Monitor = []):
+        self.stateSize = stateSize
+        self.numActions = numActions
+        self.historyProportion4Learn = historyProportion4Learn
+        self.propogateReward = propogateReward
+        self.discountFactor = discountFactor
+        self.maxReplaySize = maxReplaySize
+        self.minReplaySize = minReplaySize
+        self.states2Monitor = states2Monitor
 
 class SC2_Params:
     # minimap feature
@@ -71,6 +51,7 @@ class SC2_Params:
     IDLE_WORKER_COUNT = 7
 
     # single and multi select table idx
+    UNIT_TYPE_IDX = 0
     BUILDING_COMPLETION_IDX = 6
 
     # multi and single select information
@@ -93,6 +74,51 @@ class SC2_Params:
     TOPLEFT_BASE_LOCATION = [23,18]
     BOTTOMRIGHT_BASE_LOCATION = [45,39]
 
+class SC2_Actions:
+    # general actions
+    NO_OP = actions.FUNCTIONS.no_op.id
+    SELECT_POINT = actions.FUNCTIONS.select_point.id
+    SELECT_RECTANGLE = actions.FUNCTIONS.select_rect.id
+    STOP = actions.FUNCTIONS.Stop_quick.id
+
+    MOVE_CAMERA = actions.FUNCTIONS.move_camera.id
+    HARVEST_GATHER = actions.FUNCTIONS.Harvest_Gather_screen.id
+    SELECT_IDLE_WORKER = actions.FUNCTIONS.select_idle_worker.id
+
+    # build actions
+    BUILD_SUPPLY_DEPOT = actions.FUNCTIONS.Build_SupplyDepot_screen.id
+    BUILD_BARRACKS = actions.FUNCTIONS.Build_Barracks_screen.id
+    BUILD_FACTORY = actions.FUNCTIONS.Build_Factory_screen.id
+    BUILD_OIL_REFINERY = actions.FUNCTIONS.Build_Refinery_screen.id
+
+    # building additions
+    # BUILD_REACTOR_QUICK = actions.FUNCTIONS.Build_Reactor_Barracks_quick.id 
+    # BUILD_TECHLAB_QUICK = actions.FUNCTIONS.Build_TechLab_quick.id 
+
+    BUILD_REACTOR = actions.FUNCTIONS.Build_Reactor_screen.id
+    BUILD_TECHLAB = actions.FUNCTIONS.Build_TechLab_screen.id
+
+    # train army action
+    TRAIN_REAPER = actions.FUNCTIONS.Train_Reaper_quick.id
+    TRAIN_MARINE = actions.FUNCTIONS.Train_Marine_quick.id
+
+    TRAIN_HELLION = actions.FUNCTIONS.Train_Hellion_quick.id
+    TRAIN_SIEGE_TANK = actions.FUNCTIONS.Train_SiegeTank_quick.id
+
+    # queue
+    BUILD_QUEUE = actions.FUNCTIONS.build_queue.id
+    
+    SELECT_ARMY = actions.FUNCTIONS.select_army.id
+    MOVE_IN_SCREEN = actions.FUNCTIONS.Move_screen.id
+    ATTACK_MINIMAP = actions.FUNCTIONS.Attack_minimap.id
+    ATTACK_SCREEN = actions.FUNCTIONS.Attack_screen.id
+
+    STOP_SC2_ACTION = actions.FunctionCall(STOP, [SC2_Params.NOT_QUEUED])
+    DO_NOTHING_SC2_ACTION = actions.FunctionCall(NO_OP, [])
+
+
+
+
 
 class TerranUnit:
     COMMANDCENTER = 18
@@ -103,6 +129,12 @@ class TerranUnit:
     FACTORY = 27
     REACTOR = 38
     TECHLAB = 39
+
+    MARINE = 48
+    REAPER = 49
+    MARAUDER = 51
+    HELLION = 53
+    SIEGE_TANK = 33
 
     ARMY= [53,40,48,49,33]
 
@@ -139,32 +171,36 @@ class TerranUnit:
     
     UNIT_SPEC = {}
     # army
-    UNIT_SPEC[48] = UnitDetails("marine", 9, 1, 'm')
+    UNIT_SPEC[MARINE] = UnitDetails("marine", 9, 1, 'm')
     # UNIT_SPEC[56] = UnitDetails("raven", 12, 2)
-    UNIT_SPEC[49] = UnitDetails("reaper", 9, 1, 'r')
-    UNIT_SPEC[51] = UnitDetails("marauder", 12, 2, 'a')
-    UNIT_SPEC[53] = UnitDetails("hellion", 12, 2, 'h')
-    UNIT_SPEC[33] = UnitDetails("siege tank", 32, 3, 't')
-
-
+    UNIT_SPEC[REAPER] = UnitDetails("reaper", 9, 1, 'r')
+    UNIT_SPEC[MARAUDER] = UnitDetails("marauder", 12, 2, 'a')
+    UNIT_SPEC[HELLION] = UnitDetails("hellion", 12, 2, 'h')
+    UNIT_SPEC[SIEGE_TANK] = UnitDetails("siege tank", 32, 3, 't')
 
     # lut:
 
-    BUILDING_NAMES = {}
+    UNIT_NAMES = {}
     BUILDING_SIZES = {}
     BUILDING_MINIMAP_SIZES = {}
 
-    BUIILDING_2_SC2ACTIONS = {}
+    UNIT_2_SC2ACTIONS = {}
     UNIT_CHAR = {}
 
-    BUILDING_NAMES[COMMANDCENTER] = "CommandCenter"
-    BUILDING_NAMES[SUPPLY_DEPOT] = "SupplyDepot"
-    BUILDING_NAMES[BARRACKS] = "Barracks"
-    BUILDING_NAMES[FACTORY] = "Factory"
-    BUILDING_NAMES[OIL_REFINERY] = "OilRefinery"
+    UNIT_NAMES[COMMANDCENTER] = "CommandCenter"
+    UNIT_NAMES[SUPPLY_DEPOT] = "SupplyDepot"
+    UNIT_NAMES[BARRACKS] = "Barracks"
+    UNIT_NAMES[FACTORY] = "Factory"
+    UNIT_NAMES[OIL_REFINERY] = "OilRefinery"
 
-    BUILDING_NAMES[REACTOR] = "Reactor"
-    BUILDING_NAMES[TECHLAB] = "TechLab"
+    UNIT_NAMES[REACTOR] = "Reactor"
+    UNIT_NAMES[TECHLAB] = "TechLab"
+
+    UNIT_NAMES[MARINE] = "marine"
+    UNIT_NAMES[REAPER] = "reaper"
+    UNIT_NAMES[HELLION] = "hellion"
+    UNIT_NAMES[SIEGE_TANK] = "siege_tank"
+
 
     BUILDING_SIZES[SUPPLY_DEPOT] = 9
     BUILDING_SIZES[BARRACKS] = 12
@@ -181,10 +217,18 @@ class TerranUnit:
     BUILDING_MINIMAP_SIZES[REACTOR] = 5
     BUILDING_MINIMAP_SIZES[TECHLAB] = 5
 
-    BUIILDING_2_SC2ACTIONS[OIL_REFINERY] = SC2_Actions.BUILD_OIL_REFINERY
-    BUIILDING_2_SC2ACTIONS[SUPPLY_DEPOT] = SC2_Actions.BUILD_SUPPLY_DEPOT
-    BUIILDING_2_SC2ACTIONS[BARRACKS] = SC2_Actions.BUILD_BARRACKS
-    BUIILDING_2_SC2ACTIONS[FACTORY] = SC2_Actions.BUILD_FACTORY
+    UNIT_2_SC2ACTIONS[OIL_REFINERY] = SC2_Actions.BUILD_OIL_REFINERY
+    UNIT_2_SC2ACTIONS[SUPPLY_DEPOT] = SC2_Actions.BUILD_SUPPLY_DEPOT
+    UNIT_2_SC2ACTIONS[BARRACKS] = SC2_Actions.BUILD_BARRACKS
+    UNIT_2_SC2ACTIONS[FACTORY] = SC2_Actions.BUILD_FACTORY
+    
+    UNIT_2_SC2ACTIONS[REACTOR] = SC2_Actions.BUILD_REACTOR
+    UNIT_2_SC2ACTIONS[TECHLAB] = SC2_Actions.BUILD_TECHLAB
+
+    UNIT_2_SC2ACTIONS[MARINE] = SC2_Actions.TRAIN_MARINE
+    UNIT_2_SC2ACTIONS[REAPER] = SC2_Actions.TRAIN_REAPER
+    UNIT_2_SC2ACTIONS[HELLION] = SC2_Actions.TRAIN_HELLION
+    UNIT_2_SC2ACTIONS[SIEGE_TANK] = SC2_Actions.TRAIN_SIEGE_TANK
 
     UNIT_CHAR[0] = '_'
     UNIT_CHAR[COMMANDCENTER] = 'C'
@@ -207,6 +251,13 @@ class TerranUnit:
     for army in ARMY[:]:
         UNIT_CHAR[army] = 'a'
         
+
+def GetUnitId(name):
+    for uId, unit in TerranUnit.UNIT_SPEC.items():
+        if unit.name == name:
+            return uId
+    
+    return -1
 
 # utils function
 def Min(points):
@@ -750,3 +801,25 @@ def Grouping(y, x):
         groups = newGroups
 
     return groups
+
+neighbors2Check = []
+
+neighbors2Check.append([-1,-2])
+neighbors2Check.append([-2,-1])
+def SelectBuildingValidPoint(unit_type, buildingType, y = None, x = None):
+    if y == None:
+        y, x = (unit_type == buildingType).nonzero()
+
+    if len(y) == 0:
+        return [-1,-1]
+    idx = 0
+    for i in range(len(y)):
+        valid = True
+        for neighbor in neighbors2Check:
+            if unit_type[y[i] + neighbor[0]][x[i] + neighbor[1]] != buildingType:
+                valid = False
+        if valid:
+            idx = i
+            break
+
+    return y[idx], x[idx]
