@@ -85,15 +85,6 @@ class ACTIONS:
     ACTION_2_BUILDING_TRANSITION[ID_BUILD_BARRACKS_REACTOR] = [TerranUnit.BARRACKS, TerranUnit.REACTOR]
     ACTION_2_BUILDING_TRANSITION[ID_BUILD_FACTORY_TECHLAB] = [TerranUnit.FACTORY, TerranUnit.TECHLAB]
 
-    DO_NOTHING_BUILDING_CHECK = [TerranUnit.COMMANDCENTER, TerranUnit.SUPPLY_DEPOT, TerranUnit.OIL_REFINERY, TerranUnit.BARRACKS, TerranUnit.FACTORY]
-
-    # active observations actions
-    DONOTHING_NOTHING = 0
-    DONOTHING_LAND_FACTORY = 1
-    DONOTHING_LAND_BARRACKS = 2
-    DONOTHING_IDLE_WORKER = 3
-    DONOTHING_RETURN_SCREEN = 4
-
 class STATE:
     # state details
     MINERALS_MAX = 500
@@ -135,7 +126,6 @@ class ActionRequirement:
         self.gasPrice = gasPrice
         self.buildingDependency = buildingDependency
 
-DO_NOTHING_SC2_ACTION = actions.FunctionCall(SC2_Actions.NO_OP, [])
 
 
 # table names
@@ -185,10 +175,12 @@ class BuildBaseSubAgent:
         runType = RUN_TYPES[runArg]
 
         self.illigalmoveSolveInModel = True
+        self.discountFactor = 0.95
         # tables:
         if runType[TYPE] == "QReplay" or runType[TYPE] == "NN":
+            self.discountFactor = runType[PARAMS].discountFactor
             self.decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], dqnName = runType[NN], qTableName = runType[Q_TABLE], 
-                                                    resultFileName = runType[RESULTS], historyFileName=runType[HISTORY], directory=runType[DIRECTORY])
+                                                    resultFileName = runType[RESULTS], historyFileName=runType[HISTORY], directory=runType[DIRECTORY], numTrials2Learn=1)
         else:
             self.decisionMaker = UserPlay(False)
 
@@ -211,7 +203,7 @@ class BuildBaseSubAgent:
 
         self.maxNumOilRefinery = 2
 
-    def step(self, obs, sharedData = None, moveNum = 0):  
+    def step(self, obs, moveNum = 0, sharedData = None):  
 
         self.cameraCornerNorthWest , self.cameraCornerSouthEast = GetScreenCorners(obs)
         self.unit_type = obs.observation['screen'][SC2_Params.UNIT_TYPE]
@@ -234,7 +226,7 @@ class BuildBaseSubAgent:
         self.isActionCommitted = True
 
         if a == ACTIONS.ID_DO_NOTHING:
-            return DO_NOTHING_SC2_ACTION, True
+            return SC2_Actions.DO_NOTHING_SC2_ACTION, True
         elif a < ACTIONS.ID_BUILD_BARRACKS_REACTOR:
             return self.BuildAction(obs, moveNum)
         elif a < ACTIONS.NUM_ACTIONS:
@@ -262,10 +254,9 @@ class BuildBaseSubAgent:
         self.sharedData.buildingCount[TerranUnit.COMMANDCENTER] += 1        
         self.sharedData.CommandCenterLoc = [miniMapLoc]
 
-        self.doNothingAction = ACTIONS.DONOTHING_NOTHING         
-        self.Building2Check = 0
 
         self.isActionCommitted = False
+        self.stepActionCommmitted = 0
         self.lastActionCommittedAction = None
         self.lastActionCommittedState = None
         self.lastActionCommittedNextState = None
@@ -280,11 +271,15 @@ class BuildBaseSubAgent:
 
     def Learn(self, reward):
         if self.isActionCommitted:
-            self.decisionMaker.learn(self.lastActionCommittedState, self.lastActionCommittedAction, reward, self.lastActionCommittedNextState)
+            self.decisionMaker.learn(self.previous_scaled_state, self.current_action, reward, self.current_scaled_state)
+        elif reward > 0 and self.lastActionCommittedAction != None:
+            discountedReward = reward * pow(self.discountFactor, self.numSteps - self.stepActionCommmitted)
+            self.decisionMaker.learn(self.lastActionCommittedState, self.lastActionCommittedAction, discountedReward, self.lastActionCommittedNextState)
         
         self.previous_state[:] = self.current_state[:]
         self.previous_scaled_state[:] = self.current_scaled_state[:]
         self.isActionCommitted = False
+        self.lastActionCommittedAction = None
 
     def IsDoNothingAction(self, a):
         return a == ACTIONS.ID_DO_NOTHING
@@ -322,7 +317,7 @@ class BuildBaseSubAgent:
                 if target[0] >= 0:
                     return actions.FunctionCall(SC2_Actions.HARVEST_GATHER, [SC2_Params.QUEUED, SwapPnt(target)]), finishedAction
      
-        return DO_NOTHING_SC2_ACTION, True
+        return SC2_Actions.DO_NOTHING_SC2_ACTION, True
 
     def BuildAdditionAction(self, obs, moveNum):
         buildingType = ACTIONS.ACTION_2_BUILDING_TRANSITION[self.current_action][0]
@@ -347,7 +342,7 @@ class BuildBaseSubAgent:
                     
                     return actions.FunctionCall(action, [SC2_Params.QUEUED, SwapPnt(coord)]) , True
 
-        return DO_NOTHING_SC2_ACTION, True    
+        return SC2_Actions.DO_NOTHING_SC2_ACTION, True    
 
     def CreateState(self, obs):
         for key, value in STATE.BUILDING_2_STATE_TRANSITION.items():
@@ -361,6 +356,7 @@ class BuildBaseSubAgent:
         self.ScaleState()
 
         if self.isActionCommitted:
+            self.stepActionCommmitted = self.numSteps
             self.lastActionCommittedAction = self.current_action
             self.lastActionCommittedState = self.previous_scaled_state
             self.lastActionCommittedNextState = self.current_scaled_state

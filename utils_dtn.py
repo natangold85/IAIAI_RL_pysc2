@@ -25,6 +25,9 @@ class DTN:
         self.params = modelParams
         self.learning_rate = learning_rate
 
+        self.nnName = nnName
+        self.directoryName = directory + nnName
+
         # Network Parameters
         self.num_output = modelParams.outputEnd - modelParams.outputStart 
 
@@ -43,16 +46,15 @@ class DTN:
         self.train_op = optimizer.minimize(self.loss_op, name="train_func")
 
         # Initializing session and variables
-        init = tf.global_variables_initializer()
 
+        self.init_op = tf.global_variables_initializer()
         self.sess = tf.Session()
         if modelParams.outputGraph:
             # $ tensorboard --logdir=directory
             tf.summary.FileWriter(directory + "/", self.sess.graph)
-        self.sess.run(init)        
-        
 
-        self.directoryName = directory + nnName
+        self.sess.run(self.init_op) 
+
         self.saver = tf.train.Saver()
         fnameNNMeta = self.directoryName + ".meta"
         if os.path.isfile(fnameNNMeta):
@@ -102,16 +104,21 @@ class DTN:
             feedDict = {self.inputLayerState: sChosen, self.inputLayerActions: aChosen, self.outputTensor: s_Chosen}
             self.sess.run([self.train_op, self.loss_op], feed_dict=feedDict)
   
+    def Reset(self):
+        #self.outputLayer = self.build_dtn(self.params.nn_Func, self.nnName)
+        self.sess.run(self.init_op) 
+        assign_op = self.numRuns.assign(0)
+        self.sess.run(assign_op)
 
     def save_network(self):
         self.saver.save(self.sess, self.directoryName)
-        print("save nn with", self.numRuns.eval(session = self.sess))
+        print("save", self.directoryName, "with", self.numRuns.eval(session = self.sess), "runs")
 
     def NumRuns(self):
         return int(self.numRuns.eval(session = self.sess))
 
-    def end_run(self, toSave = True):
-        assign = self.numRuns.assign_add(1)
+    def end_run(self, toSave = True, numRuns = 1):
+        assign = self.numRuns.assign_add(numRuns)
         self.sess.run(assign)
         if toSave:
             self.save_network()

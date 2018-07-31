@@ -164,7 +164,23 @@ class ResultFile:
         if saveTable:
             self.result_table.to_pickle(self.saveFileName, 'gzip') 
 
+    def Reset(self):
+        self.result_table = pd.DataFrame(columns=self.rewardCol, dtype=np.float)
+        
+        self.check_state_exist(self.countCompleteKey)
 
+        self.countIdx = 0
+        self.rewardIdx = 1
+        self.scoreIdx = 2
+        self.stepsIdx = 3
+
+        self.countComplete = int(self.result_table.ix[self.countCompleteKey, 0])
+
+        self.sumReward = 0
+        self.sumScore = 0
+        self.sumSteps = 0
+        self.numRuns = 0
+        
 class ResultFile_Old:
     def __init__(self, tableName, numToWrite = 100, loadFile = True):
         self.tableName = tableName

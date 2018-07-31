@@ -30,6 +30,7 @@ from utils import SwapPnt
 from utils import FindMiddle
 from utils import Scale2MiniMap
 from utils import SelectBuildingValidPoint
+from utils import PrintScreen
 
 ACTION_BUILDING_COUNT = 0
 ACTION_LAND_BARRACKS = 1
@@ -62,8 +63,10 @@ class DoNothingSubAgent:
         self.unitInQueue[TerranUnit.HELLION] = TerranUnit.FACTORY
         self.unitInQueue[TerranUnit.SIEGE_TANK] = TerranUnit.TECHLAB
 
+        self.rowIdle = 0
 
-    def step(self, obs, sharedData = None, moveNum = 0):
+
+    def step(self, obs, moveNum = 0, sharedData = None):
 
         self.cameraCornerNorthWest , self.cameraCornerSouthEast = GetScreenCorners(obs)
         self.unit_type = obs.observation['screen'][SC2_Params.UNIT_TYPE]
@@ -101,9 +104,13 @@ class DoNothingSubAgent:
         # elif (self.unit_type == TerranUnit.FLYING_FACTORY).any():
         #     return ACTION_LAND_FACTORY
         #el
-        if obs.observation['player'][SC2_Params.IDLE_WORKER_COUNT] > 0:
+        if obs.observation['player'][SC2_Params.IDLE_WORKER_COUNT] > 0 and self.HasResources():
+            self.rowIdle += 1
+            if self.rowIdle == 10:
+                PrintScreen(self.unit_type)
             return ACTION_IDLEWORKER_EMPLOYMENT
         else:
+            self.rowIdle = 0
             cc_y, cc_x = (self.unit_type == TerranUnit.COMMANDCENTER).nonzero()
             ret2Base = False
             if len(cc_y) == 0:
@@ -206,9 +213,18 @@ class DoNothingSubAgent:
         
         return [-1,-1]
 
+    def HasResources(self):
+        resourceList = SC2_Params.NEUTRAL_MINERAL_FIELD + SC2_Params.VESPENE_GAS_FIELD
+        for val in resourceList[:]:
+            if (self.unit_type == val).any():
+                return True
+        
+        print("\n\n\nout of resources!!\n\n")
+        return False
+
     def LastStep(self, obs, reward):
         return
-        
+
     def SelectBuildingPoint(self):
         prevCheck = self.currBuilding2Check
         wholeRound = False

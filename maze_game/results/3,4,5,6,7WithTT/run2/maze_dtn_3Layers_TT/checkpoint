@@ -1,0 +1,2 @@
+model_checkpoint_path: "dtn3Layers_TT"
+all_model_checkpoint_paths: "dtn3Layers_TT"

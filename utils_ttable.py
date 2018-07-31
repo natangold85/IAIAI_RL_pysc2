@@ -19,7 +19,7 @@ from multiprocessing import Process, Lock, Value, Array, Manager
 from utils import ParamsBase
 
 class TransitionTable:
-    def __init__(self, numActions, tableName):
+    def __init__(self, numActions, tableName, newTable = False):
         self.tableName = tableName
         self.actions = list(range(numActions))  # a list
 
@@ -31,7 +31,7 @@ class TransitionTable:
         self.tableIdx = 0
         self.actionSumIdx = 1
 
-        if os.path.isfile(tableName + '.gz'):
+        if os.path.isfile(tableName + '.gz') and not newTable:
             self.table = pd.read_pickle(tableName + '.gz', compression='gzip')
         else:
             self.table[self.TrialsData] = [0]
@@ -65,7 +65,14 @@ class TransitionTable:
         if saveTable:
             self.table[self.TrialsData][self.NumRunsTotalSlot] = self.numTotRuns
             pd.to_pickle(self.table, self.tableName + '.gz', 'gzip') 
+    
+    def Reset(self):
+        self.table = {}
+        self.table[self.TrialsData] = [0]
 
+        self.numTotRuns = self.table[self.TrialsData][self.NumRunsTotalSlot]
+
+        
 class BothWaysTransitionTable(TransitionTable):
     def __init__(self, numActions, tableName):
         super(BothWaysTransitionTable, self).__init__(numActions, tableName)

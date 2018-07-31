@@ -13,7 +13,7 @@ class EmptySharedData:
 
 # params base
 class ParamsBase:
-    def __init__(self, stateSize, numActions, historyProportion4Learn = 1, propogateReward = False, discountFactor = 0.95, maxReplaySize = 50000, minReplaySize = 1000, states2Monitor = []):
+    def __init__(self, stateSize, numActions, historyProportion4Learn = 1, propogateReward = False, discountFactor = 0.95, maxReplaySize = 500000, minReplaySize = 1000, states2Monitor = []):
         self.stateSize = stateSize
         self.numActions = numActions
         self.historyProportion4Learn = historyProportion4Learn
@@ -47,7 +47,10 @@ class SC2_Params:
     #player general info
     MINERALS = 1
     VESPENE = 2
+    SUPPLY_USED = 4
     SUPPLY_CAP = 4
+    ARMY_SUPPLY_OCCUPATION = 5
+    WORKERS_SUPPLY_OCCUPATION = 6
     IDLE_WORKER_COUNT = 7
 
     # single and multi select table idx
@@ -98,7 +101,9 @@ class SC2_Actions:
     BUILD_REACTOR = actions.FUNCTIONS.Build_Reactor_screen.id
     BUILD_TECHLAB = actions.FUNCTIONS.Build_TechLab_screen.id
 
-    # train army action
+    # train actions
+    TRAIN_SCV = actions.FUNCTIONS.Train_SCV_quick.id
+    
     TRAIN_REAPER = actions.FUNCTIONS.Train_Reaper_quick.id
     TRAIN_MARINE = actions.FUNCTIONS.Train_Marine_quick.id
 
@@ -108,6 +113,8 @@ class SC2_Actions:
     # queue
     BUILD_QUEUE = actions.FUNCTIONS.build_queue.id
     
+    SELECT_CONTROL_GROUP = actions.FUNCTIONS.select_control_group.id
+
     SELECT_ARMY = actions.FUNCTIONS.select_army.id
     MOVE_IN_SCREEN = actions.FUNCTIONS.Move_screen.id
     ATTACK_MINIMAP = actions.FUNCTIONS.Attack_minimap.id
@@ -802,24 +809,50 @@ def Grouping(y, x):
 
     return groups
 
-neighbors2Check = []
+neighbors2CheckBuilding = []
 
-neighbors2Check.append([-1,-2])
-neighbors2Check.append([-2,-1])
+neighbors2CheckBuilding.append([-1,-2])
+neighbors2CheckBuilding.append([-2,-1])
+
+neighbors2CheckScv = []
+neighbors2CheckScv.append([-1, 0])
+neighbors2CheckScv.append([1, 0])
+neighbors2CheckScv.append([0, 1])
+neighbors2CheckScv.append([0, -1])
+
 def SelectBuildingValidPoint(unit_type, buildingType, y = None, x = None):
+    buildingMap = unit_type == buildingType
     if y == None:
-        y, x = (unit_type == buildingType).nonzero()
+        y, x = buildingMap.nonzero()
 
     if len(y) == 0:
         return [-1,-1]
     idx = 0
     for i in range(len(y)):
-        valid = True
-        for neighbor in neighbors2Check:
-            if unit_type[y[i] + neighbor[0]][x[i] + neighbor[1]] != buildingType:
-                valid = False
-        if valid:
+        if IsValidPoint4Select(buildingMap, y[i], x[i]):
             idx = i
             break
 
     return y[idx], x[idx]
+
+
+def SelectScvValidPoints(unit_type):
+    scvMap = unit_type == TerranUnit.SCV
+    scv_y, scv_x = (scvMap).nonzero()
+    valid_y = []
+    valid_x = []
+    for i in range(len(scv_y)):
+        x = scv_x[i]
+        y = scv_y[i]
+        if IsValidPoint4Select(scvMap, y, x, neighbors2CheckScv):
+            valid_y.append(y)
+            valid_x.append(x)
+
+    return valid_y, valid_x
+
+def IsValidPoint4Select(buildingMap, y, x, neighbor2Check = neighbors2CheckBuilding):
+    for neighbor in neighbor2Check:
+        if not buildingMap[y + neighbor[0]][x + neighbor[1]]:
+            return False
+
+    return True 

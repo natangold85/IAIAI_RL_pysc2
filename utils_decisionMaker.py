@@ -200,6 +200,26 @@ class LearnWithReplayMngr:
 
         return learnAndSave 
 
+    def ResetAllData(self):
+        self.transitions = {}
+        self.transitions["s"] = []
+        self.transitions["a"] = []
+        self.transitions["r"] = []
+        self.transitions["s_"] = []
+        self.transitions["terminal"] = []
+
+        if self.dqn != None:
+            self.dqn.Reset()
+        
+        if self.qTable != None:
+            self.qTable.Reset()
+
+        if self.resultFile != None:
+            self.resultFile.Reset()
+
+
+
+
     def PropogateReward(self):
         lastIdx = len(self.transitions["r"]) - 1
         prevReward = self.transitions["r"][lastIdx]

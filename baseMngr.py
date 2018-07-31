@@ -165,8 +165,8 @@ NORMALIZATION = 300
 
 UNIT_VALUE_TABLE_NAME = 'unit_value_table.gz'
 
-NORMALIZATION_LOCAL_REWARD = 50
-NORMALIZATION_GAME_REWARD = 1000
+NORMALIZATION_LOCAL_REWARD = 20
+NORMALIZATION_GAME_REWARD = 300
 
 class BaseMngr(base_agent.BaseAgent):
     def __init__(self):
@@ -182,7 +182,7 @@ class BaseMngr(base_agent.BaseAgent):
         # tables:
         if runType[TYPE] == "QReplay" or runType[TYPE] == "NN":
             self.decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], dqnName = runType[NN], qTableName = runType[Q_TABLE], 
-                                                    resultFileName = runType[RESULTS], historyFileName=runType[HISTORY], directory=runType[DIRECTORY])
+                                                    resultFileName = runType[RESULTS], historyFileName=runType[HISTORY], directory=runType[DIRECTORY], numTrials2Learn=1)
         else:
             self.decisionMaker = UserPlay(False)
         
@@ -209,11 +209,11 @@ class BaseMngr(base_agent.BaseAgent):
 
         self.unitPower = {}
         table = pd.read_pickle(UNIT_VALUE_TABLE_NAME, compression='gzip')
-
-        self.unitPower[TerranUnit.MARINE] = sum(table.ix['marine', :])
-        self.unitPower[TerranUnit.REAPER] = sum(table.ix['reaper', :])
-        self.unitPower[TerranUnit.HELLION] = sum(table.ix['hellion', :])
-        self.unitPower[TerranUnit.SIEGE_TANK] = sum(table.ix['siege tank', :])
+        valVecMarine = table.ix['marine', :]
+        self.unitPower[TerranUnit.MARINE] = sum(valVecMarine) / len(valVecMarine)
+        self.unitPower[TerranUnit.REAPER] = sum(table.ix['reaper', :]) / len(valVecMarine)
+        self.unitPower[TerranUnit.HELLION] = sum(table.ix['hellion', :]) / len(valVecMarine)
+        self.unitPower[TerranUnit.SIEGE_TANK] = sum(table.ix['siege tank', :]) / len(valVecMarine)
 
     def step(self, obs, sharedData = None):
         super(BaseMngr, self).step(obs)
@@ -246,7 +246,7 @@ class BaseMngr(base_agent.BaseAgent):
                 #self.PrintState()
             else:
                 for sa in range(NUM_ACTIONS):
-                    self.subAgents[sa].step(obs, self.sharedData, self.move_number)   
+                    self.subAgents[sa].step(obs, self.move_number, self.sharedData)   
 
             #print("action =", self.Action2Str(), "move num =", self.move_number)
             return self.ActAction(obs)

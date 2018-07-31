@@ -35,7 +35,7 @@ class QTableParams(ParamsBase):
         return False
 
 class QTableParamsExplorationDecay(ParamsBase):
-    def __init__(self, stateSize, numActions, historyProportion4Learn = 1, propogateReward = False, learning_rate=0.01, discountFactor=0.95, exploreRate = 0.0005, exploreStop = 0.1, maxReplaySize = 50000, minReplaySize = 1000, states2Monitor = []):
+    def __init__(self, stateSize, numActions, historyProportion4Learn = 1, propogateReward = False, learning_rate=0.01, discountFactor=0.95, exploreRate = 0.001, exploreStop = 0.1, maxReplaySize = 50000, minReplaySize = 1000, states2Monitor = []):
         super(QTableParamsExplorationDecay, self).__init__(stateSize, numActions, historyProportion4Learn, propogateReward, discountFactor, maxReplaySize, minReplaySize, states2Monitor) 
 
         self.learningRate = learning_rate        
@@ -271,6 +271,18 @@ class QLearningTable:
         if saveTable:
             self.table.to_pickle(self.qTableName + '.gz', 'gzip') 
 
+    def Reset(self):
+        self.table = pd.DataFrame(columns=self.slots, dtype=np.float)
+        self.check_state_exist(self.TrialsData)
+
+        self.numTotRuns = self.table.ix[self.TrialsData, self.NumRunsTotalSlot]
+        self.avgTotReward = self.table.ix[self.TrialsData, self.AvgRewardSlot]
+        self.numExpRuns = 0
+        self.avgExpReward = 0
+
+        self.table.ix[self.TrialsData, self.AvgRewardExperimentSlot] = 0
+        self.table.ix[self.TrialsData, self.NumRunsExperimentSlot] = 0
+        
     def check_state_exist(self, state, stateToInitValues = None):
         if state not in self.table.index:
             # append new state to q table

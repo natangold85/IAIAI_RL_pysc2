@@ -11,7 +11,7 @@ from utils import ParamsBase
 
 # dqn params
 class DQN_PARAMS(ParamsBase):
-    def __init__(self, stateSize, numActions, historyProportion4Learn = 1, nn_Func = None, propogateReward = False, outputGraph = False, discountFactor = 0.95, batchSize = 32, maxReplaySize = 50000, minReplaySize = 1000, copyEvalToTarget = 5, explorationProb = 0.1, descendingExploration = True, exploreChangeRate = 0.0005, states2Monitor = [], scopeVarName = ''):
+    def __init__(self, stateSize, numActions, historyProportion4Learn = 1, nn_Func = None, propogateReward = False, outputGraph = False, discountFactor = 0.95, batchSize = 32, maxReplaySize = 50000, minReplaySize = 1000, copyEvalToTarget = 5, explorationProb = 0.1, descendingExploration = True, exploreChangeRate = 0.001, states2Monitor = [], scopeVarName = ''):
         super(DQN_PARAMS, self).__init__(stateSize, numActions, historyProportion4Learn, propogateReward, discountFactor, maxReplaySize, minReplaySize)
         
         self.nn_Func = nn_Func
@@ -186,6 +186,9 @@ class DQN:
             actions2Print = self.params.states2Monitor[i][1]
             print(list(self.actionValuesVec(state)[actions2Print]), end = "\n\n")     
 
+    def Close(self):
+        self.sess.close()
+        
     def save_network(self):
         self.saver.save(self.sess, self.directoryName)
         print("save nn with", self.numRuns.eval(session = self.sess))

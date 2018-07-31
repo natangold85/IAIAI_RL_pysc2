@@ -1,0 +1,2 @@
+model_checkpoint_path: "gather_dqn"
+all_model_checkpoint_paths: "gather_dqn"

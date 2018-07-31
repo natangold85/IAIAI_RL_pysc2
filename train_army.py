@@ -165,7 +165,7 @@ class TrainArmySubAgent:
         # tables:
         if runType[TYPE] == "QReplay" or runType[TYPE] == "NN":
             self.decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], dqnName = runType[NN], qTableName = runType[Q_TABLE], 
-                                                    resultFileName = runType[RESULTS], historyFileName=runType[HISTORY], directory=runType[DIRECTORY])
+                                                    resultFileName = runType[RESULTS], historyFileName=runType[HISTORY], directory=runType[DIRECTORY], numTrials2Learn=1)
         else:
             self.decisionMaker = UserPlay(False)   
         # model params
@@ -187,7 +187,7 @@ class TrainArmySubAgent:
         self.actionsRequirement[ID_ACTION_TRAIN_HELLION] = ActionRequirement(100, 0, TerranUnit.FACTORY)
         self.actionsRequirement[ID_ACTION_TRAIN_SIEGETANK] = ActionRequirement(150, 125, TerranUnit.TECHLAB)
 
-    def step(self, obs, sharedData = None, moveNum = 0):  
+    def step(self, obs, moveNum = 0, sharedData = None):  
 
         self.cameraCornerNorthWest , self.cameraCornerSouthEast = GetScreenCorners(obs)
         self.unit_type = obs.observation['screen'][SC2_Params.UNIT_TYPE]
@@ -218,13 +218,14 @@ class TrainArmySubAgent:
 
         self.sharedData = SharedDataTrain()
         self.isActionCommitted = False
+        self.lastActionCommittedAction = None
 
     def IsDoNothingAction(self, a):
         return a == ID_ACTION_DO_NOTHING
 
     def LastStep(self, obs, reward):
         if self.lastActionCommittedAction is not None:
-            self.decisionMaker.learn(self.lastActionCommittedState.copy(), self.current_action, reward, self.lastActionCommittedNextState.copy(), True)
+            self.decisionMaker.learn(self.lastActionCommittedState.copy(), self.lastActionCommittedAction, reward, self.lastActionCommittedNextState.copy(), True)
 
         score = obs.observation["score_cumulative"][0]
         self.decisionMaker.end_run(reward, score, self.numSteps)
@@ -236,7 +237,7 @@ class TrainArmySubAgent:
             buildingType = self.BuildingType(a)
             target = SelectBuildingValidPoint(self.unit_type, buildingType)
             if target[0] >= 0:
-                return actions.FunctionCall(SC2_Actions.SELECT_POINT, [SC2_Params.SELECT_SINGLE, SwapPnt(target)]), finishedAction
+                return actions.FunctionCall(SC2_Actions.SELECT_POINT, [SC2_Params.SELECT_ALL, SwapPnt(target)]), finishedAction
         if moveNum == 1:
             finishedAction = True
             unit2Train = ACTION_2_UNIT[a]

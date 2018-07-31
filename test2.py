@@ -337,8 +337,40 @@ def dtn_5LayersFunc(inputLayerState, inputLayerActions, num_output, scope):
         outputSoftmax = tf.nn.softmax(output, name="softmax_tensor")
 
     return outputSoftmax
+
+def dtn_6LayersFunc(inputLayerState, inputLayerActions, num_output, scope):      
+    with tf.variable_scope(scope):
+
+        el1 = tf.contrib.layers.fully_connected(inputLayerState, 256)
+        middleLayer = tf.concat([el1, inputLayerActions], 1)
+        fc1 = tf.contrib.layers.fully_connected(middleLayer, 256)
+        fc2 = tf.contrib.layers.fully_connected(fc1, 256)
+        fc3 = tf.contrib.layers.fully_connected(fc2, 256)
+        fc4 = tf.contrib.layers.fully_connected(fc3, 256)
+        fc5 = tf.contrib.layers.fully_connected(fc4, 256)
+        output = tf.contrib.layers.fully_connected(fc5, num_output)
+        outputSoftmax = tf.nn.softmax(output, name="softmax_tensor")
+
+    return outputSoftmax
+
+def dtn_7LayersFunc(inputLayerState, inputLayerActions, num_output, scope):      
+    with tf.variable_scope(scope):
+
+        el1 = tf.contrib.layers.fully_connected(inputLayerState, 256)
+        middleLayer = tf.concat([el1, inputLayerActions], 1)
+        fc1 = tf.contrib.layers.fully_connected(middleLayer, 256)
+        fc2 = tf.contrib.layers.fully_connected(fc1, 256)
+        fc3 = tf.contrib.layers.fully_connected(fc2, 256)
+        fc4 = tf.contrib.layers.fully_connected(fc3, 256)
+        fc5 = tf.contrib.layers.fully_connected(fc4, 256)
+        fc6 = tf.contrib.layers.fully_connected(fc5, 256)
+        output = tf.contrib.layers.fully_connected(fc6, num_output)
+        outputSoftmax = tf.nn.softmax(output, name="softmax_tensor")
+
+    return outputSoftmax
+
 class Simulator:
-    def __init__(self, dirName = "maze_game",trials2Save = 100):
+    def __init__(self, dirName = "maze_game", trials2Save = 100):
         self.illigalSolvedInModel = True
         #self.env = MazeGame()
         self.env = SimpleMazeGame()
@@ -352,21 +384,28 @@ class Simulator:
         else:
             params = QTableParams(self.env.stateSize, self.env.numActions)
             self.dqn = LearnWithReplayMngr(typeD, params, dqnName = "dqn", qTableName= "qTable", resultFileName = "results", directory = dirName, numTrials2Learn=trials2Save)            
-        
-        #dtnParams = DTN_PARAMS(self.env.stateSize, self.env.numActions, 0, self.env.stateSize, outputGraph=True)
-        #self.dtnWith2LayersFunc = DTN(dtnParams, "dtn2Layers", directory = fullDir + 'maze_dtn_2Layers/')
-        
-        dtnParams3L = DTN_PARAMS(self.env.stateSize, self.env.numActions, 0, self.env.stateSize, outputGraph=True, nn_Func=dtn_3LayersFunc)
-        self.dtn3Layers = DTN(dtnParams3L, "dtn3Layers", directory = fullDir + 'maze_dtn_3Layers/')
-        
+
+        self.allDTN = []
+        dtnParams1LTT = DTN_PARAMS(self.env.stateSize, self.env.numActions, 0, self.env.stateSize, outputGraph=True, nn_Func=dtn_1LayersFunc)
+        self.allDTN.append(DTN(dtnParams1LTT, "dtn1Layers_TT", directory = fullDir + 'maze_dtn_1Layers_TT/'))
+
+        dtnParams2LTT = DTN_PARAMS(self.env.stateSize, self.env.numActions, 0, self.env.stateSize, outputGraph=True)
+        self.allDTN.append(DTN(dtnParams2LTT, "dtn2Layers_TT", directory = fullDir + 'maze_dtn_2Layers_TT/'))
+
         dtnParams3LTT = DTN_PARAMS(self.env.stateSize, self.env.numActions, 0, self.env.stateSize, outputGraph=True, nn_Func=dtn_3LayersFunc)
-        self.dtn3LayersWithTTable = DTN(dtnParams3LTT, "dtn3Layers_TT", directory = fullDir + 'maze_dtn_3Layers_TT/')
+        self.allDTN.append(DTN(dtnParams3LTT, "dtn3Layers_TT", directory = fullDir + 'maze_dtn_3Layers_TT/'))
 
-        dtnParams4L = DTN_PARAMS(self.env.stateSize, self.env.numActions, 0, self.env.stateSize, outputGraph=True, nn_Func=dtn_4LayersFunc)
-        self.dtn4Layers = DTN(dtnParams4L, "dtn4Layers", directory = fullDir + 'maze_dtn_4Layers/')
+        dtnParams4LTT = DTN_PARAMS(self.env.stateSize, self.env.numActions, 0, self.env.stateSize, outputGraph=True, nn_Func=dtn_4LayersFunc)
+        self.allDTN.append(DTN(dtnParams4LTT, "dtn4Layers_TT", directory = fullDir + 'maze_dtn_4Layers_TT/'))
 
-        dtnParams5L = DTN_PARAMS(self.env.stateSize, self.env.numActions, 0, self.env.stateSize, outputGraph=True, nn_Func=dtn_5LayersFunc)
-        self.dtn5Layers = DTN(dtnParams5L, "dtn5Layers", directory = fullDir + 'maze_dtn_5Layers/')
+        dtnParams5LTT = DTN_PARAMS(self.env.stateSize, self.env.numActions, 0, self.env.stateSize, outputGraph=True, nn_Func=dtn_5LayersFunc)
+        self.allDTN.append(DTN(dtnParams5LTT, "dtn5Layers_TT", directory = fullDir + 'maze_dtn_5Layers_TT/'))
+
+        dtnParams6LTT = DTN_PARAMS(self.env.stateSize, self.env.numActions, 0, self.env.stateSize, outputGraph=True, nn_Func=dtn_6LayersFunc)
+        self.allDTN.append(DTN(dtnParams6LTT, "dtn6Layers_TT", directory = fullDir + 'maze_dtn_6Layers_TT/'))
+
+        dtnParams7LTT = DTN_PARAMS(self.env.stateSize, self.env.numActions, 0, self.env.stateSize, outputGraph=True, nn_Func=dtn_7LayersFunc)
+        self.allDTN.append(DTN(dtnParams7LTT, "dtn7Layers_TT", directory = fullDir + 'maze_dtn_7Layers_TT/'))
 
         self.transitionTable = TransitionTable(self.env.numActions, fullDir + "maze_ttable_cmp")
     
@@ -401,61 +440,32 @@ class Simulator:
                 numSteps += 1
                 s = s_
             
-            s,a,_,s_,_ = self.dqn.ExperienceReplay()
-            self.dtn3Layers.learn(s, a, s_)
-            self.dtn4Layers.learn(s, a, s_)
-            self.dtn5Layers.learn(s, a, s_)
-
-            for i in range(len(a)): 
-                self.transitionTable.learn(str(s[i]), a[i], str(s_[i]))
-
-            self.TrainAccording2TTable(self.dtn3LayersWithTTable)
-
             self.transitionTable.end_run(True)
+            self.dqn.end_run(r,sumR,numSteps)
 
-            toSaveDtn = self.dqn.end_run(r,sumR,numSteps)
-            self.dtn3Layers.end_run(toSaveDtn)
-            self.dtn4Layers.end_run(toSaveDtn)
-            self.dtn5Layers.end_run(toSaveDtn)
-            self.dtn3LayersWithTTable.end_run(toSaveDtn)
-            
-    def TestTransition(self, numTests, num2Print, fTest):
-        mseResults = [0.0, 0.0, 0.0, 0.0, 0.0]
+        for dtn in self.allDTN:
+            self.TrainAccording2TTable(dtn, numRuns)
+            dtn.end_run(False, numRuns)
+
+    def TestTransition(self, numTests, num2Print = 1, fTest = None):
+        
+        mseResults = [0.0] * (len(self.allDTN) + 1)
 
         for i in range(numTests):
             s = self.env.randomState()
             validActions = self.env.ValidActions(s)
             a = np.random.choice(validActions)
-            
-            outDtn3Layers = self.dtn3Layers.predict(s,a)
-            outDtn4Layers = self.dtn4Layers.predict(s,a)
-            outDtn5Layers = self.dtn5Layers.predict(s,a)
-            outDtn3LayersTT = self.dtn3LayersWithTTable.predict(s,a)
-            outTransitionTable = self.CalcDistTTable(s,a)                        
 
             realDistribution = self.env.RealDistribution(s,a)
-         
-            mseDTN3L = sum(pow(outDtn3Layers[0] - realDistribution, 2))
-            mseDTN3LTT = sum(pow(outDtn3LayersTT[0] - realDistribution, 2))
-            mseDTN4L = sum(pow(outDtn4Layers[0] - realDistribution, 2))
-            mseDTN5L = sum(pow(outDtn5Layers[0] - realDistribution, 2))
-            mseTable = sum(pow(outTransitionTable - realDistribution, 2))
+            for i in range(len(self.allDTN)):
+
+                outDtn = self.allDTN[i].predict(s,a)
+                mse = sum(pow(outDtn[0] - realDistribution, 2)) 
+                mseResults[i] += mse / numTests
             
-            mseResults[0] += mseDTN3L / numTests
-            mseResults[1] += mseDTN4L / numTests
-            mseResults[2] += mseDTN5L / numTests
-            mseResults[3] += mseDTN3LTT / numTests
-            mseResults[4] += mseTable / numTests
-
-            if i < num2Print:
-                string4File = "for state = " + str(s) + " action = " + str(a) + ":\n\n"
-                string4File += "\ndtn3Layer = \n" + str(outDtn3Layers) + "\n"
-                string4File += "\ndtn4Layer  = \n" + str(outDtn4Layers) + "\n"
-                string4File += "\ndtn5Layer  = \n" + str(outDtn5Layers) + "\n"
-                string4File += "\ndtn3Layer With TTable = \n" + str(outDtn3LayersTT) + "\n"
-                string4File += "\ntable = \n" + str(outTransitionTable) + "\n\n\n\n"
-
-                fTest.write(string4File)
+            outTransitionTable = self.CalcDistTTable(s,a)                        
+            mseTable = sum(pow(outTransitionTable - realDistribution, 2))
+            mseResults[len(self.allDTN)] += mseTable / numTests
 
         
         return mseResults
@@ -487,75 +497,134 @@ class Simulator:
 
         return outTransitionTable
 
-    def TrainAccording2TTable(self, dtn):
+    def TrainAccording2TTable(self, dtn, numTrains = 1):
         states = list(self.transitionTable.table.keys())
         
         sLearn = []
         aLearn = []
         s_Learn = []
-
-        for sStr in states:
-            if sStr != "TrialsData":
-                s = np.fromstring(sStr.replace("[", "").replace("]", ""), dtype=int, sep=' ')
-                transition = self.transitionTable.table[sStr][0]
-                actionCount = self.transitionTable.table[sStr][1]
-                for a in range(self.env.numActions):
-                    if actionCount[a] > 0:
-                        label = self.CalcDistTTable(s,a)
-                        sLearn.append(s)
-                        aLearn.append(a)
-                        s_Learn.append(label)
+        for i in range(numTrains):
+            for sStr in states:
+                if sStr != "TrialsData":
+                    s = np.fromstring(sStr.replace("[", "").replace("]", ""), dtype=int, sep=' ')
+                    transition = self.transitionTable.table[sStr][0]
+                    actionCount = self.transitionTable.table[sStr][1]
+                    for a in range(self.env.numActions):
+                        if actionCount[a] > 0:
+                            label = self.CalcDistTTable(s,a)
+                            sLearn.append(s)
+                            aLearn.append(a)
+                            s_Learn.append(label)
         
         if len(aLearn) >= dtn.params.batchSize:
             dtn.learn(np.array(sLearn), np.array(aLearn), np.array(s_Learn))
+    
+    def Reset(self):
+        self.dqn.ResetAllData()
+        for dtn in self.allDTN:
+            dtn.Reset()
 
-    def EndRound(self):
-        return
-        self.dtnWithTTable.NewTTable()
+        self.transitionTable.Reset()
 
+
+def plot_mean_and_CI(mean, lb, ub, color_mean=None):
+    # plot the shaded range of the confidence intervals
+    plt.fill_between(range(mean.shape[0]), ub, lb, color=color_mean, alpha=.5)
+    # plot the mean on top
+    plt.plot(mean, color_mean)
 
 if __name__ == "__main__":
     
     dirName = "maze_game"
-    fTestResultsName = "./" + dirName + "/maze_transition_results.txt"
-    fMseResultsName = "./" + dirName + "/maze_mse_results.txt"
     fMsePlotName = "./" + dirName + "/maze_mse_results.png"
 
-    numRounds = 500
+    numRuns = 1000
+    numRounds = 20
     numTrialsInRound = 20
-    rounds2DeleteTTable = 5
+
+    leg = ["1Layers", "2Layers", "3Layers", "4Layers", "5Layers", "6Layers", "7Layers", "ttable"]
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#bcbd22', '#17becf']
 
     sim = Simulator(dirName=dirName, trials2Save=numTrialsInRound)
-    leg = ["dtn_with_3Layers", "dtn_with_4Layers", "dtn_with_5Layers", "dtn_with_3Layers with ttable", 'ttable']
-    mseResults = []
+    
+    minMseAllResults = []
+    for i in range(len(leg)):
+        minMseAllResults.append([100])
+    
+    mseAllResults = []
 
-    fTestResults = open(fTestResultsName, "w+")
-    fMseResults = open(fMseResultsName, "w+")
+    t = np.arange(numRounds + 1) * numTrialsInRound
 
-    for i in range(numRounds):
-        header = "\n\n\nresults before round " + str(i) + "(of " + str(numTrialsInRound) + " trials):\n"
-        fTestResults.write(header)
-        fMseResults.write(header)
-        mse = sim.TestTransition(500, 5, fTestResults)
-        fMseResults.write(str(mse) + "\n\n")
+    for rnd in range(numRuns):
+        
+        mseResults = []
+
+        sim.Reset()
+        for i in range(numRounds):
+            mse = sim.TestTransition(500)
+            mseResults.append(mse)
+
+
+            sim.Simulate(numTrialsInRound)
+
+        mse = sim.TestTransition(500)
         mseResults.append(mse)
+        mseAllResults.append(mseResults)
 
-        fTestResults.close()
-        fTestResults = open(fTestResultsName, "a+")
-        fMseResults.close()
-        fMseResults = open(fMseResultsName, "a+")
+        mseResultsNp = np.array(mseResults)
+        for i in range(len(mse)):
+            currMinMse = minMseAllResults[i][-1]
+            if (mse[i] < currMinMse):
+                minMseAllResults[i] = mseResultsNp[:, i]
 
-        fig = plt.figure()
-        plt.plot(mseResults)
-        plt.legend(leg)
-        plt.title("mse results for maze")
-        fig.savefig(fMsePlotName)
+        print("\n\nfinished round #", rnd, end = '\n\n\n')
+        if rnd > 0:
+            mseAllResultsNp = np.array(mseAllResults)
+            resultsMseAvg = np.average(mseAllResultsNp, axis=0)
+            resultsMseStd = np.std(mseAllResultsNp, axis=0)
 
-        sim.Simulate(numTrialsInRound)
-        if i % rounds2DeleteTTable == rounds2DeleteTTable - 1:
-            sim.EndRound()
+            fig = plt.figure(figsize=(19.0, 11.0))
+            plt.subplot(2,2,1)
+            for i in range(len(leg)):
+                ub = resultsMseAvg[:,i] + resultsMseStd[:,i]
+                lb = resultsMseAvg[:,i] - resultsMseStd[:,i]
 
+                plot_mean_and_CI(resultsMseAvg[:,i], lb, ub, colors[i])
 
+            plt.title("mse results for maze")
+            plt.ylabel('mse')
+            plt.legend(leg, loc='best')
+            plt.xlabel('#trials')
+
+            finalResults = mseAllResultsNp[:,-1,:]
+            finalResultAvg = np.average(finalResults, axis=0)
+            plt.subplot(2,2,2)
+            idx = np.arange(len(finalResultAvg))
+
+            plt.bar(idx, finalResultAvg, yerr = np.std(finalResults, axis=0))
+            plt.xticks(idx, leg)
+            plt.title("mse final results for maze")
+            plt.ylabel('final mse')
+
+            # best result:
+
+            minMseAllResultsNp = np.matrix.transpose(np.array(minMseAllResults))
+            plt.subplot(2,2,3)
+            plt.plot(t, minMseAllResultsNp)
+            plt.title("mse best results for maze")
+            plt.ylabel('mse')
+            plt.legend(leg, loc='best')
+            plt.xlabel('#trials')
+
+            finalResultAvgMin = minMseAllResultsNp[-1,:]
+            plt.subplot(2,2,4)
+            idx = np.arange(len(finalResultAvgMin))
+            plt.bar(idx, finalResultAvgMin)
+            plt.xticks(idx, leg)
+            plt.title("mse final best results for maze")
+            plt.ylabel('final mse')
+
+            fig.savefig(fMsePlotName)
 
 
 
