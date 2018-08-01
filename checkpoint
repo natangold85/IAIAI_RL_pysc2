@@ -1,2 +1,2 @@
-model_checkpoint_path: "maze_DTN"
-all_model_checkpoint_paths: "maze_DTN"
+model_checkpoint_path: "test1test1"
+all_model_checkpoint_paths: "test1test1"

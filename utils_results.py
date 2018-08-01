@@ -19,10 +19,14 @@ from multiprocessing import Process, Lock, Value, Array, Manager
 from utils import ParamsBase
 
 class PlotMngr:
-    def __init__(self, resultFilesNamesList = [], resultFilesDirectories = [], legendList = []):
+    def __init__(self, resultFilesNamesList = [], resultFilesDirectories = [], legendList = [], directory2Save = ""):
         self.resultFileList = []
         self.legendList = legendList
-        
+
+        self.scriptName = sys.argv[0]
+        self.scriptName = self.scriptName.replace(".\\", "")
+        self.scriptName = self.scriptName.replace(".py", "")
+
         for i in range(len(resultFilesNamesList)):
             if resultFilesDirectories[i] != '':
                 name = './' + resultFilesDirectories[i] + '/' + resultFilesNamesList[i]
@@ -32,6 +36,15 @@ class PlotMngr:
             resultFile = ResultFile(name)
             self.resultFileList.append(resultFile)
 
+        if directory2Save != '':
+            self.plotFName = './' + directory2Save + '/' + self.scriptName + "_resultsPlot.png"
+        else:
+            self.plotFName = self.scriptName + "_resultsPlot"
+
+        for table in self.legendList:
+            self.plotFName += "_" + table 
+        
+        self.plotFName += ".png"
 
     def ResultsFromTable(self, table, grouping, dataIdx):
         names = list(table.index)
@@ -71,10 +84,7 @@ class PlotMngr:
     def Plot(self, grouping):
         tableCol = ['count', 'reward', 'score', '# of steps']
         fig = plt.figure(figsize=(19.0, 11.0))
-        scriptName = sys.argv[0]
-        scriptName = scriptName.replace(".\\", "")
-        scriptName = scriptName.replace(".py", "")
-        fig.suptitle("results for " + scriptName + ":", fontsize=20)
+        fig.suptitle("results for " + self.scriptName + ":", fontsize=20)
 
         for idx in range(1, 4):
             plt.subplot(2,2,idx)  
@@ -88,15 +98,10 @@ class PlotMngr:
             plt.grid(True)
             plt.legend(self.legendList, loc='best')
 
-        fileName = scriptName + "_results"
-        for table in self.legendList:
-            fileName += "_" + table 
-        fileName += ".png"
         # full screen
         mng = plt.get_current_fig_manager()
         mng.window.state('zoomed')
-        fig.savefig(fileName)
-        plt.show()
+        fig.savefig(self.plotFName)
 
 class ResultFile:
     def __init__(self, tableName, numToWrite = 100, loadFile = True):

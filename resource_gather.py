@@ -48,16 +48,10 @@ USER_PLAY = 'play'
 
 # data for run type
 TYPE = "type"
-NN = "nn"
-Q_TABLE_INPUT = "q_using"
-Q_TABLE = "q"
-T_TABLE = "t"
+DECISION_MAKER_NAME = "dm_name"
 HISTORY = "hist"
-R_TABLE = "r"
 RESULTS = "results"
 PARAMS = 'params'
-GRIDSIZE_key = 'gridsize'
-BUILDING_VALUES_key = 'buildingValues'
 DIRECTORY = 'directory'
 
 class ACTIONS:
@@ -98,22 +92,18 @@ ALL_TYPES = set([USER_PLAY, QTABLE, DQN])
 RUN_TYPES = {}
 
 RUN_TYPES[QTABLE] = {}
-RUN_TYPES[QTABLE][TYPE] = "QReplay"
-RUN_TYPES[QTABLE][GRIDSIZE_key] = 5
+RUN_TYPES[QTABLE][TYPE] = "QLearningTable"
 RUN_TYPES[QTABLE][PARAMS] = QTableParamsExplorationDecay(STATE.SIZE, ACTIONS.NUM_ACTIONS)
-RUN_TYPES[QTABLE][NN] = ""
 RUN_TYPES[QTABLE][DIRECTORY] = "gatherResources_qtable"
-RUN_TYPES[QTABLE][Q_TABLE] = "qtable"
+RUN_TYPES[QTABLE][DECISION_MAKER_NAME] = "qtable"
 RUN_TYPES[QTABLE][HISTORY] = "replayHistory"
 RUN_TYPES[QTABLE][RESULTS] = "result"
 
 RUN_TYPES[DQN] = {}
-RUN_TYPES[DQN][TYPE] = "NN"
-RUN_TYPES[DQN][GRIDSIZE_key] = 5
+RUN_TYPES[DQN][TYPE] = "DQN"
 RUN_TYPES[DQN][PARAMS] = DQN_PARAMS(STATE.SIZE, ACTIONS.NUM_ACTIONS)
-RUN_TYPES[DQN][NN] = "gather_dqn"
+RUN_TYPES[DQN][DECISION_MAKER_NAME] = "gather_dqn"
 RUN_TYPES[DQN][DIRECTORY] = "gatherResources_dqn"
-RUN_TYPES[DQN][Q_TABLE] = ""
 RUN_TYPES[DQN][HISTORY] = "replayHistory"
 RUN_TYPES[DQN][RESULTS] = "result"
 
@@ -137,15 +127,19 @@ class ScvCmd:
         self.m_stepsCounter = 0
 
 class Gather(base_agent.BaseAgent):
-    def __init__(self):
+    def __init__(self, runArg = None, decisionMaker = None, isMultiThreaded = False):
         super(Gather, self).__init__()
 
-        runTypeArg = list(ALL_TYPES.intersection(sys.argv))
-        runArg = runTypeArg.pop()
-        self.agent = GatherResourcesSubAgent(runArg)
+        if runArg == None:
+            runTypeArg = list(ALL_TYPES.intersection(sys.argv))
+            runArg = runTypeArg.pop()
+        self.agent = GatherResourcesSubAgent(runArg, decisionMaker, isMultiThreaded)
 
         self.maxNumRef = 2
         self.refineryMineralsCost = 75
+    
+    def GetDecisionMaker(self):
+        return self.agent.GetDecisionMaker()
 
     def step(self, obs):
         super(Gather, self).step(obs)
@@ -269,17 +263,20 @@ class Gather(base_agent.BaseAgent):
         return numComplete
 
 class GatherResourcesSubAgent:
-    def __init__(self, runArg):        
+    def __init__(self, runArg, decisionMaker = None, isMultiThreaded = False):        
         runType = RUN_TYPES[runArg]
 
         self.illigalmoveSolveInModel = True
         # tables:
-        if runType[TYPE] == "QReplay" or runType[TYPE] == "NN":
-            self.decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], dqnName = runType[NN], qTableName = runType[Q_TABLE], 
-                                                    resultFileName = runType[RESULTS], historyFileName=runType[HISTORY], directory=runType[DIRECTORY])
+        if decisionMaker == None:
+            if runType[TYPE] != "play":
+                self.decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME],  
+                                                        resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=runType[DIRECTORY], isMultiThreaded=isMultiThreaded)
+            else:
+                self.illigalmoveSolveInModel = False
+                self.decisionMaker = UserPlay(False, numActions = ACTIONS.NUM_ACTIONS)
         else:
-            self.illigalmoveSolveInModel = False
-            self.decisionMaker = UserPlay(False, numActions = ACTIONS.NUM_ACTIONS)
+            self.decisionMaker = decisionMaker
 
         # states and action:
         self.terminalState = np.zeros(STATE.SIZE, dtype=np.int32, order='C')
@@ -291,7 +288,9 @@ class GatherResourcesSubAgent:
         self.cameraCornerSouthEast = [-1,-1]
 
         self.scvPriceMinerals = 50
-
+    
+    def GetDecisionMaker(self):
+        return self.decisionMaker
 
     def step(self, obs, moveNum = 0, sharedData = None):  
 
@@ -408,10 +407,6 @@ class GatherResourcesSubAgent:
                 if target[0] >= 0 and SC2_Actions.SELECT_POINT in obs.observation['available_actions']:
                     self.takeScvFrom = STATE.SCV_GAS
                     return actions.FunctionCall(SC2_Actions.SELECT_POINT, [SC2_Params.NOT_QUEUED, SwapPnt(target)]), finishedAction
-                else:
-                    print("not found scv!!")
-            else:
-                print("no available scv or action!!")
 
         elif moveNum == 1:
             finishedAction = True
@@ -423,13 +418,6 @@ class GatherResourcesSubAgent:
                         self.sharedData.scvGas = max(0, self.sharedData.scvGas - 1)
 
                     return actions.FunctionCall(SC2_Actions.HARVEST_GATHER, [SC2_Params.NOT_QUEUED, SwapPnt(target)]), finishedAction
-                else:
-                    print("not found resource!!")
-            else:
-                if self.CheckScvSelected(obs):
-                    print("harvest not in actions!!")
-                else:
-                    print("scv not selected properly")
 
         return SC2_Actions.DO_NOTHING_SC2_ACTION, True  
 
@@ -629,7 +617,7 @@ class GatherResourcesSubAgent:
 
 
 if __name__ == "__main__":
-    if "plotResults" in sys.argv:
+    if "results" in sys.argv:
         runTypeArg = list(ALL_TYPES.intersection(sys.argv))
         runTypeArg.sort()
         resultFnames = []
