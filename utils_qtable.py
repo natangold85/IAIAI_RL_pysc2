@@ -7,14 +7,11 @@ import time
 import datetime
 import sys
 
-import tensorflow as tf
-
-from utils_dqn import DQN
-from hallucination import HallucinationMngrPSFunc
-
 import matplotlib.pyplot as plt
 
-from multiprocessing import Process, Lock, Value, Array, Manager
+from multiprocessing import Lock
+
+from utils import EmptyLock
 
 from utils import ParamsBase
 
@@ -42,9 +39,14 @@ class QTableParamsExplorationDecay(ParamsBase):
 
 class QLearningTable:
 
-    def __init__(self, modelParams, qTableName, qTableDirectory,loadTable = True):
+    def __init__(self, modelParams, qTableName, qTableDirectory, loadTable = True, isMultiThreaded = False):
         self.qTableFullName = qTableDirectory + qTableName
         
+        if isMultiThreaded:
+            self.checkStateLoc = Lock()
+        else:
+            self.checkStateLoc = EmptyLock()
+
         self.TrialsData = "TrialsData"
         self.NumRunsTotalSlot = 0
         self.NumRunsExperimentSlot = 1
@@ -187,12 +189,15 @@ class QLearningTable:
         self.table.ix[self.TrialsData, self.NumRunsExperimentSlot] = 0
 
     def check_state_exist(self, state, stateToInitValues = None):
+        self.checkStateLoc.acquire()
+        newState = False
         if state not in self.table.index:
             # append new state to q table
             self.table = self.table.append(pd.Series([0] * len(self.slots), index=self.table.columns, name=state))
             
             if stateToInitValues in self.table.index:
                 self.table.ix[state,:] = self.table.ix[stateToInitValues, :]
-            return True
+            newState = True
 
-        return False
+        self.checkStateLoc.release()
+        return newState

@@ -37,7 +37,7 @@ class PlotMngr:
             self.resultFileList.append(resultFile)
 
         if directory2Save != '':
-            self.plotFName = './' + directory2Save + '/' + self.scriptName + "_resultsPlot.png"
+            self.plotFName = './' + directory2Save + '/' + self.scriptName + "_resultsPlot"
         else:
             self.plotFName = self.scriptName + "_resultsPlot"
 

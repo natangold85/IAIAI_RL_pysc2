@@ -4,7 +4,10 @@ import pickle
 import os.path
 import datetime
 import sys
+
 from multiprocessing import Lock
+
+from utils import EmptyLock
 
 #decision makers
 from utils_dqn import DQN
@@ -21,11 +24,7 @@ from utils_ttable import TransitionTable
 # results handlers
 from utils_results import ResultFile
 
-class EmptyLock:
-    def acquire(self):
-        return
-    def release(self):
-        return
+
 
 class UserPlay:
     def __init__(self, playWithInput = True, numActions = 1, actionDoNothing = 0):
@@ -73,7 +72,7 @@ class LearnWithReplayMngr:
             loadFiles = True
 
         decisionClass = eval(modelType)
-        self.decisionMaker = decisionClass(modelParams, decisionMakerName, fullDirectoryName, loadFiles)
+        self.decisionMaker = decisionClass(modelParams, decisionMakerName, fullDirectoryName, loadFiles, isMultiThreaded=isMultiThreaded)
 
         self.tTable = None
 

@@ -50,7 +50,7 @@ class DQN_WITH_TARGET_PARAMS(DQN_PARAMS):
 
 
 class DQN:
-    def __init__(self, modelParams, nnName, nnDirectory, loadNN, createSaver = True, learning_rate = 0.001):
+    def __init__(self, modelParams, nnName, nnDirectory, loadNN, isMultiThreaded = False, createSaver = True, learning_rate = 0.001):
         # Parameters
         self.params = modelParams
         self.learning_rate = learning_rate
@@ -213,8 +213,9 @@ class DQN:
 
 
 class DQN_WithTarget(DQN):
-    def __init__(self, modelParams, nnName, nnDirectory, loadNN, learning_rate = 0.001):
-        super(DQN_WithTarget, self).__init__(modelParams=modelParams, nnName=nnName, nnDirectory=nnDirectory, loadNN=loadNN, learning_rate=learning_rate, createSaver=False)
+    def __init__(self, modelParams, nnName, nnDirectory, loadNN, isMultiThreaded = False, learning_rate = 0.001):
+        super(DQN_WithTarget, self).__init__(modelParams=modelParams, nnName=nnName, nnDirectory=nnDirectory, isMultiThreaded=isMultiThreaded,
+                                                loadNN=loadNN, learning_rate=learning_rate, createSaver=False)
         self.numTrials2CmpResults = modelParams.numTrials2CmpResults
 
         self.targetScope = self.scope + "_target"

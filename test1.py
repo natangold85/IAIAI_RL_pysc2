@@ -14,6 +14,10 @@ holes.append([4,8])
 holes.append([7,9])
 holes.append([8,2])
 holes.append([6,1])
+holes.append([3,5])
+holes.append([2,3])
+holes.append([8,6])
+holes.append([0,2])
 env = MazeGame(10, holes)
 
 numTrials2CmpResults = 500

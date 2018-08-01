@@ -11,6 +11,12 @@ class EmptySharedData:
     def __init__(self):
         return
 
+class EmptyLock:
+    def acquire(self):
+        return
+    def release(self):
+        return
+        
 # params base
 class ParamsBase:
     def __init__(self, stateSize, numActions, historyProportion4Learn = 1, propogateReward = False, discountFactor = 0.95, maxReplaySize = 500000, minReplaySize = 1000, states2Monitor = []):
