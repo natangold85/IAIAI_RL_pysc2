@@ -98,10 +98,8 @@ class PlotMngr:
             plt.grid(True)
             plt.legend(self.legendList, loc='best')
 
-        # full screen
-        mng = plt.get_current_fig_manager()
-        mng.window.state('zoomed')
         fig.savefig(self.plotFName)
+        print("results graph saved in:", self.plotFName)
 
 class ResultFile:
     def __init__(self, tableName, numToWrite = 100, loadFile = True):

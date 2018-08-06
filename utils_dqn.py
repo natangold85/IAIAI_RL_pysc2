@@ -11,7 +11,7 @@ from utils import ParamsBase
 
 # dqn params
 class DQN_PARAMS(ParamsBase):
-    def __init__(self, stateSize, numActions, historyProportion4Learn = 1, nn_Func = None, propogateReward = False, outputGraph = False, discountFactor = 0.95, batchSize = 32, maxReplaySize = 500000, minReplaySize = 1000, copyEvalToTarget = 5, explorationProb = 0.1, descendingExploration = True, exploreChangeRate = 0.001, states2Monitor = [], scopeVarName = ''):
+    def __init__(self, stateSize, numActions, numTrials2CmpResults = 1000, historyProportion4Learn = 1, nn_Func = None, propogateReward = False, outputGraph = False, discountFactor = 0.95, batchSize = 32, maxReplaySize = 500000, minReplaySize = 1000, copyEvalToTarget = 5, explorationProb = 0.1, descendingExploration = True, exploreChangeRate = 0.001, states2Monitor = [], scopeVarName = ''):
         super(DQN_PARAMS, self).__init__(stateSize, numActions, historyProportion4Learn, propogateReward, discountFactor, maxReplaySize, minReplaySize)
         
         self.nn_Func = nn_Func
@@ -29,6 +29,8 @@ class DQN_PARAMS(ParamsBase):
         self.scopeVarName = scopeVarName
         self.tfSession = None
 
+        self.numTrials2CmpResults = numTrials2CmpResults
+
     def ExploreProb(self, numRuns, resultRatio = 1):
         if self.descendingExploration:
             return self.explorationProb + (1 - self.explorationProb) * np.exp(-self.exploreChangeRate * resultRatio * numRuns)
@@ -36,16 +38,11 @@ class DQN_PARAMS(ParamsBase):
             return self.explorationProb
 
 class DQN_EMBEDDING_PARAMS(DQN_PARAMS):
-    def __init__(self, stateSize, embeddingInputSize, numActions, historyProportion4Learn = 1, nn_Func = None, propogateReward = False, outputGraph = False, discountFactor = 0.95, batchSize = 32, maxReplaySize = 500000, minReplaySize = 1000, copyEvalToTarget = 5, explorationProb = 0.1, descendingExploration = True, exploreChangeRate = 0.0005, states2Monitor = [], scopeVarName = ''):
-        super(DQN_EMBEDDING_PARAMS, self).__init__(stateSize, numActions, historyProportion4Learn, nn_Func, propogateReward, outputGraph, discountFactor, batchSize, maxReplaySize, minReplaySize, copyEvalToTarget, explorationProb, descendingExploration, exploreChangeRate, states2Monitor, scopeVarName)
+    def __init__(self, stateSize, embeddingInputSize, numActions, numTrials2CmpResults = 1000, historyProportion4Learn = 1, nn_Func = None, propogateReward = False, outputGraph = False, discountFactor = 0.95, batchSize = 32, maxReplaySize = 500000, minReplaySize = 1000, copyEvalToTarget = 5, explorationProb = 0.1, descendingExploration = True, exploreChangeRate = 0.0005, states2Monitor = [], scopeVarName = ''):
+        super(DQN_EMBEDDING_PARAMS, self).__init__(stateSize, numActions, numTrials2CmpResults, historyProportion4Learn, nn_Func, propogateReward, outputGraph, discountFactor, batchSize, maxReplaySize, minReplaySize, copyEvalToTarget, explorationProb, descendingExploration, exploreChangeRate, states2Monitor, scopeVarName)
         
         self.embeddingInputSize = embeddingInputSize
         self.type = "DQN_Embedding"
-
-class DQN_WITH_TARGET_PARAMS(DQN_PARAMS):
-    def __init__(self, stateSize, numActions, numTrials2CmpResults, historyProportion4Learn = 1, nn_Func = None, propogateReward = False, outputGraph = False, discountFactor = 0.95, batchSize = 32, maxReplaySize = 500000, minReplaySize = 1000, copyEvalToTarget = 5, explorationProb = 0.1, descendingExploration = True, exploreChangeRate = 0.0005, states2Monitor = [], scopeVarName = ''):
-        super(DQN_WITH_TARGET_PARAMS, self).__init__(stateSize, numActions, historyProportion4Learn, nn_Func, propogateReward, outputGraph, discountFactor, batchSize, maxReplaySize, minReplaySize, copyEvalToTarget, explorationProb, descendingExploration, exploreChangeRate, states2Monitor, scopeVarName)
-        self.numTrials2CmpResults = numTrials2CmpResults
         
 
 
@@ -160,7 +157,7 @@ class DQN:
 
     def ExploreProb(self):
         return self.params.ExploreProb(self.numRuns.eval(session = self.sess))
-        
+    
     def choose_action(self, observation):
         if np.random.uniform() > self.params.ExploreProb(self.numRuns.eval(session = self.sess)):
             vals = self.outputLayer.eval({self.inputLayer: observation.reshape(1,self.num_input)}, session=self.sess)
@@ -172,7 +169,8 @@ class DQN:
 
         return a
 
-    def actionValuesVec(self, state):
+
+    def ActionValuesVec(self, state, targetValues = False):
         allVals = self.outputLayer.eval({self.inputLayer: state.reshape(1,self.num_input)}, session=self.sess)
         return allVals[0]
         
@@ -193,7 +191,7 @@ class DQN:
         for i in range(self.numStates2Check):
             state = self.params.states2Monitor[i][0]
             actions2Print = self.params.states2Monitor[i][1]
-            print(list(self.actionValuesVec(state)[actions2Print]), end = "\n\n")     
+            print(list(self.ActionValuesVec(state)[actions2Print]), end = "\n\n")     
 
     def Close(self):
         self.sess.close()
@@ -258,6 +256,13 @@ class DQN_WithTarget(DQN):
             update_ops.append(op)
 
         self.sess.run(update_ops)
+
+    def ActionValuesVec(self, state, targetValues = False):
+        if targetValues:
+            allVals = self.targetOutput.eval({self.inputLayer: state.reshape(1,self.num_input)}, session=self.sess)
+            return allVals[0]
+        else:
+            super(DQN_WithTarget, self).ActionValuesVec(state, targetValues)
 
     def NumRunsTarget(self):
         return int(self.numRunsTarget.eval(session = self.sess))

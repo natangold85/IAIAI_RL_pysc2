@@ -116,7 +116,8 @@ class QLearningTable:
             
         return action
 
-    def actionValuesVec(self, s):
+
+    def ActionValuesVec(self, s, targetValues = False):
         state = str(s)
         self.check_state_exist(state)
         state_action = self.table.ix[state, :]
@@ -140,7 +141,7 @@ class QLearningTable:
         for i in range(len(self.params.states2Monitor)):
             state = str(self.params.states2Monitor[i][0])
             actions2Print = self.params.states2Monitor[i][1]
-            vals = self.actionValuesVec(state)
+            vals = self.ActionValuesVec(state)
             for a in actions2Print:
                 print(vals[a], end = ", ")           
             print("\n")

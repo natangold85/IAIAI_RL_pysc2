@@ -1,6 +1,7 @@
 import numpy as np
 from scipy import sparse
 
+import datetime
 import pandas as pd
 import random
 import pickle
@@ -61,6 +62,10 @@ class DTN:
             if loadNN:
                 self.saver.restore(self.sess, self.directoryName)
 
+        
+        self.lastLearningTime = 0
+        self.lastSavingTime = 0
+
     # Define the neural network
     def build_dtn(self, NN_Func, scope):
         if NN_Func != None:
@@ -87,7 +92,8 @@ class DTN:
 
         return vals * normalizeTo
         
-    def learn(self, s, a, s_):             
+    def learn(self, s, a, s_):  
+        start = datetime.datetime.now()           
         size = len(a)
         # construct sparse repressentation of actions
         idxArray = np.arange(size)
@@ -103,16 +109,24 @@ class DTN:
             
             feedDict = {self.inputLayerState: sChosen, self.inputLayerActions: aChosen, self.outputTensor: s_Chosen}
             self.sess.run([self.train_op, self.loss_op], feed_dict=feedDict)
-  
+
+        diff = datetime.datetime.now() - start
+        self.lastLearningTime = diff.seconds * 1000 + diff.microseconds / 1000
+
+
     def Reset(self):
         #self.outputLayer = self.build_dtn(self.params.nn_Func, self.nnName)
-        self.sess.run(self.init_op) 
-        assign_op = self.numRuns.assign(0)
-        self.sess.run(assign_op)
+        tf.reset_default_graph()
+        # self.sess.run(self.init_op) 
+        # assign_op = self.numRuns.assign(0)
+        # self.sess.run(assign_op)
 
     def save_network(self):
+        start = datetime.datetime.now() 
         self.saver.save(self.sess, self.directoryName)
-        print("save", self.directoryName, "with", self.numRuns.eval(session = self.sess), "runs")
+        diff = datetime.datetime.now() - start
+        self.lastSavingTime = diff.seconds * 1000 + diff.microseconds / 1000
+        print("save", self.directoryName, "with", self.numRuns.eval(session = self.sess), "runs", "save duration =", self.lastSavingTime)
 
     def NumRuns(self):
         return int(self.numRuns.eval(session = self.sess))
@@ -122,6 +136,11 @@ class DTN:
         self.sess.run(assign)
         if toSave:
             self.save_network()
+
+    def LastTrainDuration(self):
+        return self.lastLearningTime
+    def LastSaveDuration(self):
+        return self.lastSavingTime
 
 
 from utils_ttable import TransitionTable

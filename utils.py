@@ -16,7 +16,41 @@ class EmptyLock:
         return
     def release(self):
         return
+
+class BaseAgent(base_agent.BaseAgent):
+    def __init__(self, runArg = None, decisionMaker = None, isMultiThreaded = False, playList = None, trainList = None):
+        super(BaseAgent, self).__init__()
+        pass
+    
+    def GetDecisionMaker(self):
+        return None
+    
+    def FindActingHeirarchi(self):
+        return -1
+
+    def step(self, obs, sharedData = None, moveNum = None):
+        super(BaseAgent, self).step(obs)
+        return 0
         
+    def FirstStep(self, obs):
+        pass
+
+    def LastStep(self, obs, reward = 0):
+        pass
+    
+    def Learn(self, reward = 0):
+        pass
+
+    def Action2SC2Action(self, obs, a, moveNum):
+        return SC2_Actions.DO_NOTHING_SC2_ACTION, True
+
+    def IsDoNothingAction(self, a):
+        return True
+
+    def Action2Str(self, a):
+        return "None"
+
+
 # params base
 class ParamsBase:
     def __init__(self, stateSize, numActions, historyProportion4Learn = 1, propogateReward = False, discountFactor = 0.95, maxReplaySize = 500000, minReplaySize = 1000, states2Monitor = []):
@@ -33,6 +67,7 @@ class SC2_Params:
     # minimap feature
     CAMERA = features.MINIMAP_FEATURES.camera.index
     HEIGHT_MINIMAP = features.MINIMAP_FEATURES.height_map.index
+    VISIBILITY_MINIMAP = features.MINIMAP_FEATURES.visibility_map.index
     PLAYER_RELATIVE_MINIMAP = features.MINIMAP_FEATURES.player_relative.index
     
     # screen feature
@@ -44,11 +79,16 @@ class SC2_Params:
     PLAYER_ID = features.SCREEN_FEATURES.player_id.index
     SELECTED_IN_SCREEN = features.SCREEN_FEATURES.selected.index
     VISIBILITY = features.SCREEN_FEATURES.visibility_map.index 
+    
+    # visibility map details
+    IN_SIGHT = 2
+    SLIGHT_FOG = 1
+    FOG = 0
 
+    # player id type
     PLAYER_SELF = 1
     PLAYER_NEUTRAL = 3 
     PLAYER_HOSTILE = 4
-    ARMY_SUPPLY = 5
 
     #player general info
     MINERALS = 1
@@ -820,11 +860,11 @@ neighbors2CheckBuilding = []
 neighbors2CheckBuilding.append([-1,-2])
 neighbors2CheckBuilding.append([-2,-1])
 
-neighbors2CheckScv = []
-neighbors2CheckScv.append([-1, 0])
-neighbors2CheckScv.append([1, 0])
-neighbors2CheckScv.append([0, 1])
-neighbors2CheckScv.append([0, -1])
+neighbors2CheckUnit = []
+neighbors2CheckUnit.append([-1, 0])
+neighbors2CheckUnit.append([1, 0])
+neighbors2CheckUnit.append([0, 1])
+neighbors2CheckUnit.append([0, -1])
 
 def SelectBuildingValidPoint(unit_type, buildingType, y = None, x = None):
     buildingMap = unit_type == buildingType
@@ -842,15 +882,14 @@ def SelectBuildingValidPoint(unit_type, buildingType, y = None, x = None):
     return y[idx], x[idx]
 
 
-def SelectScvValidPoints(unit_type):
-    scvMap = unit_type == TerranUnit.SCV
-    scv_y, scv_x = (scvMap).nonzero()
+def SelectUnitValidPoints(unitMap):
+    p_y, p_x = (unitMap).nonzero()
     valid_y = []
     valid_x = []
-    for i in range(len(scv_y)):
-        x = scv_x[i]
-        y = scv_y[i]
-        if IsValidPoint4Select(scvMap, y, x, neighbors2CheckScv):
+    for i in range(len(p_y)):
+        x = p_x[i]
+        y = p_y[i]
+        if IsValidPoint4Select(unitMap, y, x, neighbors2CheckUnit):
             valid_y.append(y)
             valid_x.append(x)
 

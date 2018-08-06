@@ -1,0 +1,2 @@
+model_checkpoint_path: "armyAttack_dqn"
+all_model_checkpoint_paths: "armyAttack_dqn"

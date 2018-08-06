@@ -24,10 +24,34 @@ from utils_ttable import TransitionTable
 # results handlers
 from utils_results import ResultFile
 
+class BaseDecisionMaker:
+    def __init__(self):
 
+        self.subAgentsDecisionMakers = {}
 
-class UserPlay:
+    def SetSubAgentDecisionMaker(self, key, decisionMaker):
+        self.subAgentsDecisionMakers[key] = decisionMaker
+
+    def GetSubAgentDecisionMaker(self, key):
+        if key in self.subAgentsDecisionMakers.keys():
+            return self.subAgentsDecisionMakers[key]
+        else:
+            return None
+
+    def choose_action(self, observation):
+        pass
+    def learn(self, s, a, r, s_, terminal = False):
+        pass
+    def ActionValuesVec(self,state, targetValues = False):
+        pass
+    def end_run(self, r, score = 0 ,steps = 0):
+        pass
+    def ExploreProb(self):
+        pass
+
+class UserPlay(BaseDecisionMaker):
     def __init__(self, playWithInput = True, numActions = 1, actionDoNothing = 0):
+        super(UserPlay, self).__init__()
         self.playWithInput = playWithInput
         self.numActions = numActions
         self.actionDoNothing = actionDoNothing
@@ -41,15 +65,17 @@ class UserPlay:
 
     def learn(self, s, a, r, s_, terminal = False):
         return None
-    def actionValuesVec(self,state):
+    def ActionValuesVec(self,state, targetValues = False):
         return np.zeros(self.numActions,dtype = float)
     def end_run(self, r, score = 0 ,steps = 0):
         return False
     def ExploreProb(self):
         return 0
 
-class LearnWithReplayMngr:
+class LearnWithReplayMngr(BaseDecisionMaker):
     def __init__(self, modelType, modelParams, decisionMakerName = '', resultFileName = '', historyFileName = '', directory = '', numTrials2Learn = 100, isMultiThreaded = False):
+        super(LearnWithReplayMngr, self).__init__()
+
         if directory != "":
             fullDirectoryName = "./" + directory +"/"
         else:
@@ -95,17 +121,11 @@ class LearnWithReplayMngr:
         else:
             self.endRunLock = EmptyLock()
 
-    
-
     def ExploreProb(self):
         return self.decisionMaker.ExploreProb()
 
-
     def choose_action(self, observation):
         return self.decisionMaker.choose_action(observation)     
-
-    def actionValuesVec(self, state):
-        return self.decisionMaker.actionValuesVec(state)
 
     def NumRuns(self):
         return self.decisionMaker.NumRuns()
@@ -188,6 +208,10 @@ class LearnWithReplayMngr:
 
         if self.resultFile != None:
             self.resultFile.Reset()
+
+    def ActionValuesVec(self, s, targetValues = False):
+        return self.decisionMaker.ActionValuesVec(s, targetValues)
+
 
     def PropogateReward(self):
         lastIdx = len(self.transitions["r"]) - 1

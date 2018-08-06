@@ -14,7 +14,7 @@ from utils import SC2_Actions
 
 from utils import PrintScreen
 
-STEP_DURATION = 0
+STEP_DURATION = 0.2
 DO_NOTHING_SC2_ACTION = actions.FunctionCall(SC2_Actions.NO_OP, [])
 
 
@@ -36,6 +36,18 @@ class Play(base_agent.BaseAgent):
             diff = t - self.prevTime
             #print("time(ms) = ", diff.seconds * 1000 + diff.microseconds / 1000)
         self.prevTime = t
+
+        miniMapVisi = obs.observation['minimap'][SC2_Params.VISIBILITY_MINIMAP]
+        miniMapHeight = obs.observation['minimap'][SC2_Params.HEIGHT_MAP]
+        
+        print("\n\n")
+        for y in range(64):
+            for x in range(64):
+                if miniMapHeight[y][x] == 0:
+                    print(end = "  ")
+                else:
+                    print(miniMapVisi[y][x], end = ' ')
+            print("|")
 
         sc2Action = DO_NOTHING_SC2_ACTION
         time.sleep(STEP_DURATION)

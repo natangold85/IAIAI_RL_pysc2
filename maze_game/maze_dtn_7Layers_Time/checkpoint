@@ -1,0 +1,2 @@
+model_checkpoint_path: "dtn7Layers_Time"
+all_model_checkpoint_paths: "dtn7Layers_Time"
