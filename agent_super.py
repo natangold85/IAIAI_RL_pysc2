@@ -249,7 +249,7 @@ class SuperAgent(BaseAgent):
         directory = dmTypes["directory"] + "/" + AGENT_DIR
         if not os.path.isdir("./" + directory):
             os.makedirs("./" + directory)
-        decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], numTrials2Learn=16, 
+        decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], numTrials2Learn=50, 
                                             resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY], isMultiThreaded=isMultiThreaded)
 
         return decisionMaker
@@ -272,9 +272,6 @@ class SuperAgent(BaseAgent):
         
         try:
             self.unit_type = obs.observation['screen'][SC2_Params.UNIT_TYPE]
-            # if not (self.unit_type == TerranUnit.COMMANDCENTER).any():
-            #     print("\ncommand center out of range")
-            #     print("actionChosen =", self.Action2Str(False), "\tactionActed =", self.Action2Str(True))
             
             if obs.last():
                 self.LastStep(obs)
@@ -341,8 +338,9 @@ class SuperAgent(BaseAgent):
 
     def LastStep(self, obs):
         reward = obs.reward
-        if self.trainAgent and self.current_action is not None:
-            self.decisionMaker.learn(self.current_state.copy(), self.current_action, reward, self.terminalState.copy(), True)
+        if self.trainAgent:
+            self.CreateState(obs)
+            self.Learn(reward, True)
 
             score = obs.observation["score_cumulative"][0]
             self.decisionMaker.end_run(reward, score, self.step_num)
@@ -421,7 +419,7 @@ class SuperAgent(BaseAgent):
         for unit, num in self.sharedData.armyInAttack.items():
             if unit in self.sharedData.unitTrainValue:
                 power += num * self.sharedData.unitTrainValue[unit]
-                
+
         self.current_state[STATE.SELF_ATTACK_POWER] = power
 
         enemyMat = obs.observation['minimap'][SC2_Params.PLAYER_RELATIVE_MINIMAP] == SC2_Params.PLAYER_HOSTILE
@@ -477,10 +475,11 @@ class SuperAgent(BaseAgent):
 
         return subAgentIdx, subAgentAction
 
-    def Learn(self, reward = 0):
+    def Learn(self, reward = 0, terminal = False):
         if self.trainAgent and self.current_action is not None:
-            self.decisionMaker.learn(str(self.previous_scaled_state), self.current_action, reward, str(self.current_scaled_state))
+            self.decisionMaker.learn(self.previous_scaled_state, self.current_action, reward, self.current_scaled_state, terminal)
 
+        self.previous_scaled_state[:] = self.current_scaled_state[:]
         for sa in self.activeSubAgents:
             self.subAgents[sa].Learn(reward)
      

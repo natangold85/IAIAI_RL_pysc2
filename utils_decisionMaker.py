@@ -153,7 +153,7 @@ class LearnWithReplayMngr(BaseDecisionMaker):
         np.random.shuffle(idx4Shuffle)
         size = int(len(idx4Shuffle) * self.params.historyProportion4Learn)
         chosenIdx = idx4Shuffle[0:size]
-        
+                
         s = np.array(self.transitions["s"])[chosenIdx]
         a = np.array(self.transitions["a"])[chosenIdx]
         r = np.array(self.transitions["r"])[chosenIdx]

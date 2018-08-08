@@ -905,7 +905,7 @@ def SelectUnitValidPoints(unitMap):
     return valid_y, valid_x
 
 def IsValidPoint4Select(buildingMap, y, x, neighbor2Check = neighbors2CheckBuilding):
-    if x == 0 or y == 0 or x == SC2_Params.SCREEN_SIZE or y == SC2_Params.SCREEN_SIZE:
+    if x <= 1 or y <= 1 or x >= SC2_Params.SCREEN_SIZE - 1 or y >= SC2_Params.SCREEN_SIZE - 1:
         return False
 
     for neighbor in neighbor2Check:
