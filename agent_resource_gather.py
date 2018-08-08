@@ -349,7 +349,7 @@ class GatherResourcesSubAgent:
 
         self.accumulatedReward = 0.0
 
-    def LastStep(self, obs):
+    def LastStep(self, obs, reward = 0):
         reward = obs.reward
         score = obs.observation["score_cumulative"][0]
         self.decisionMaker.end_run(self.accumulatedReward, score, self.numSteps)

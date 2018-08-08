@@ -14,9 +14,10 @@ from utils import SC2_Actions
 
 from utils import PrintScreen
 
-STEP_DURATION = 0.2
+STEP_DURATION = 0.1
 DO_NOTHING_SC2_ACTION = actions.FunctionCall(SC2_Actions.NO_OP, [])
 
+#python -m pysc2.bin.agent --agent 2play.Play --map mapName --max_agent_steps=0 --agent_race=T --bot_race=T
 
 class Play(base_agent.BaseAgent):
     def __init__(self):        
@@ -26,33 +27,23 @@ class Play(base_agent.BaseAgent):
 
     def step(self, obs):
         super(Play, self).step(obs)
-        if obs.first():
-            self.FirstStep(obs)
-        elif obs.last():
-             self.LastStep(obs)
-             return DO_NOTHING_SC2_ACTION
-        t = datetime.datetime.now()
-        if self.prevTime != None:
-            diff = t - self.prevTime
-            #print("time(ms) = ", diff.seconds * 1000 + diff.microseconds / 1000)
-        self.prevTime = t
-
-        miniMapVisi = obs.observation['minimap'][SC2_Params.VISIBILITY_MINIMAP]
-        miniMapHeight = obs.observation['minimap'][SC2_Params.HEIGHT_MAP]
-        
-        print("\n\n")
-        for y in range(64):
-            for x in range(64):
-                if miniMapHeight[y][x] == 0:
-                    print(end = "  ")
-                else:
-                    print(miniMapVisi[y][x], end = ' ')
-            print("|")
 
         sc2Action = DO_NOTHING_SC2_ACTION
+        
+        if obs.first():
+            self.FirstStep(obs)
+            sc2Action = actions.FunctionCall(SC2_Actions.SELECT_ARMY, [SC2_Params.NOT_QUEUED])
+        elif self.numStep == 1:
+            sc2Action = actions.FunctionCall(SC2_Actions.SELECT_CONTROL_GROUP, [SC2_Params.CONTROL_GROUP_SET, [4]])
+
+        elif self.numStep % 10 == 0:
+            sc2Action = actions.FunctionCall(SC2_Actions.SELECT_CONTROL_GROUP, [SC2_Params.CONTROL_GROUP_RECALL, [4]])
+
         time.sleep(STEP_DURATION)
 
-        return sc2Action
+        self.numStep += 1
+        return DO_NOTHING_SC2_ACTION
+
 
     def FirstStep(self, obs):
         self.numStep = 0

@@ -47,7 +47,10 @@ class BaseDecisionMaker:
     def end_run(self, r, score = 0 ,steps = 0):
         pass
     def ExploreProb(self):
-        pass
+        return 0
+    def TargetExploreProb(self):
+        return 0
+        
 
 class UserPlay(BaseDecisionMaker):
     def __init__(self, playWithInput = True, numActions = 1, actionDoNothing = 0):

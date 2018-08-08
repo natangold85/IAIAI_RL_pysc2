@@ -45,9 +45,6 @@ from utils import CenterPoints
 
 # possible types of play
 AGENT_DIR = "BattleMngr/"
-if not os.path.isdir("./" + AGENT_DIR):
-    os.makedirs("./" + AGENT_DIR)
-
 AGENT_NAME = "battle_mngr"
 
 QTABLE = 'q'
@@ -62,10 +59,19 @@ ALL_TYPES = set([USER_PLAY, QTABLE, DQN, DQN_EMBEDDING_LOCATIONS, NAIVE_DECISION
 
 GRID_SIZE = 5
 
+SUB_AGENT_DONOTHING = 0
+SUB_AGENT_ARMY_BATTLE = 1
+SUB_AGENT_BASE_BATTLE = 2
+NUM_SUB_AGENTS = 3
 
-ACTION_DO_NOTHING = 0
-ACTION_ARMY_BATTLE = 1
-ACTION_BASE_BATTLE = 2
+SUBAGENTS_NAMES = {}
+SUBAGENTS_NAMES[SUB_AGENT_DONOTHING] = "BaseAgent"
+SUBAGENTS_NAMES[SUB_AGENT_ARMY_BATTLE] = "ArmyAttack"
+SUBAGENTS_NAMES[SUB_AGENT_BASE_BATTLE] = "BaseAttack"
+
+ACTION_DO_NOTHING = SUB_AGENT_DONOTHING
+ACTION_ARMY_BATTLE = SUB_AGENT_ARMY_BATTLE
+ACTION_BASE_BATTLE = SUB_AGENT_BASE_BATTLE
 NUM_ACTIONS = 3
 
 ACTION2STR = {}
@@ -88,31 +94,6 @@ class STATE:
     SIZE = TIME_LINE_IDX + 1
 
     TIME_LINE_BUCKETING = 25
-
-SUBAGENTS_NAMES = {}
-SUBAGENTS_NAMES[ACTION_DO_NOTHING] = "BaseAgent"
-SUBAGENTS_NAMES[ACTION_ARMY_BATTLE] = "ArmyAttack"
-SUBAGENTS_NAMES[ACTION_BASE_BATTLE] = "BaseAttack"
-
-SUBAGENTS_ARGS = {}
-SUBAGENTS_ARGS[ACTION_DO_NOTHING] = "naive"
-SUBAGENTS_ARGS[ACTION_ARMY_BATTLE] = "dqn"
-SUBAGENTS_ARGS[ACTION_BASE_BATTLE] = "naive"
-
-def NNFunc_2Layers(x, numActions, scope):
-    with tf.variable_scope(scope):
-        # Fully connected layers
-        fc1 = tf.contrib.layers.fully_connected(x, 256)
-        fc2 = tf.contrib.layers.fully_connected(fc1, 256)
-        output = tf.contrib.layers.fully_connected(fc2, numActions, activation_fn = tf.nn.sigmoid) * 2 - 1
-    return output
-
-
-NUM_UNIT_SCREEN_PIXELS = 0
-
-for key,value in TerranUnit.UNIT_SPEC.items():
-    if value.name == "marine":
-        NUM_UNIT_SCREEN_PIXELS = value.numScreenPixels
 
 
 # data for run type
@@ -152,13 +133,6 @@ RUN_TYPES[DQN_EMBEDDING_LOCATIONS][HISTORY] = "battleMngr_dqn_Embedding_replayHi
 RUN_TYPES[DQN_EMBEDDING_LOCATIONS][RESULTS] = "battleMngr_dqn_Embedding_result"
 
 
-RUN_TYPES[USER_PLAY] = {}
-RUN_TYPES[USER_PLAY][TYPE] = "play"
-
-RUN_TYPES[NAIVE_DECISION] = {}
-RUN_TYPES[NAIVE_DECISION][RESULTS] = "battleMngr_naive_result"
-RUN_TYPES[NAIVE_DECISION][TYPE] = "naive"
-
 
 class SharedDataBattle(EmptySharedData):
     def __init__(self):
@@ -166,14 +140,11 @@ class SharedDataBattle(EmptySharedData):
 
 
 class NaiveDecisionMakerBattleMngr(BaseDecisionMaker):
-    def __init__(self, gridSize, resultFName):
-        super(NaiveDecisionMakerBattleMngr, self).__init__()
-        self.resultsFile = ResultFile(resultFName)
-        
-        self.gridSize = gridSize
-        self.startEnemyMat = gridSize * gridSize
-        self.startBuildingMat = 2 * gridSize * gridSize
-        self.endBuildingMat = 3 * gridSize * gridSize
+    def __init__(self):
+        super(NaiveDecisionMakerBattleMngr, self).__init__()        
+        self.startEnemyMat = GRID_SIZE * GRID_SIZE
+        self.startBuildingMat = 2 * GRID_SIZE * GRID_SIZE
+        self.endBuildingMat = 3 * GRID_SIZE * GRID_SIZE
 
         self.numActions = 3
 
@@ -185,25 +156,16 @@ class NaiveDecisionMakerBattleMngr(BaseDecisionMaker):
         else:
             return ACTION_DO_NOTHING
 
-    def learn(self, s, a, r, s_, terminal = False):
-        return None
-
-    def ActionValuesVec(self, state):
+    def ActionValuesVec(self, state, target = True):
         vals = np.zeros(self.numActions,dtype = float)
         vals[self.choose_action(state)] = 1.0
 
         return vals
 
-    def end_run(self, r, score = 0 ,steps = 0):
-        self.resultsFile.end_run(r,score,steps, True)
-        return True
-
-    def ExploreProb(self):
-        return 0
 
 
 class BattleMngr(BaseAgent):
-    def __init__(self, runArg = None, decisionMaker = None, isMultiThreaded = False, playList = None, trainList = None):        
+    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList):        
         super(BattleMngr, self).__init__()
         self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
         if self.playAgent:
@@ -218,25 +180,21 @@ class BattleMngr(BaseAgent):
         if decisionMaker != None:
             self.decisionMaker = decisionMaker
         else:
-            self.decisionMaker = self.CreateDecisionMaker(runArg, isMultiThreaded)
+            self.decisionMaker = self.CreateDecisionMaker(dmTypes, isMultiThreaded)
 
+        self.sharedData = sharedData
         self.subAgents = {}
         for key, name in SUBAGENTS_NAMES.items():
             saClass = eval(name)
             saDM = self.decisionMaker.GetSubAgentDecisionMaker(key)
-            
-            saArg = SUBAGENTS_ARGS[key]
-            if saArg == "inherit":
-                saArg = runArg
-
-            self.subAgents[key] = saClass(saArg, saDM, isMultiThreaded, saPlayList, trainList)
+            self.subAgents[key] = saClass(sharedData, dmTypes, saDM, isMultiThreaded, saPlayList, trainList)
             self.decisionMaker.SetSubAgentDecisionMaker(key, self.subAgents[key].GetDecisionMaker())
 
         if not self.playAgent:
             self.subAgentPlay = self.FindActingHeirarchi()
             self.activeSubAgents = [self.subAgentPlay]
         else: 
-            self.activeSubAgents = list(range(NUM_ACTIONS))
+            self.activeSubAgents = list(range(NUM_SUB_AGENTS))
 
 
         self.current_action = None
@@ -258,15 +216,18 @@ class BattleMngr(BaseAgent):
             self.BuildingValues[spec.name] = 1
 
 
-    def CreateDecisionMaker(self, runArg, isMultiThreaded):
-        if runArg == None:
-            runTypeArg = list(ALL_TYPES.intersection(sys.argv))
-            runArg = runTypeArg.pop()    
-        runType = RUN_TYPES[runArg]
+    def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
+        
 
-        if runType[TYPE] == "naive":
-            decisionMaker = NaiveDecisionMakerBattleMngr(GRID_SIZE, runType[RESULTS])
+        if dmTypes[AGENT_NAME] == "naive":
+            decisionMaker = NaiveDecisionMakerBattleMngr()
         else:
+            runType = RUN_TYPES[dmTypes[AGENT_NAME]]
+
+            # create agent dir
+            directory = dmTypes["directory"] + "/" + AGENT_DIR
+            if not os.path.isdir("./" + directory):
+                os.makedirs("./" + directory)
             decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME],  
                                             resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=AGENT_DIR+runType[DIRECTORY], isMultiThreaded=isMultiThreaded)
 
@@ -285,23 +246,18 @@ class BattleMngr(BaseAgent):
         
         return -1
 
-    def step(self, obs, sharedData = None, moveNum = None):
+    def step(self, obs, moveNum):
         super(BattleMngr, self).step(obs)   
         if obs.first():
             self.FirstStep(obs)
             
-        if sharedData != None:
-            self.sharedData = sharedData
-            self.move_number = moveNum
-
         for sa in self.activeSubAgents:
-            self.subAgentsActions[sa] = self.subAgents[sa].step(obs, self.sharedData, self.move_number) 
+            self.subAgentsActions[sa] = self.subAgents[sa].step(obs, moveNum) 
         
-        if self.move_number == 0:
+        if moveNum == 0:
             self.CreateState(obs)
             self.Learn()
             self.current_action = self.ChooseAction()    
-
 
         self.numStep += 1        
 
@@ -351,7 +307,7 @@ class BattleMngr(BaseAgent):
                     exploreProb = self.decisionMaker.ExploreProb()              
                 else:
                     targetValues = True
-                    exploreProb = 0   
+                    exploreProb = self.decisionMaker.TargetExploreProb()     
 
                 if np.random.uniform() > exploreProb:
                     valVec = self.decisionMaker.ActionValuesVec(self.current_state, targetValues)   
@@ -373,10 +329,12 @@ class BattleMngr(BaseAgent):
     def IsDoNothingAction(self, a):
         return self.subAgents[a].IsDoNothingAction(self.subAgentsActions[a])
 
-    def Action2SC2Action(self, obs, a, moveNum):
+    def Action2SC2Action(self, obs, moveNum):
+        print("\n\nBattle mngr action\n\n")
+        action = self.step(obs, moveNum)
+
         self.isActionCommitted = True
-        self.current_action = a
-        return self.subAgents[a].Action2SC2Action(obs, self.subAgentsActions[a], moveNum)
+        return self.subAgents[action].Action2SC2Action(obs, self.subAgentsActions[action], moveNum)
 
     def CreateState(self, obs):
         self.current_state = np.zeros(self.state_size, dtype=np.int, order='C')

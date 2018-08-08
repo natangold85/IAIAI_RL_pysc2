@@ -20,6 +20,7 @@ from utils import SC2_Actions
 
 from utils_decisionMaker import LearnWithReplayMngr
 from utils_decisionMaker import UserPlay
+from utils_decisionMaker import BaseDecisionMaker
 
 from utils_qtable import QTableParamsExplorationDecay
 from utils_dqn import DQN_PARAMS
@@ -40,9 +41,7 @@ from utils import FindMiddle
 from utils import Scale2MiniMap
 
 AGENT_DIR = "BaseMngr/"
-if not os.path.isdir("./" + AGENT_DIR):
-    os.makedirs("./" + AGENT_DIR)
-AGENT_NAME = "base"
+AGENT_NAME = "base_mngr"
 
 ACTION_DO_NOTHING = 0
 ACTION_BUILD_BASE = 1
@@ -55,11 +54,6 @@ SUBAGENTS_NAMES = {}
 SUBAGENTS_NAMES[ACTION_DO_NOTHING] = "BaseAgent"
 SUBAGENTS_NAMES[ACTION_BUILD_BASE] = "BuildBaseSubAgent"
 SUBAGENTS_NAMES[ACTION_TRAIN_ARMY] = "TrainArmySubAgent"
-
-SUBAGENTS_ARGS = {}
-SUBAGENTS_ARGS[ACTION_DO_NOTHING] = "naive"
-SUBAGENTS_ARGS[ACTION_BUILD_BASE] = "inherit"
-SUBAGENTS_ARGS[ACTION_TRAIN_ARMY] = "inherit"
 
 class SharedDataBase(SharedDataBuild, SharedDataTrain, SharedDataGather):
     def __init__(self):
@@ -161,13 +155,49 @@ DO_NOTHING_SC2_ACTION = actions.FunctionCall(SC2_Actions.NO_OP, [])
 
 NORMALIZATION = 300
 
-UNIT_VALUE_TABLE_NAME = 'unit_value_table.gz'
-
 NORMALIZATION_LOCAL_REWARD = 20
 NORMALIZATION_GAME_REWARD = 300
 
+class NaiveDecisionMakerBaseMngr(BaseDecisionMaker):
+    def __init__(self):
+        super(NaiveDecisionMakerBaseMngr, self).__init__()
+
+    def choose_action(self, state):
+        action = 0
+
+        numSDAll = state[BASE_STATE.SUPPLY_DEPOT_IDX] + state[BASE_STATE.IN_PROGRESS_SUPPLY_DEPOT_IDX]
+        numRefAll = state[BASE_STATE.REFINERY_IDX] + state[BASE_STATE.IN_PROGRESS_REFINERY_IDX]
+        numBaAll = state[BASE_STATE.BARRACKS_IDX] + state[BASE_STATE.IN_PROGRESS_BARRACKS_IDX]
+        numFaAll = state[BASE_STATE.FACTORY_IDX] + state[BASE_STATE.IN_PROGRESS_FACTORY_IDX]
+        numReactorsAll = state[BASE_STATE.REACTORS_IDX] + state[BASE_STATE.IN_PROGRESS_RECTORS_IDX]
+        numTechAll = state[BASE_STATE.TECHLAB_IDX] + state[BASE_STATE.IN_PROGRESS_TECHLAB_IDX]
+        numBarracksQ = state[BASE_STATE.QUEUE_BARRACKS]
+        
+        power = state[BASE_STATE.ARMY_POWER]
+
+        if numSDAll < 3 or numRefAll < 2 or numBaAll < 2 or numReactorsAll < 2:
+            action = ACTION_BUILD_BASE
+        elif numBarracksQ < 6 and power < 6:
+            action = ACTION_TRAIN_ARMY
+        elif numFaAll < 2: 
+            action = ACTION_BUILD_BASE
+        elif power < 10:
+            action = ACTION_TRAIN_ARMY
+        elif numTechAll < 2:
+            action = ACTION_BUILD_BASE
+        else:
+            action = ACTION_TRAIN_ARMY
+
+        return action
+
+    def ActionValuesVec(self, state, target = True):    
+        vals = np.zeros(NUM_ACTIONS,dtype = float)
+        vals[self.choose_action(state)] = 1.0
+
+        return vals
+
 class BaseMngr(BaseAgent):
-    def __init__(self, runArg = None, decisionMaker = None, isMultiThreaded = False, playList = None, trainList = None):
+    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList):
         super(BaseMngr, self).__init__()
         
         self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
@@ -177,31 +207,28 @@ class BaseMngr(BaseAgent):
             saPlayList = playList
         
         self.trainAgent = AGENT_NAME in trainList
-
+        
         self.illigalmoveSolveInModel = True
 
         if decisionMaker != None:
             self.decisionMaker = decisionMaker
         else:
-            self.decisionMaker = self.CreateDecisionMaker(runArg, isMultiThreaded)
+            self.decisionMaker = self.CreateDecisionMaker(dmTypes, isMultiThreaded)
 
         # create sub agents and get decision makers
         self.subAgents = {}
 
         for key, name in SUBAGENTS_NAMES.items():
             saClass = eval(name)
-            saDM = self.decisionMaker.GetSubAgentDecisionMaker(key)
-            saArg = SUBAGENTS_ARGS[key]
-            if saArg == "inherit":
-                saArg = runArg
-            
-            self.subAgents[key] = saClass(saArg, saDM, isMultiThreaded, saPlayList, trainList)
+            saDM = self.decisionMaker.GetSubAgentDecisionMaker(key)     
+            self.subAgents[key] = saClass(sharedData, dmTypes, saDM, isMultiThreaded, saPlayList, trainList)
             self.decisionMaker.SetSubAgentDecisionMaker(key, self.subAgents[key].GetDecisionMaker())
 
 
         if not self.playAgent:
             self.subAgentPlay = self.FindActingHeirarchi()
 
+        self.sharedData = sharedData
         self.terminalState = np.zeros(BASE_STATE.SIZE, dtype=np.int, order='C')
 
 
@@ -212,23 +239,20 @@ class BaseMngr(BaseAgent):
         self.minPriceMinerals = 50
         self.accumulatedReward = 0
 
-        self.unitPower = {}
-        table = pd.read_pickle(UNIT_VALUE_TABLE_NAME, compression='gzip')
-        valVecMarine = table.ix['marine', :]
-        self.unitPower[TerranUnit.MARINE] = sum(valVecMarine) / len(valVecMarine)
-        self.unitPower[TerranUnit.REAPER] = sum(table.ix['reaper', :]) / len(valVecMarine)
-        self.unitPower[TerranUnit.HELLION] = sum(table.ix['hellion', :]) / len(valVecMarine)
-        self.unitPower[TerranUnit.SIEGE_TANK] = sum(table.ix['siege tank', :]) / len(valVecMarine)
+    def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
+        
 
-    def CreateDecisionMaker(self, runArg, isMultiThreaded):
-        if runArg == None:
-            runTypeArg = list(ALL_TYPES.intersection(sys.argv))
-            runArg = runTypeArg.pop()    
-        runType = RUN_TYPES[runArg]
-
-
-        decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME],  
-                                    resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=AGENT_DIR+runType[DIRECTORY], isMultiThreaded=isMultiThreaded)
+        if dmTypes[AGENT_NAME] == "naive":
+            decisionMaker = NaiveDecisionMakerBaseMngr()
+        else:
+            runType = RUN_TYPES[dmTypes[AGENT_NAME]]
+            # create agent dir
+            directory = dmTypes["directory"] + "/" + AGENT_DIR
+            if not os.path.isdir("./" + directory):
+                os.makedirs("./" + directory)
+                
+            decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME],  
+                                                resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY], isMultiThreaded=isMultiThreaded)
 
         return decisionMaker
 
@@ -245,7 +269,7 @@ class BaseMngr(BaseAgent):
         
         return -1
 
-    def step(self, obs, sharedData = None, moveNum = None):
+    def step(self, obs, moveNum):
         super(BaseMngr, self).step(obs)
         self.step_num += 1
         
@@ -254,17 +278,11 @@ class BaseMngr(BaseAgent):
 
             if obs.first():
                 self.FirstStep(obs)
-
-            if sharedData != None:
-                self.sharedData = sharedData          
             
-            if moveNum != None:
-                self.moveNum = moveNum
-
             for sa in range(NUM_ACTIONS):
-                self.subAgentsActions[sa] = self.subAgents[sa].step(obs, self.sharedData, self.move_number) 
+                self.subAgentsActions[sa] = self.subAgents[sa].step(obs, moveNum) 
 
-            if self.move_number == 0:
+            if moveNum == 0:
                 self.CreateState(obs)             
                 self.Learn()
                 self.current_action = self.ChooseAction()
@@ -290,14 +308,11 @@ class BaseMngr(BaseAgent):
         self.move_number = 0
         self.accumulatedReward = 0
 
-        self.sharedData = SharedDataBase()
-        self.sharedData.unitTrainValue = self.unitPower
-
         self.subAgentsActions = {}
         for sa in range(NUM_ACTIONS):
             self.subAgentsActions[sa] = None
 
-    def LastStep(self, obs):
+    def LastStep(self, obs, reward = 0):
         r = self.accumulatedReward / NORMALIZATION_GAME_REWARD
         if self.trainAgent and self.current_action is not None:
             self.decisionMaker.learn(self.current_state.copy(), self.current_action, r, self.terminalState.copy(), True)
@@ -327,7 +342,7 @@ class BaseMngr(BaseAgent):
         
         power = 0
         for unit, num in self.sharedData.armySize.items():
-            power += num * self.unitPower[unit]
+            power += num * self.sharedData.unitTrainValue[unit]
 
         self.current_state[BASE_STATE.ARMY_POWER] = power
 
@@ -366,7 +381,7 @@ class BaseMngr(BaseAgent):
                     exploreProb = self.decisionMaker.ExploreProb()              
                 else:
                     targetValues = True
-                    exploreProb = 0   
+                    exploreProb = self.decisionMaker.TargetExploreProb()   
 
                 if np.random.uniform() > exploreProb:
                     valVec = self.decisionMaker.ActionValuesVec(self.current_state, targetValues)   

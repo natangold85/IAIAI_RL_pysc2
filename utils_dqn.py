@@ -157,7 +157,10 @@ class DQN:
 
     def ExploreProb(self):
         return self.params.ExploreProb(self.numRuns.eval(session = self.sess))
-    
+
+    def TargetExploreProb(self):
+        return self.ExploreProb()    
+
     def choose_action(self, observation):
         if np.random.uniform() > self.params.ExploreProb(self.numRuns.eval(session = self.sess)):
             vals = self.outputLayer.eval({self.inputLayer: observation.reshape(1,self.num_input)}, session=self.sess)
@@ -262,8 +265,12 @@ class DQN_WithTarget(DQN):
             allVals = self.targetOutput.eval({self.inputLayer: state.reshape(1,self.num_input)}, session=self.sess)
             return allVals[0]
         else:
-            super(DQN_WithTarget, self).ActionValuesVec(state, targetValues)
+            return super(DQN_WithTarget, self).ActionValuesVec(state, targetValues)
 
+
+    def TargetExploreProb(self):
+        return 0
+        
     def NumRunsTarget(self):
         return int(self.numRunsTarget.eval(session = self.sess))
 

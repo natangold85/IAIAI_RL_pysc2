@@ -16,14 +16,14 @@ from utils import SC2_Params
 
 PARALLEL_THREADS = 16
 RENDER = False
-TRAINING = True
 SCREEN_SIZE = SC2_Params.SCREEN_SIZE
 MINIMAP_SIZE = SC2_Params.MINIMAP_SIZE
 
-flags.DEFINE_string("train", "none", "Which agent to train.")
+flags.DEFINE_string("trainAgent", "none", "Which agent to train.")
 flags.DEFINE_string("play", "none", "Which agent to play.")
+flags.DEFINE_string("typeFile", "none", "config file that builds heirarchi for decision maker (should contain a dict name dm_Types)")
 flags.DEFINE_string("map", "none", "Which map to run.")
-flags.DEFINE_string("type", "play", "Which type of decisionMaker to run.")
+flags.DEFINE_string("train", "True", "Which map to run.")
 
 
 """Script for starting all agents (a3c, very simple and slightly smarter).
@@ -65,8 +65,8 @@ def start_agent():
     pygame output of an agent, it only shows it for the first instance. Most of it's behaviour can be controlled with
     the same constants that can be found in a3c_agent.py and are also used by the A3C agent.
     """
-
-    if not TRAINING:
+    training = eval(flags.FLAGS.train)  
+    if not training:
         parallel = 1
         show_render = True
     else:
@@ -74,11 +74,12 @@ def start_agent():
         show_render = RENDER
 
     # tables
+    dm_Types = eval(open(flags.FLAGS.typeFile, "r+").read())
 
-    if flags.FLAGS.train == "none":
+    if flags.FLAGS.trainAgent == "none":
         trainList = ["super"]
     else:
-        trainList = flags.FLAGS.train
+        trainList = flags.FLAGS.trainAgent
         trainList = trainList.split(",")
 
     if flags.FLAGS.play == "none":
@@ -95,7 +96,7 @@ def start_agent():
     agents = []
     for i in range(parallel):
         print("\n\n\n running thread #", i, "\n\n\n")
-        agent = SuperAgent(runArg=flags.FLAGS.type, decisionMaker=decisionMaker, isMultiThreaded=isMultiThreaded, playList=playList, trainList=trainList)
+        agent = SuperAgent(decisionMaker=decisionMaker, isMultiThreaded=isMultiThreaded, dmTypes = dm_Types, playList=playList, trainList=trainList)
         
         if i == 0:
             decisionMaker = agent.GetDecisionMaker()

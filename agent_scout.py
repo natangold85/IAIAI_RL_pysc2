@@ -19,6 +19,7 @@ from utils import SC2_Actions
 #decision makers
 from utils_decisionMaker import BaseDecisionMaker
 
+from utils import EmptySharedData
 # params
 
 from utils import SwapPnt
@@ -35,21 +36,30 @@ GRID_SIZE = 2
 
 ACTIONS_START_IDX_SCOUT = 0
 ACTIONS_END_IDX_SCOUT = ACTIONS_START_IDX_SCOUT + GRID_SIZE * GRID_SIZE
-ACTIONS_START_IDX_ATTACK = ACTIONS_END_IDX_SCOUT
-ACTIONS_END_IDX_ATTACK = ACTIONS_START_IDX_ATTACK + GRID_SIZE * GRID_SIZE
-NUM_ACTIONS = ACTIONS_END_IDX_ATTACK
+NUM_ACTIONS = ACTIONS_END_IDX_SCOUT
 
+RANGE_TO_END_SCOUT = 7
+
+ACTION2STR = {}
+for i in range(ACTIONS_START_IDX_SCOUT, ACTIONS_END_IDX_SCOUT):
+    ACTION2STR[i] = "idx_" + str(i)
+
+CONTROL_GROUP_ID_SCOUT = [6]
+
+class SharedDataScout(EmptySharedData):
+    def __init__(self):
+        super(SharedDataScout, self).__init__()
+        self.attackGroupIdx = CONTROL_GROUP_ID_SCOUT
 
 class ScoutAgent(BaseAgent):
-    def __init__(self,  runArg = None, decisionMaker = None, isMultiThreaded = False, playList = None, trainList = None): 
+    def __init__(self,  sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList): 
         super(ScoutAgent, self).__init__()       
 
-        self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
-        if not self.playAgent:
-            self.subAgentPlay = self.FindActingHeirarchi()
-            
-        self.SetGridSize(GRID_SIZE)
+        self.sharedData = sharedData
 
+        self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
+
+        self.SetGridSize(GRID_SIZE)
 
     def FindActingHeirarchi(self):
         if self.playAgent:
@@ -68,26 +78,50 @@ class ScoutAgent(BaseAgent):
             for x in range(self.gridSize):
                 idx = x + y * gridSize
                 p_x = (SC2_Params.MINIMAP_SIZE * x /  gridSize) + toMiddle
-                self.action2Coord[idx] = [p_y, p_x]
+                self.action2Coord[idx] = [int(p_y), int(p_x)]
 
-    def Action2SC2Action(self, obs, a, moveNum):
+    def step(self, obs, moveNum):
+        super(ScoutAgent, self).step(obs)
+        if obs.first():
+            self.FirstStep(obs)
+        
+        if self.scoutInProgress:
+            self.scoutInProgress = not self.IsScoutEnd(obs)
+
+        return -1
+
+    def FirstStep(self, obs):
+        self.scoutChosen = False
+        self.scoutInProgress = False
+        self.lastAction = None
+
+    def Action2SC2Action(self, obs, a, moveNum):     
         if moveNum == 0:
             if a < ACTIONS_END_IDX_SCOUT:
-                target = self.SelectScoutingUnit(obs)
-                if SC2_Actions.SELECT_POINT in obs.observation['available_actions']:
-                    return actions.FunctionCall(SC2_Actions.SELECT_POINT, [SC2_Params.SELECT_SINGLE, SwapPnt(target)]), 
-            else:
-                if SC2_Actions.SELECT_ARMY in obs.observation['available_actions']:
-                    return actions.FunctionCall(SC2_Actions.SELECT_ARMY, [SC2_Params.NOT_QUEUED]), False
+                if self.scoutChosen:
+                    return actions.FunctionCall(SC2_Actions.SELECT_CONTROL_GROUP, [SC2_Params.CONTROL_GROUP_RECALL, CONTROL_GROUP_ID_SCOUT]), False
+                else:
+                    target = self.SelectScoutingUnit(obs)
+                    if target[0] >= 0 and SC2_Actions.SELECT_POINT in obs.observation['available_actions']:
+                        return actions.FunctionCall(SC2_Actions.SELECT_POINT, [SC2_Params.SELECT_SINGLE, SwapPnt(target)]), False
+
 
         elif moveNum == 1:
             if a < ACTIONS_END_IDX_SCOUT:
-                goTo = self.action2Coord[a - ACTIONS_START_IDX_SCOUT]
-            else:
-                goTo = self.action2Coord[a - ACTIONS_START_IDX_ATTACK]
+                if self.scoutChosen:
+                    if not self.IsScouterSelected(obs):
+                        self.scoutChosen = False
+                    elif SC2_Actions.ATTACK_MINIMAP in obs.observation['available_actions']:
+                        return self.GoToLocationAction(a)
 
-            if SC2_Actions.ATTACK_MINIMAP in obs.observation['available_actions']:
-                return actions.FunctionCall(SC2_Actions.ATTACK_MINIMAP, [SC2_Params.NOT_QUEUED, SwapPnt(goTo)]), True
+                elif SC2_Actions.SELECT_CONTROL_GROUP in obs.observation['available_actions']:       
+                    self.scoutChosen = True
+                    return actions.FunctionCall(SC2_Actions.SELECT_CONTROL_GROUP, [SC2_Params.CONTROL_GROUP_SET, CONTROL_GROUP_ID_SCOUT]), False
+        
+        elif moveNum == 2:
+            if a < ACTIONS_END_IDX_SCOUT:
+                if SC2_Actions.ATTACK_MINIMAP in obs.observation['available_actions']:
+                    return self.GoToLocationAction(a)
         
         return SC2_Actions.DO_NOTHING_SC2_ACTION, True
 
@@ -95,7 +129,54 @@ class ScoutAgent(BaseAgent):
         unit2Select = TerranUnit.MARINE
         unitMat = obs.observation['screen'][SC2_Params.UNIT_TYPE] == unit2Select
         p_y, p_x = SelectUnitValidPoints(unitMat)
-        return [p_y, p_x]
-
-
+        if len(p_y) > 0:
+            return [p_y[0], p_x[0]]
+        else: 
+            return [-1,-1]
     
+    def IsScouterSelected(self, obs):
+        unitStatus = obs.observation['single_select']
+        return len(unitStatus) > 0
+
+    def IsScoutEnd(self, obs):
+        selfMat = obs.observation['minimap'][SC2_Params.PLAYER_RELATIVE_MINIMAP] == SC2_Params.PLAYER_SELF
+        yTarget = self.goToLast[SC2_Params.Y_IDX]
+        xTarget = self.goToLast[SC2_Params.X_IDX]
+        
+        # for y in range(yTarget - RANGE_TO_END_SCOUT, yTarget + RANGE_TO_END_SCOUT):
+        #     for x in range(xTarget - RANGE_TO_END_SCOUT, xTarget + RANGE_TO_END_SCOUT):
+        #         if selfMat[y][x]:
+        #             print("\n\n\nScout Succeed!!\n\n")
+        #             return True
+        s_y, s_x = selfMat.nonzero()
+        minDist = 1000
+        
+        for i in range(len(s_y)):
+            diffY = s_y[i] - yTarget
+            diffX = s_x[i] - xTarget
+            dist = diffY * diffY + diffX * diffX
+            if dist < minDist:
+                minDist = dist
+
+        realDist = math.sqrt(minDist)
+        
+        if realDist < RANGE_TO_END_SCOUT:
+            return True
+        else:
+            return False
+
+    def IsDoNothingAction(self, a):
+        return False
+
+    def GoToLocationAction(self, a):
+        goTo = self.action2Coord[a - ACTIONS_START_IDX_SCOUT]
+        self.scoutInProgress = True
+        self.goToLast = goTo
+        self.lastAction = a
+        return actions.FunctionCall(SC2_Actions.ATTACK_MINIMAP, [SC2_Params.NOT_QUEUED, SwapPnt(goTo)]), True
+    
+    def Action2Str(self, a):
+        if self.scoutInProgress:
+            return "prevAction=" + ACTION2STR[self.lastAction]
+        else:
+            return ACTION2STR[a]

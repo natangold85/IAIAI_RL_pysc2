@@ -123,12 +123,8 @@ RUN_TYPES[NAIVE][RESULTS] = ""
 
 
 class NaiveDecisionMakerBaseAttack(BaseDecisionMaker):
-    def __init__(self, resultFName):
+    def __init__(self):
         super(NaiveDecisionMakerBaseAttack, self).__init__()
-        if resultFName != "":
-            self.resultsFile = ResultFile(resultFName)
-        else:
-            self.resultsFile = None
         
 
     def choose_action(self, observation):
@@ -157,28 +153,17 @@ class NaiveDecisionMakerBaseAttack(BaseDecisionMaker):
 
         return minIdx + ACTIONS_START_IDX_ATTACK
 
-    def learn(self, s, a, r, s_, terminal = False):
-        return None
-
     def ActionValuesVec(self, state, target = True):
         vals = np.zeros(NUM_ACTIONS,dtype = float)
         vals[self.choose_action(state)] = 1.0
 
         return vals
 
-    def end_run(self, r, score = 0 ,steps = 0):
-        if self.resultsFile != None:
-            self.resultsFile.end_run(r,score,steps, True)
-        return True
-
-    def ExploreProb(self):
-        return 0
-
-
 class BaseAttack(BaseAgent):
-    def __init__(self,  runArg = None, decisionMaker = None, isMultiThreaded = False, playList = None, trainList = None):        
+    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList):        
         super(BaseAttack, self).__init__()
 
+        self.sharedData = sharedData
         self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
         self.trainAgent = AGENT_NAME in trainList
 
@@ -187,10 +172,7 @@ class BaseAttack(BaseAgent):
         if decisionMaker != None:
             self.decisionMaker = decisionMaker
         else:
-            self.decisionMaker = self.CreateDecisionMaker(runArg, isMultiThreaded)
-
-        if not self.playAgent:
-            self.subAgentPlay = self.FindActingHeirarchi()
+            self.decisionMaker = self.CreateDecisionMaker(dmTypes, isMultiThreaded)
 
         self.terminalState = np.zeros(STATE_SIZE, dtype=np.int, order='C')
 
@@ -203,17 +185,17 @@ class BaseAttack(BaseAgent):
         self.lastValidAttackAction = None
         self.enemyBuildingGridLoc2ScreenLoc = {}
 
-    def CreateDecisionMaker(self, runArg, isMultiThreaded):
-        if runArg == None:
-            runTypeArg = list(ALL_TYPES.intersection(sys.argv))
-            runArg = runTypeArg.pop()    
-        runType = RUN_TYPES[runArg]
-
-
-        if runType[TYPE] == "naive":
-            decisionMaker = NaiveDecisionMakerBaseAttack(runType[RESULTS])
+    def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
+        
+        if dmTypes[AGENT_NAME] == "naive":
+            decisionMaker = NaiveDecisionMakerBaseAttack()
         else:
+            runType = RUN_TYPES[dmTypes[AGENT_NAME]]
 
+            # create agent dir
+            directory = dmTypes["directory"] + "/" + AGENT_DIR
+            if not os.path.isdir("./" + directory):
+                os.makedirs("./" + directory)
             decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME],  
                                             resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=AGENT_DIR+runType[DIRECTORY], isMultiThreaded=isMultiThreaded)
 
@@ -228,16 +210,10 @@ class BaseAttack(BaseAgent):
         
         return -1
         
-    def step(self, obs, sharedData = None, moveNum = None):
+    def step(self, obs, moveNum):
         super(BaseAttack, self).step(obs)
         if obs.first():
             self.FirstStep(obs)
-        
-        if sharedData != None:
-            self.sharedData =sharedData
-
-        if sharedData != None:
-            self.sharedData = sharedData
         
         if moveNum == 0:
             self.CreateState(obs)
@@ -304,10 +280,10 @@ class BaseAttack(BaseAgent):
                     exploreProb = self.decisionMaker.ExploreProb()              
                 else:
                     targetValues = True
-                    exploreProb = 0   
+                    exploreProb = self.decisionMaker.TargetExploreProb()    
 
                 if np.random.uniform() > exploreProb:
-                    valVec = self.decisionMaker.ActionValuesVec(self.current_state)
+                    valVec = self.decisionMaker.ActionValuesVec(self.current_state, targetValues)
                     random.shuffle(validActions)
                     validVal = valVec[validActions]
                     action = validActions[validVal.argmax()]
@@ -316,7 +292,7 @@ class BaseAttack(BaseAgent):
             else:
                 action = self.decisionMaker.choose_action(self.current_state)
         else:
-            action = self.subAgentPlay
+            action = ACTION_DO_NOTHING
 
         return action
 

@@ -18,6 +18,7 @@ from utils import SC2_Actions
 #decision makers
 from utils_decisionMaker import LearnWithReplayMngr
 from utils_decisionMaker import UserPlay
+from utils_decisionMaker import BaseDecisionMaker
 
 # params
 from utils_dqn import DQN_PARAMS
@@ -38,9 +39,6 @@ from utils import SelectBuildingValidPoint
 from agent_build_base import ActionRequirement
 
 AGENT_DIR = "TrainArmy/"
-if not os.path.isdir("./" + AGENT_DIR):
-    os.makedirs("./" + AGENT_DIR)
-
 AGENT_NAME = "trainer"
 
 # possible types of decision maker
@@ -117,7 +115,6 @@ BUILDING_2_STATE_QUEUE_TRANSITION[TerranUnit.TECHLAB] = STATE_QUEUE_FACTORY_WITH
 class SharedDataTrain(EmptySharedData):
     def __init__(self):
         super(SharedDataTrain, self).__init__()
-
         self.trainingQueue = {}
         for key in BUILDING_2_STATE_QUEUE_TRANSITION.keys():
             self.trainingQueue[key] = []
@@ -129,6 +126,7 @@ class SharedDataTrain(EmptySharedData):
             self.unitTrainValue[unit] = 0.0
 
         self.prevActionReward = 0.0
+
 
 
 
@@ -159,9 +157,38 @@ RUN_TYPES[DQN][DIRECTORY] = "trainArmy_dqn"
 RUN_TYPES[DQN][HISTORY] = "replayHistory"
 RUN_TYPES[DQN][RESULTS] = "result"
 
+class NaiveDecisionMakerTrain(BaseDecisionMaker):
+    def __init__(self):
+        super(NaiveDecisionMakerTrain, self).__init__()
+
+    def ActionValuesVec(self, state, target = True):    
+        vals = np.zeros(NUM_ACTIONS,dtype = float)
+        
+        factoryQ = state[STATE_QUEUE_FACTORY] + state[STATE_QUEUE_FACTORY_WITH_TECHLAB]
+        if state[STATE_QUEUE_BARRACKS] > factoryQ:
+            vals[ID_ACTION_TRAIN_MARINE] = 0.5
+            vals[ID_ACTION_TRAIN_REAPER] = 0.4
+            vals[ID_ACTION_TRAIN_SIEGETANK] = 0.3
+            vals[ID_ACTION_TRAIN_HELLION] = 0.25            
+        else:
+            vals[ID_ACTION_TRAIN_MARINE] = 0.25
+            vals[ID_ACTION_TRAIN_REAPER] = 0.1
+            r = np.random.uniform()
+            if r > 0.25:
+                vals[ID_ACTION_TRAIN_SIEGETANK] = 0.5
+                vals[ID_ACTION_TRAIN_HELLION] = 0.4  
+            else:
+                vals[ID_ACTION_TRAIN_SIEGETANK] = 0.4 
+                vals[ID_ACTION_TRAIN_HELLION] = 0.5  
+
+
+        vals[self.choose_action(state)] = 1.0
+
+        return vals
+
 
 class TrainArmySubAgent(BaseAgent):
-    def __init__(self, runArg = None, decisionMaker = None, isMultiThreaded = False, playList = None, trainList = None):     
+    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList):     
         super(TrainArmySubAgent, self).__init__()     
 
         self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
@@ -173,16 +200,15 @@ class TrainArmySubAgent(BaseAgent):
         if decisionMaker != None:
             self.decisionMaker = decisionMaker
         else:
-            self.decisionMaker = self.CreateDecisionMaker(runArg, isMultiThreaded)
+            self.decisionMaker = self.CreateDecisionMaker(dmTypes, isMultiThreaded)
 
         if not self.playAgent:
             self.subAgentPlay = self.FindActingHeirarchi()
 
+        self.sharedData = sharedData
+
         # model params
         self.unit_type = None
-
-        self.cameraCornerNorthWest = [-1,-1]
-        self.cameraCornerSouthEast = [-1,-1]
 
         self.currentBuildingTypeSelected = TerranUnit.BARRACKS
         self.currentBuildingCoordinate = [-1,-1]
@@ -193,14 +219,17 @@ class TrainArmySubAgent(BaseAgent):
         self.actionsRequirement[ID_ACTION_TRAIN_HELLION] = ActionRequirement(100, 0, TerranUnit.FACTORY)
         self.actionsRequirement[ID_ACTION_TRAIN_SIEGETANK] = ActionRequirement(150, 125, TerranUnit.TECHLAB)
 
-    def CreateDecisionMaker(self, runArg, isMultiThreaded):
-        if runArg == None:
-            runTypeArg = list(ALL_TYPES.intersection(sys.argv))
-            runArg = runTypeArg.pop()    
-        runType = RUN_TYPES[runArg]
-
-        decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME],  
-                                        resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=AGENT_DIR + runType[DIRECTORY], isMultiThreaded=isMultiThreaded)
+    def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
+        if dmTypes[AGENT_NAME] == "naive":
+            decisionMaker = NaiveDecisionMakerTrain()
+        else:
+            runType = RUN_TYPES[dmTypes[AGENT_NAME]]
+            # create agent dir
+            directory = dmTypes["directory"] + "/" + AGENT_DIR
+            if not os.path.isdir("./" + directory):
+                os.makedirs("./" + directory)
+            decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME],  
+                                                resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY], isMultiThreaded=isMultiThreaded)
 
         return decisionMaker
 
@@ -213,17 +242,13 @@ class TrainArmySubAgent(BaseAgent):
         
         return -1
         
-    def step(self, obs, sharedData = None, moveNum = None):  
+    def step(self, obs, moveNum):  
         super(TrainArmySubAgent, self).step(obs) 
 
-        self.cameraCornerNorthWest , self.cameraCornerSouthEast = GetScreenCorners(obs)
         self.unit_type = obs.observation['screen'][SC2_Params.UNIT_TYPE]
         
         if obs.first():
             self.FirstStep(obs)
-        
-        if sharedData != None:
-            self.sharedData = sharedData
 
         if moveNum == 0: 
             self.CreateState(obs)
@@ -243,7 +268,6 @@ class TrainArmySubAgent(BaseAgent):
 
         self.numSteps = 0
 
-        self.sharedData = SharedDataTrain()
         self.isActionCommitted = False
         self.lastActionCommittedAction = None
 
@@ -326,17 +350,17 @@ class TrainArmySubAgent(BaseAgent):
                     exploreProb = self.decisionMaker.ExploreProb()              
                 else:
                     targetValues = True
-                    exploreProb = 0   
+                    exploreProb = self.decisionMaker.TargetExploreProb()   
 
                 if np.random.uniform() > exploreProb:
-                    valVec = self.decisionMaker.ActionValuesVec(self.current_state, targetValues)  
+                    valVec = self.decisionMaker.ActionValuesVec(self.current_scaled_state, targetValues)  
                     random.shuffle(validActions)
                     validVal = valVec[validActions]
                     action = validActions[validVal.argmax()]
                 else:
                     action = np.random.choice(validActions) 
             else:
-                action = self.decisionMaker.choose_action(self.current_state)
+                action = self.decisionMaker.choose_action(self.current_scaled_state)
         else:
             action = self.subAgentPlay
 
@@ -366,7 +390,6 @@ class TrainArmySubAgent(BaseAgent):
             return None
 
     def Action2Str(self,a):
-        print("train action =", a)
         return ACTION2STR[a]
 
     def PrintState(self):

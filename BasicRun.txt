@@ -1,0 +1,1 @@
+{'directory' : 'BasicRun', 'super': 'dqn', 'base_mngr': 'dqn', 'battle_mngr': 'naive', 'do_nothing': 'naive', 'army_attack': 'dqn_Embedding', 'base_attack': 'naive', 'builder': 'dqn', 'trainer': 'dqn'}

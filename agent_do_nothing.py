@@ -24,7 +24,6 @@ from utils import SC2_Params
 from utils import SC2_Actions
 
 # shared data
-from agent_build_base import SharedDataBuild
 from agent_build_base import BuildingCmd
 
 from utils import GetScreenCorners
@@ -41,22 +40,23 @@ ACTION_LAND_FACTORY = 2
 ACTION_IDLEWORKER_EMPLOYMENT = 3
 ACTION_RETURN2BASE = 4
 ACTION_ARMY_COUNT = 5
-NUM_ACTIONS = 6
+ACTION_ATTACK_MONITOR = 6
+
+NUM_ACTIONS = 7
 
 AGENT_NAME = "do_nothing"
 
+CLOSE_TO_ENEMY_RANGE_SQUARE = 10 * 10
+
 class DoNothingSubAgent(BaseAgent):
-    def __init__(self, runArg = None, decisionMaker = None, isMultiThreaded = False, playList = None, trainList = None):
+    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList):
         
         self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
-
-        if not self.playAgent:
-            self.subAgentPlay = self.FindActingHeirarchi()
 
         self.isActionFailed = False
         self.current_action = None
 
-        self.action2Str = ["BuildingCount", "LandBarracks", "LandFactory", "IdleWorkerEmployment", "Return2Base", "QueueCheck"]
+        self.action2Str = ["BuildingCount", "LandBarracks", "LandFactory", "IdleWorkerEmployment", "Return2Base", "QueueCheck", "Attack_Monitor"]
         
         self.unit_type = None
         self.cameraCornerNorthWest = None
@@ -64,7 +64,7 @@ class DoNothingSubAgent(BaseAgent):
                   
         self.building2Check = [TerranUnit.COMMANDCENTER, TerranUnit.SUPPLY_DEPOT, TerranUnit.OIL_REFINERY, TerranUnit.BARRACKS, TerranUnit.FACTORY, TerranUnit.REACTOR, TerranUnit.TECHLAB] 
 
-        self.sharedData = None
+        self.sharedData = sharedData
 
         self.checkCounter2RemoveCmd = 5
 
@@ -74,6 +74,12 @@ class DoNothingSubAgent(BaseAgent):
         self.unitInQueue[TerranUnit.HELLION] = TerranUnit.FACTORY
         self.unitInQueue[TerranUnit.SIEGE_TANK] = TerranUnit.TECHLAB
 
+        self.defaultActionProb = {}
+        self.defaultActionProb[ACTION_BUILDING_COUNT] = 0.5
+        self.defaultActionProb[ACTION_ARMY_COUNT] = 0.25
+        self.defaultActionProb[ACTION_ATTACK_MONITOR] = 0.25
+
+        
     def GetDecisionMaker(self):
         return None
 
@@ -83,30 +89,20 @@ class DoNothingSubAgent(BaseAgent):
         
         return -1
         
-    def step(self, obs, sharedData = None, moveNum = 0):
+    def step(self, obs, moveNum):
 
         self.cameraCornerNorthWest , self.cameraCornerSouthEast = GetScreenCorners(obs)
         self.unit_type = obs.observation['screen'][SC2_Params.UNIT_TYPE]
         if obs.first():
             self.FirstStep(obs)
         
-        if sharedData != None:
-            self.sharedData = sharedData
-
         if moveNum == 0:
             self.current_action = self.ChooseAction(obs)
 
         return self.current_action
 
-    def FirstStep(self, obs):
-        commandCenterLoc_y, commandCenterLoc_x = (self.unit_type == TerranUnit.COMMANDCENTER).nonzero()
-        middleCC = FindMiddle(commandCenterLoc_y, commandCenterLoc_x)
-        miniMapLoc = Scale2MiniMap(middleCC, self.cameraCornerNorthWest , self.cameraCornerSouthEast)
-        
-        self.CommandCenterLoc = [miniMapLoc]
-        
+    def FirstStep(self, obs):      
         self.currBuilding2Check = 0
-        self.sharedData = None
         self.realBuilding2Check = "None"
 
     def IsDoNothingAction(self, a):
@@ -124,22 +120,22 @@ class DoNothingSubAgent(BaseAgent):
         if obs.observation['player'][SC2_Params.IDLE_WORKER_COUNT] > 0 and self.HasResources():
             return ACTION_IDLEWORKER_EMPLOYMENT
         else:
-            cc_y, cc_x = (self.unit_type == TerranUnit.COMMANDCENTER).nonzero()
-            ret2Base = False
-            if len(cc_y) == 0:
-                ret2Base = True  
-            else:
-                midPnt = FindMiddle(cc_y, cc_x)
-                maxDiff = max(SC2_Params.SCREEN_SIZE / 2 - midPnt[SC2_Params.X_IDX], SC2_Params.SCREEN_SIZE / 2 - midPnt[SC2_Params.Y_IDX])
-                if abs (maxDiff) > 20:
-                    ret2Base = True 
-
-            if ret2Base and len(self.CommandCenterLoc) > 0:  
+            if self.ShouldReturnt2Base() and len(self.sharedData.commandCenterLoc) > 0:  
                 return ACTION_RETURN2BASE
             else:
-                numBarracks = self.sharedData.buildingCount[TerranUnit.BARRACKS]
-                if numBarracks > 0 and np.random.randint(0,4) >= 3:
-                    return ACTION_ARMY_COUNT
+                randNum = np.random.uniform()
+
+                for key, prob in self.defaultActionProb.items():
+                    if randNum < prob:
+                        action = key
+                        break
+                    else:
+                        randNum -= prob
+
+                if action == ACTION_ATTACK_MONITOR and len(self.sharedData.armyInAttack) > 0:
+                    return action
+                elif action == ACTION_ARMY_COUNT and self.sharedData.buildingCount[TerranUnit.BARRACKS] > 0:
+                    return action
                 else:
                     return ACTION_BUILDING_COUNT
 
@@ -171,9 +167,13 @@ class DoNothingSubAgent(BaseAgent):
                 return actions.FunctionCall(SC2_Actions.SELECT_IDLE_WORKER, [SC2_Params.SELECT_ALL]), finishedAction
 
             elif action == ACTION_RETURN2BASE:
-                coord = self.CommandCenterLoc[0]
+                coord = self.sharedData.CommandCenterLoc[0]
                 if SC2_Actions.MOVE_CAMERA in obs.observation['available_actions']:
                     return actions.FunctionCall(SC2_Actions.MOVE_CAMERA, [SwapPnt(coord)]), finishedAction
+
+            elif action == ACTION_ATTACK_MONITOR:
+                return actions.FunctionCall(SC2_Actions.SELECT_CONTROL_GROUP, [SC2_Params.CONTROL_GROUP_RECALL, self.sharedData.attackGroupIdx]), False
+
 
         elif moveNum == 1 and not self.isActionFailed:
             finishedAction = True
@@ -201,14 +201,42 @@ class DoNothingSubAgent(BaseAgent):
                     return actions.FunctionCall(SC2_Actions.SELECT_POINT, [SC2_Params.SELECT_SINGLE, SwapPnt(target)]), finishedAction
 
             elif action == ACTION_IDLEWORKER_EMPLOYMENT:
+                if self.ShouldReturnt2Base():
+                    # go back to base
+                    coord = self.sharedData.CommandCenterLoc[0]
+                    if SC2_Actions.MOVE_CAMERA in obs.observation['available_actions']:
+                        return actions.FunctionCall(SC2_Actions.MOVE_CAMERA, [SwapPnt(coord)]), finishedAction
+
                 if SC2_Actions.HARVEST_GATHER in obs.observation['available_actions']:
                     target = self.GatherHarvest()
                     if target[0] >= 0:
                         return actions.FunctionCall(SC2_Actions.HARVEST_GATHER, [SC2_Params.QUEUED, SwapPnt(target)]), finishedAction
-     
+
+            elif action == ACTION_ATTACK_MONITOR:
+                self.sharedData.armyInAttack = self.UpdateAttackPower(obs)
+                self.sharedData.attackStarted = self.SelectedClose2Enemy(obs)
+
+                return SC2_Actions.DO_NOTHING_SC2_ACTION, True
+
+        elif moveNum == 2:
+            if action == ACTION_IDLEWORKER_EMPLOYMENT:
+                if SC2_Actions.HARVEST_GATHER in obs.observation['available_actions']:
+                    target = self.GatherHarvest()
+                    if target[0] >= 0:
+                        return actions.FunctionCall(SC2_Actions.HARVEST_GATHER, [SC2_Params.QUEUED, SwapPnt(target)]), finishedAction
+
         self.isActionFailed = True
         return SC2_Actions.DO_NOTHING_SC2_ACTION, True
     
+    def ShouldReturnt2Base(self):
+        cc_y, cc_x = (self.unit_type == TerranUnit.COMMANDCENTER).nonzero()
+        if len(cc_y) == 0:
+            return True  
+        
+        midPnt = FindMiddle(cc_y, cc_x)
+        maxDiff = max(SC2_Params.SCREEN_SIZE / 2 - midPnt[SC2_Params.X_IDX], SC2_Params.SCREEN_SIZE / 2 - midPnt[SC2_Params.Y_IDX])
+        return maxDiff > 20
+
     def GatherHarvest(self):
         if random.randint(0, 4) < 4:
             resourceList = SC2_Params.NEUTRAL_MINERAL_FIELD
@@ -234,10 +262,10 @@ class DoNothingSubAgent(BaseAgent):
             if (self.unit_type == val).any():
                 return True
         
-        print("\n\n\nout of resources!!\n\n")
+        #print("\n\n\nout of resources!!\n\n")
         return False
 
-    def LastStep(self, obs, reward):
+    def LastStep(self, obs, reward = 0):
         return
 
     def SelectBuildingPoint(self):
@@ -306,8 +334,8 @@ class DoNothingSubAgent(BaseAgent):
             
             numBuildingsInVec += buildingFinished
             diff = numComplete - numBuildingsInVec
-            if diff > 0:
-                print("\n\n\n\nError in calculation of building completion\n\n\n")
+            # if diff > 0:
+            #     print("\n\n\n\nError in calculation of building completion\n\n\n")
 
         # update num complete to real number
         self.sharedData.buildingCount[buildingType] = numComplete
@@ -356,20 +384,66 @@ class DoNothingSubAgent(BaseAgent):
                     for rem in toRemove:
                         self.sharedData.trainingQueue[qForUnit].remove(rem)
 
-                    if completedSoldiers != 0:
-                        print("\n\n\nError in completed soldiers for unit =", TerranUnit.UNIT_NAMES[key], "\n\n")
+                    # if completedSoldiers != 0:
+                    #     print("\n\n\nError in completed soldiers for unit =", TerranUnit.UNIT_NAMES[key], "\n\n")
 
-                elif count < prevCount:
-                    print("\n\n\n\t\tdeath!!!\n\n\n")
+                # elif count < prevCount:
+                #     print("\n\n\n\t\tdeath!!!\n\n\n")
 
             else:
                 return False
         
         return True
 
+    def UpdateAttackPower(self, obs):
+        unitCount = {}
+        unitStatus = obs.observation['multi_select']
+        
+        if len(unitStatus) == 0:
+            unitStatus = obs.observation['single_select']
+            if len(unitStatus) == 0:
+                return unitCount
+        
+        
+        # count army
+        for unit in unitStatus:
+            uType = unit[SC2_Params.UNIT_TYPE_IDX]
+            if uType in unitCount:
+                unitCount[uType] += 1
+            else:
+                unitCount[uType] = 1
 
+        return unitCount
         
+    def SelectedClose2Enemy(self, obs):
+        s_y, s_x = obs.observation['minimap'][SC2_Params.SELECTED_IN_MINIMAP].nonzero()
+        e_y, e_x = (obs.observation['minimap'][SC2_Params.PLAYER_RELATIVE_MINIMAP] == SC2_Params.PLAYER_HOSTILE).nonzero()
+
+        for s in range(len(s_y)):
+            for e in range(len(e_y)):
+                diffY = s_y[s] - e_y[e]
+                diffX = s_x[s] - e_x[e]
+                dist = diffY * diffY + diffX * diffX
+                if dist < CLOSE_TO_ENEMY_RANGE_SQUARE:
+                    #self.PrintSel(obs)
+                    return True
         
+        return False
+
+    def PrintSel(self, obs):
+        selectedMat = obs.observation['minimap'][SC2_Params.SELECTED_IN_MINIMAP]
+        enemyMat = (obs.observation['minimap'][SC2_Params.PLAYER_RELATIVE_MINIMAP] == SC2_Params.PLAYER_HOSTILE)
+        print("\n\nmonitor attack:\n")
+        for y in range(64):
+            for x in range(64):
+                if selectedMat[y][x] != 0:
+                    print("s", end = ' ')
+                elif enemyMat[y][x] != 0:
+                    print("e", end = ' ')
+                else:
+                    print("_", end = ' ')
+            
+            print("|")
 
     def UpdateBuildingInProgress(self, inProgressReal, buildingCmdVec):
         # sort vector according to in progress and counter

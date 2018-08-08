@@ -18,6 +18,7 @@ from utils import SC2_Actions
 #decision makers
 from utils_decisionMaker import LearnWithReplayMngr
 from utils_decisionMaker import UserPlay
+from utils_decisionMaker import BaseDecisionMaker
 
 from utils_results import ResultFile
 from utils_results import PlotMngr
@@ -155,8 +156,6 @@ RUN_TYPES[DQN][RESULTS] = "result"
 class SharedDataBuild(EmptySharedData):
     def __init__(self):
         super(SharedDataBuild, self).__init__()
-
-        # building commands
         self.buildCommands = {}
         self.buildingCount = {}
         for key in STATE.BUILDING_2_STATE_TRANSITION.keys():
@@ -170,8 +169,53 @@ class BuildingCmd:
         self.m_inProgress = inProgress
         self.m_stepsCounter = 0
 
+class NaiveDecisionMakerBuilder(BaseDecisionMaker):
+    def __init__(self):
+        super(NaiveDecisionMakerBuilder, self).__init__()
+
+    def choose_action(self, state):
+        action = 0
+
+        numSDAll = state[STATE.SUPPLY_DEPOT_IDX] + state[STATE.IN_PROGRESS_SUPPLY_DEPOT_IDX]
+        numRefAll = state[STATE.REFINERY_IDX] + state[STATE.IN_PROGRESS_REFINERY_IDX]
+        numBaAll = state[STATE.BARRACKS_IDX] + state[STATE.IN_PROGRESS_BARRACKS_IDX]
+        numFaAll = state[STATE.FACTORY_IDX] + state[STATE.IN_PROGRESS_FACTORY_IDX]
+        numReactorsAll = state[STATE.REACTORS_IDX] + state[STATE.IN_PROGRESS_RECTORS_IDX]
+        numTechAll = state[STATE.TECHLAB_IDX] + state[STATE.IN_PROGRESS_TECHLAB_IDX]
+        
+        if numSDAll < 2:
+            action = ACTIONS.ID_BUILD_SUPPLY_DEPOT
+        elif numRefAll < 2:
+            action = ACTIONS.ID_BUILD_REFINERY
+        elif numBaAll < 2:
+            action = ACTIONS.ID_BUILD_BARRACKS
+        elif numFaAll < 1:
+            action = ACTIONS.ID_BUILD_FACTORY
+        elif numReactorsAll < 2:
+            action = ACTIONS.ID_BUILD_BARRACKS_REACTOR
+        elif numFaAll < 2:
+            action = ACTIONS.ID_BUILD_FACTORY
+        elif numSDAll < 5:
+            action = ACTIONS.ID_BUILD_SUPPLY_DEPOT
+        elif numTechAll < 2:
+            action = ACTIONS.ID_BUILD_FACTORY_TECHLAB
+        elif numBaAll < 4:
+            action = ACTIONS.ID_BUILD_BARRACKS
+        elif numFaAll < 3:
+            action = ACTIONS.ID_BUILD_FACTORY
+        elif numTechAll < 3:
+            action = ACTIONS.ID_BUILD_FACTORY_TECHLAB
+
+        return action
+
+    def ActionValuesVec(self, state, target = True):    
+        vals = np.zeros(ACTIONS.NUM_ACTIONS,dtype = float)
+        vals[self.choose_action(state)] = 1.0
+        vals[ACTIONS.ID_DO_NOTHING] = 0.1
+        return vals
+
 class BuildBaseSubAgent:
-    def __init__(self, runArg = None, decisionMaker = None, isMultiThreaded = False, playList = None, trainList = None):        
+    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList):        
         
         self.discountFactor = 0.95
         
@@ -182,10 +226,9 @@ class BuildBaseSubAgent:
         if decisionMaker != None:
             self.decisionMaker = decisionMaker
         else:
-            self.decisionMaker = self.CreateDecisionMaker(runArg, isMultiThreaded)
+            self.decisionMaker = self.CreateDecisionMaker(dmTypes, isMultiThreaded)
 
-        if not self.playAgent:
-            self.subAgentPlay = self.FindActingHeirarchi()
+        self.sharedData = sharedData
 
         # states and action:
         self.terminalState = np.zeros(STATE.SIZE, dtype=np.int32, order='C')
@@ -206,14 +249,17 @@ class BuildBaseSubAgent:
 
         self.maxNumOilRefinery = 2
 
-    def CreateDecisionMaker(self, runArg, isMultiThreaded):
-        if runArg == None:
-            runTypeArg = list(ALL_TYPES.intersection(sys.argv))
-            runArg = runTypeArg.pop()    
-        runType = RUN_TYPES[runArg]
-
-        decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME],  
-                                        resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=AGENT_DIR + runType[DIRECTORY], isMultiThreaded=isMultiThreaded)
+    def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
+        if dmTypes[AGENT_NAME] == "naive":
+            decisionMaker = NaiveDecisionMakerBuilder()
+        else:
+            runType = RUN_TYPES[dmTypes[AGENT_NAME]]
+            # create agent dir
+            directory = dmTypes["directory"] + "/" + AGENT_DIR
+            if not os.path.isdir("./" + directory):
+                os.makedirs("./" + directory)
+            decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME],  
+                                                resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY], isMultiThreaded=isMultiThreaded)
 
         return decisionMaker
 
@@ -226,7 +272,7 @@ class BuildBaseSubAgent:
         
         return -1
         
-    def step(self, obs, sharedData = None, moveNum = None):  
+    def step(self, obs, moveNum):  
 
         self.cameraCornerNorthWest , self.cameraCornerSouthEast = GetScreenCorners(obs)
         self.unit_type = obs.observation['screen'][SC2_Params.UNIT_TYPE]
@@ -234,16 +280,13 @@ class BuildBaseSubAgent:
         if obs.first():
             self.FirstStep(obs)
         
-        if sharedData != None:
-            self.sharedData = sharedData
-
         if moveNum == 0: 
             self.CreateState(obs)
             self.Learn()
             self.current_action = self.ChooseAction()
 
         self.numSteps += 1
-
+        
         return self.current_action
 
     def Action2SC2Action(self, obs, a, moveNum):
@@ -269,14 +312,6 @@ class BuildBaseSubAgent:
         self.previous_scaled_state = np.zeros(STATE.SIZE, dtype=np.int32, order='C')
         self.current_scaled_state = np.zeros(STATE.SIZE, dtype=np.int32, order='C')
 
-        commandCenterLoc_y, commandCenterLoc_x = (self.unit_type == TerranUnit.COMMANDCENTER).nonzero()
-
-        middleCC = FindMiddle(commandCenterLoc_y, commandCenterLoc_x)
-        miniMapLoc = Scale2MiniMap(middleCC, self.cameraCornerNorthWest , self.cameraCornerSouthEast)
-        
-        self.sharedData = SharedDataBuild()
-        self.sharedData.buildingCount[TerranUnit.COMMANDCENTER] += 1        
-        self.sharedData.CommandCenterLoc = [miniMapLoc]
 
 
         self.isActionCommitted = False
@@ -285,7 +320,7 @@ class BuildBaseSubAgent:
         self.lastActionCommittedState = None
         self.lastActionCommittedNextState = None
 
-    def LastStep(self, obs, reward):
+    def LastStep(self, obs, reward = 0):
         if self.lastActionCommittedAction is not None:
             self.decisionMaker.learn(self.lastActionCommittedState.copy(), self.current_action, reward, self.lastActionCommittedNextState.copy(), True)
 
@@ -404,7 +439,7 @@ class BuildBaseSubAgent:
                     exploreProb = self.decisionMaker.ExploreProb()              
                 else:
                     targetValues = True
-                    exploreProb = 0   
+                    exploreProb = self.decisionMaker.TargetExploreProb()   
 
                 if np.random.uniform() > exploreProb:
                     valVec = self.decisionMaker.ActionValuesVec(self.current_state, targetValues)
@@ -416,7 +451,7 @@ class BuildBaseSubAgent:
             else:
                 action = self.decisionMaker.choose_action(self.current_state)
         else:
-            action = self.subAgentPlay
+            action = ACTIONS.ID_DO_NOTHING
         
         return action
 
@@ -438,7 +473,7 @@ class BuildBaseSubAgent:
         return hasMinerals & hasGas & otherReq
     
     def GatherHarvest(self):
-        if random.randint(0, 4) < 4:
+        if random.randint(0, 2) < 1:
             resourceList = SC2_Params.NEUTRAL_MINERAL_FIELD
         else:
             resourceList = [TerranUnit.OIL_REFINERY]

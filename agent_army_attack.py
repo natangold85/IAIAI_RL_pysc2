@@ -22,6 +22,7 @@ from utils import SC2_Actions
 #decision makers
 from utils_decisionMaker import LearnWithReplayMngr
 from utils_decisionMaker import UserPlay
+from utils_decisionMaker import BaseDecisionMaker
 
 # params
 from utils_dqn import DQN_PARAMS
@@ -36,9 +37,6 @@ from utils import DistForCmp
 from utils import CenterPoints
 
 AGENT_DIR = "ArmyAttack/"
-if not os.path.isdir("./" + AGENT_DIR):
-    os.makedirs("./" + AGENT_DIR)
-
 AGENT_NAME = "army_attack"
 
 
@@ -63,15 +61,6 @@ STATE_TIME_LINE_IDX = STATE_END_ENEMY_MAT
 STATE_SIZE = STATE_TIME_LINE_IDX + 1
 
 TIME_LINE_BUCKETING = 25
-
-NUM_UNIT_SCREEN_PIXELS = 0
-
-SCREEN_MIN = [3,3]
-SCREEN_MAX = [59,80]
-
-for key,value in TerranUnit.UNIT_SPEC.items():
-    if value.name == "marine":
-        NUM_UNIT_SCREEN_PIXELS = value.numScreenPixels
 
 # possible types of decision maker
 
@@ -112,6 +101,7 @@ RUN_TYPES[DQN][RESULTS] = "armyAttack_dqn_result"
 
 RUN_TYPES[DQN_EMBEDDING_LOCATIONS] = {}
 RUN_TYPES[DQN_EMBEDDING_LOCATIONS][TYPE] = "DQN_WithTarget"
+RUN_TYPES[DQN_EMBEDDING_LOCATIONS][DIRECTORY] = "armyAttack_dqn_Embedding"
 RUN_TYPES[DQN_EMBEDDING_LOCATIONS][PARAMS] = DQN_EMBEDDING_PARAMS(STATE_SIZE, STATE_END_ENEMY_MAT, NUM_ACTIONS)
 RUN_TYPES[DQN_EMBEDDING_LOCATIONS][DECISION_MAKER_NAME] = "armyAttack_dqn_Embedding"
 RUN_TYPES[DQN_EMBEDDING_LOCATIONS][HISTORY] = "armyAttack_dqn_Embedding_replayHistory"
@@ -122,9 +112,48 @@ RUN_TYPES[USER_PLAY][TYPE] = "play"
     
 STEP_DURATION = 0
 
+class NaiveDecisionMakerArmyAttack(BaseDecisionMaker):
+    def __init__(self):
+        super(NaiveDecisionMakerArmyAttack, self).__init__()
+        
+
+    def choose_action(self, observation):
+        armyPnts = (observation[STATE_START_ENEMY_MAT:STATE_END_ENEMY_MAT] > 0).nonzero()[0]
+        selfLocs = (observation[STATE_START_SELF_MAT:STATE_END_SELF_MAT] > 0).nonzero()[0]
+
+        if len(selfLocs) == 0 or len(armyPnts) == 0:
+            return ACTION_DO_NOTHING
+
+        self_y = int(selfLocs[0] / GRID_SIZE)
+        self_x = selfLocs[0] % GRID_SIZE
+
+        minDist = 1000
+        minIdx = -1
+
+        for idx in armyPnts:
+            p_y = int(idx / GRID_SIZE)
+            p_x = idx % GRID_SIZE
+            diffX = p_x - self_x
+            diffY = p_y - self_y
+
+            dist = diffX * diffX + diffY * diffY
+            if dist < minDist:
+                minDist = dist
+                minIdx = idx
+
+        return minIdx + ACTIONS_START_IDX_ATTACK
+
+    def ActionValuesVec(self, state, target = True):
+        vals = np.zeros(NUM_ACTIONS,dtype = float)
+        vals[self.choose_action(state)] = 1.0
+
+        return vals
+
 class ArmyAttack(BaseAgent):
-    def __init__(self, runArg = None, decisionMaker = None, isMultiThreaded = False, playList = None, trainList = None):        
+    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList):        
         super(ArmyAttack, self).__init__()
+
+        self.sharedData = sharedData
 
         self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
         self.trainAgent = AGENT_NAME in trainList
@@ -134,10 +163,7 @@ class ArmyAttack(BaseAgent):
         if decisionMaker != None:
             self.decisionMaker = decisionMaker
         else:
-            self.decisionMaker = self.CreateDecisionMaker(runArg, isMultiThreaded)
-
-        if not self.playAgent:
-            self.subAgentPlay = [self.FindActingHeirarchi()]
+            self.decisionMaker = self.CreateDecisionMaker(dmTypes, isMultiThreaded)
 
         # state and actions:
 
@@ -146,14 +172,19 @@ class ArmyAttack(BaseAgent):
         self.lastValidAttackAction = None
         self.enemyArmyGridLoc2ScreenLoc = {}
 
-    def CreateDecisionMaker(self, runArg, isMultiThreaded):
-        if runArg == None:
-            runTypeArg = list(ALL_TYPES.intersection(sys.argv))
-            runArg = runTypeArg.pop()    
-        runType = RUN_TYPES[runArg]
+    def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
+        
+        if dmTypes[AGENT_NAME] == "naive":
+            decisionMaker = NaiveDecisionMakerArmyAttack()
+        else:
+            runType = RUN_TYPES[dmTypes[AGENT_NAME]]
 
-        decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME],  
-                                        resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=AGENT_DIR + runType[DIRECTORY], isMultiThreaded=isMultiThreaded)
+            # create agent dir
+            directory = dmTypes["directory"] + "/" + AGENT_DIR
+            if not os.path.isdir("./" + directory):
+                os.makedirs("./" + directory)
+            decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME],  
+                                            resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=AGENT_DIR+runType[DIRECTORY], isMultiThreaded=isMultiThreaded)
 
         return decisionMaker
 
@@ -166,14 +197,11 @@ class ArmyAttack(BaseAgent):
         
         return -1
 
-    def step(self, obs, sharedData = None, moveNum = None):
+    def step(self, obs, moveNum):
         super(ArmyAttack, self).step(obs)
         if obs.first():
             self.FirstStep(obs)
-        
-        if sharedData != None:
-            self.sharedData = sharedData
-        
+               
         if moveNum == 0:
             self.CreateState(obs)
             self.Learn()
@@ -249,7 +277,7 @@ class ArmyAttack(BaseAgent):
                     exploreProb = self.decisionMaker.ExploreProb()              
                 else:
                     targetValues = True
-                    exploreProb = 0   
+                    exploreProb = self.decisionMaker.TargetExploreProb()     
 
                 if np.random.uniform() > exploreProb:
                     valVec = self.decisionMaker.ActionValuesVec(self.current_state, targetValues)   
@@ -261,7 +289,7 @@ class ArmyAttack(BaseAgent):
             else:
                 action = self.decisionMaker.choose_action(self.current_state)
         else:
-            action = self.subAgentPlay
+            action = ACTION_DO_NOTHING
 
         return action
 
@@ -355,14 +383,22 @@ class ArmyAttack(BaseAgent):
 
             print('||')
 
+
 if __name__ == "__main__":
     if "results" in sys.argv:
-        runTypeArg = list(ALL_TYPES.intersection(sys.argv))
-        runTypeArg.sort()
+        configFileNames = []
+        for arg in sys.argv:
+            if arg.find(".txt") >= 0:
+                configFileNames.append(arg)
+
+        configFileNames.sort()
         resultFnames = []
         directoryNames = []
-        for arg in runTypeArg:
-            runType = RUN_TYPES[arg]
+        for configFname in configFileNames:
+            dm_Types = eval(open(configFname, "r+").read())
+            runType = RUN_TYPES[dm_Types[AGENT_NAME]]
+            
+            directory = dm_Types["directory"]
             fName = runType[RESULTS]
             
             if DIRECTORY in runType.keys():
@@ -371,8 +407,8 @@ if __name__ == "__main__":
                 dirName = ''
 
             resultFnames.append(fName)
-            directoryNames.append(AGENT_DIR + dirName)
+            directoryNames.append(directory + "/" + AGENT_DIR + dirName)
 
         grouping = int(sys.argv[len(sys.argv) - 1])
-        plot = PlotMngr(resultFnames, directoryNames, runTypeArg, AGENT_DIR)
+        plot = PlotMngr(resultFnames, directoryNames, configFileNames, AGENT_DIR)
         plot.Plot(grouping)

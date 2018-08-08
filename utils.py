@@ -18,7 +18,7 @@ class EmptyLock:
         return
 
 class BaseAgent(base_agent.BaseAgent):
-    def __init__(self, runArg = None, decisionMaker = None, isMultiThreaded = False, playList = None, trainList = None):
+    def __init__(self, sharedData = None, dmTypes = None, decisionMaker = None, isMultiThreaded = None, playList = None, trainList = None):
         super(BaseAgent, self).__init__()
         pass
     
@@ -28,7 +28,7 @@ class BaseAgent(base_agent.BaseAgent):
     def FindActingHeirarchi(self):
         return -1
 
-    def step(self, obs, sharedData = None, moveNum = None):
+    def step(self, obs, moveNum = None):
         super(BaseAgent, self).step(obs)
         return 0
         
@@ -69,11 +69,13 @@ class SC2_Params:
     HEIGHT_MINIMAP = features.MINIMAP_FEATURES.height_map.index
     VISIBILITY_MINIMAP = features.MINIMAP_FEATURES.visibility_map.index
     PLAYER_RELATIVE_MINIMAP = features.MINIMAP_FEATURES.player_relative.index
-    
+    SELECTED_IN_MINIMAP = features.MINIMAP_FEATURES.selected.index
+
     # screen feature
     HEIGHT_MAP = features.SCREEN_FEATURES.height_map.index
     PLAYER_RELATIVE = features.SCREEN_FEATURES.player_relative.index
     UNIT_DENSITY = features.SCREEN_FEATURES.unit_density.index
+    
     #HIT_POINTS = features.SCREEN_FEATURES.hit_points.index
     UNIT_TYPE = features.SCREEN_FEATURES.unit_type.index
     PLAYER_ID = features.SCREEN_FEATURES.player_id.index
@@ -108,6 +110,13 @@ class SC2_Params:
     QUEUED = [1]
     SELECT_SINGLE = [0]
     SELECT_ALL = [2]
+
+    # params for control group
+    CONTROL_GROUP_RECALL = [0]
+    CONTROL_GROUP_SET = [1]
+    CONTROL_GROUP_APPEND = [2]
+    CONTROL_GROUP_SET_AND_STEAL = [3]
+    CONTROL_GROUP_APPEND_AND_STEAL = [4]
 
     NEUTRAL_MINERAL_FIELD = [341, 483]
     VESPENE_GAS_FIELD = [342]
@@ -896,6 +905,9 @@ def SelectUnitValidPoints(unitMap):
     return valid_y, valid_x
 
 def IsValidPoint4Select(buildingMap, y, x, neighbor2Check = neighbors2CheckBuilding):
+    if x == 0 or y == 0 or x == SC2_Params.SCREEN_SIZE or y == SC2_Params.SCREEN_SIZE:
+        return False
+
     for neighbor in neighbor2Check:
         if not buildingMap[y + neighbor[0]][x + neighbor[1]]:
             return False

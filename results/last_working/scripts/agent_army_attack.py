@@ -297,7 +297,7 @@ class ArmyAttack(base_agent.BaseAgent):
 
         return actions.FunctionCall(SC2_Actions.SELECT_ARMY, [SC2_Params.NOT_QUEUED])
 
-    def LastStep(self, obs):
+    def LastStep(self, obs, reward = 0):
 
         if self.mainAgent:
             if obs.reward > 0:
