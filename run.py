@@ -22,8 +22,8 @@ MINIMAP_SIZE = SC2_Params.MINIMAP_SIZE
 flags.DEFINE_string("trainAgent", "none", "Which agent to train.")
 flags.DEFINE_string("play", "none", "Which agent to play.")
 flags.DEFINE_string("typeFile", "none", "config file that builds heirarchi for decision maker (should contain a dict name dm_Types)")
+flags.DEFINE_string("train", "True", "Which agent to train.")
 flags.DEFINE_string("map", "none", "Which map to run.")
-flags.DEFINE_string("train", "True", "Which map to run.")
 
 
 """Script for starting all agents (a3c, very simple and slightly smarter).
@@ -33,7 +33,7 @@ By default it runs the A3C agent.
 """
 # kill al sc ps:  $ Taskkill /IM SC2_x64.exe /F
 
-def run_thread(agent, display=False):
+def run_thread(agent, display=False, difficulty = None):
     """Runs an agent thread.
 
     This helper function creates the evironment for an agent and starts the main loop of one thread.
@@ -48,7 +48,7 @@ def run_thread(agent, display=False):
     with sc2_env.SC2Env(map_name=flags.FLAGS.map,
                         agent_race='T',
                         bot_race='T',
-                        difficulty=None,
+                        difficulty=difficulty,
                         game_steps_per_episode=0,
                         screen_size_px=(SCREEN_SIZE, SCREEN_SIZE),
                         minimap_size_px=(MINIMAP_SIZE, MINIMAP_SIZE),
@@ -106,8 +106,15 @@ def start_agent():
 
     threads = []
     show = show_render
+    
+    if "difficulty" in dm_Types:
+        difficulty = int(dm_Types["difficulty"])
+    else:
+        print("run type not include difficulty\nExitting...")
+        exit()
+
     for agent in agents:
-        thread_args = (agent, show)
+        thread_args = (agent, show, difficulty)
         t = threading.Thread(target=run_thread, args=thread_args)
         threads.append(t)
         t.start()

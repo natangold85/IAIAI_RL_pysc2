@@ -193,7 +193,7 @@ class SharedDataSuper(SharedDataBase, SharedDataAttack, SharedDataScout):
         super(SharedDataSuper, self).__init__()
     
 class SuperAgent(BaseAgent):
-    def __init__(self, dmTypes = basic_DM_Types, decisionMaker = None, isMultiThreaded = False, playList = None, trainList = None):
+    def __init__(self, dmTypes, decisionMaker = None, isMultiThreaded = False, playList = None, trainList = None):
         super(SuperAgent, self).__init__()
 
         self.sharedData = SharedDataSuper()
