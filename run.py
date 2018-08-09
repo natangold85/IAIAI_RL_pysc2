@@ -1,5 +1,8 @@
 #!/usr/bin/python3
 
+# run example: python .\run.py --map=Simple64 --typeFile=NaiveRunDiff2.txt --trainAgent=super --train=True
+# kill al sc ps:  $ Taskkill /IM SC2_x64.exe /F
+
 import os
 import threading
 import time
@@ -31,7 +34,6 @@ flags.DEFINE_string("map", "none", "Which map to run.")
 This scripts is the starter for all agents, it has one command line parameter (--agent), that denotes which agent to run.
 By default it runs the A3C agent.
 """
-# kill al sc ps:  $ Taskkill /IM SC2_x64.exe /F
 
 def run_thread(agent, display=False, difficulty = None):
     """Runs an agent thread.
