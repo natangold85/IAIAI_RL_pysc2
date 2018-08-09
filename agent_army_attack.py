@@ -30,7 +30,7 @@ from utils_dqn import DQN_EMBEDDING_PARAMS
 from utils_qtable import QTableParams
 from utils_qtable import QTableParamsExplorationDecay
 
-from utils_results import PlotMngr
+from utils_results import PlotResults
 
 from utils import SwapPnt
 from utils import DistForCmp
@@ -386,29 +386,30 @@ class ArmyAttack(BaseAgent):
 
 if __name__ == "__main__":
     if "results" in sys.argv:
-        configFileNames = []
-        for arg in sys.argv:
-            if arg.find(".txt") >= 0:
-                configFileNames.append(arg)
+        PlotResults(AGENT_NAME, RUN_TYPES)
+        # configFileNames = []
+        # for arg in sys.argv:
+        #     if arg.find(".txt") >= 0:
+        #         configFileNames.append(arg)
 
-        configFileNames.sort()
-        resultFnames = []
-        directoryNames = []
-        for configFname in configFileNames:
-            dm_Types = eval(open(configFname, "r+").read())
-            runType = RUN_TYPES[dm_Types[AGENT_NAME]]
+        # configFileNames.sort()
+        # resultFnames = []
+        # directoryNames = []
+        # for configFname in configFileNames:
+        #     dm_Types = eval(open(configFname, "r+").read())
+        #     runType = RUN_TYPES[dm_Types[AGENT_NAME]]
             
-            directory = dm_Types["directory"]
-            fName = runType[RESULTS]
+        #     directory = dm_Types["directory"]
+        #     fName = runType[RESULTS]
             
-            if DIRECTORY in runType.keys():
-                dirName = runType[DIRECTORY]
-            else:
-                dirName = ''
+        #     if DIRECTORY in runType.keys():
+        #         dirName = runType[DIRECTORY]
+        #     else:
+        #         dirName = ''
 
-            resultFnames.append(fName)
-            directoryNames.append(directory + "/" + AGENT_DIR + dirName)
+        #     resultFnames.append(fName)
+        #     directoryNames.append(directory + "/" + AGENT_DIR + dirName)
 
-        grouping = int(sys.argv[len(sys.argv) - 1])
-        plot = PlotMngr(resultFnames, directoryNames, configFileNames, AGENT_DIR)
-        plot.Plot(grouping)
+        # grouping = int(sys.argv[len(sys.argv) - 1])
+        # plot = PlotMngr(resultFnames, directoryNames, configFileNames, AGENT_DIR)
+        # plot.Plot(grouping)

@@ -31,6 +31,7 @@ flags.DEFINE_string("train", "True", "Which map to run.")
 This scripts is the starter for all agents, it has one command line parameter (--agent), that denotes which agent to run.
 By default it runs the A3C agent.
 """
+# kill al sc ps:  $ Taskkill /IM SC2_x64.exe /F
 
 def run_thread(agent, display=False):
     """Runs an agent thread.

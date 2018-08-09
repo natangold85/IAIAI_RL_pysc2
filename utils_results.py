@@ -18,6 +18,37 @@ from multiprocessing import Process, Lock, Value, Array, Manager
 
 from utils import ParamsBase
 
+def PlotResults(agentName, agentDir, runTypes, grouping = None):
+    configFileNames = []
+    groupNames = []
+    for arg in sys.argv:
+        if arg.find(".txt") >= 0:
+            configFileNames.append(arg)
+            groupNames.append(arg.replace(".txt", ""))
+
+    configFileNames.sort()
+    resultFnames = []
+    directoryNames = []
+    for configFname in configFileNames:
+        dm_Types = eval(open(configFname, "r+").read())
+        runType = runTypes[dm_Types[agentName]]
+        
+        directory = dm_Types["directory"]
+        fName = runType["results"]
+        
+        if "directory" in runType.keys():
+            dirName = runType["directory"]
+        else:
+            dirName = ''
+
+        resultFnames.append(fName)
+        directoryNames.append(directory + "/" + agentDir + dirName)
+
+    if grouping == None:
+        grouping = int(sys.argv[len(sys.argv) - 1])
+    plot = PlotMngr(resultFnames, directoryNames, groupNames, agentDir)
+    plot.Plot(grouping)
+
 class PlotMngr:
     def __init__(self, resultFilesNamesList = [], resultFilesDirectories = [], legendList = [], directory2Save = ""):
         self.resultFileList = []

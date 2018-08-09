@@ -25,6 +25,8 @@ from utils_decisionMaker import LearnWithReplayMngr
 from utils_qtable import QTableParamsExplorationDecay
 from utils_dqn import DQN_PARAMS
 
+from utils_results import PlotResults
+
 # sub agents
 
 from agent_do_nothing import DoNothingSubAgent
@@ -503,3 +505,7 @@ class SuperAgent(BaseAgent):
 
             print("||")
   
+
+if __name__ == "__main__":
+    if "results" in sys.argv:
+        PlotResults(AGENT_NAME, AGENT_DIR, RUN_TYPES)
