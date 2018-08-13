@@ -12,6 +12,7 @@ import pandas as pd
 from pysc2.lib import actions
 
 from utils import BaseAgent
+from utils import EmptySharedData
 
 import tensorflow as tf
 
@@ -112,6 +113,11 @@ RUN_TYPES[USER_PLAY][TYPE] = "play"
     
 STEP_DURATION = 0
 
+class SharedDataArmyAttack(EmptySharedData):
+    def __init__(self):
+        super(SharedDataArmyAttack, self).__init__()
+        self.enemyArmyMat = [0] * (GRID_SIZE * GRID_SIZE)
+
 class NaiveDecisionMakerArmyAttack(BaseDecisionMaker):
     def __init__(self):
         super(NaiveDecisionMakerArmyAttack, self).__init__()
@@ -200,7 +206,7 @@ class ArmyAttack(BaseAgent):
     def step(self, obs, moveNum):
         super(ArmyAttack, self).step(obs)
         if obs.first():
-            self.FirstStep(obs)
+            self.FirstStep()
                
         if moveNum == 0:
             self.CreateState(obs)
@@ -213,7 +219,7 @@ class ArmyAttack(BaseAgent):
 
         return self.current_action
 
-    def FirstStep(self, obs):
+    def FirstStep(self):
         self.numStep = 0
 
         self.current_state = np.zeros(STATE_SIZE, dtype=np.int, order='C')
@@ -298,15 +304,19 @@ class ArmyAttack(BaseAgent):
     
         self.GetSelfLoc(obs)
         self.GetEnemyArmyLoc(obs)
+
         self.current_state[STATE_TIME_LINE_IDX] = int(self.numStep / TIME_LINE_BUCKETING)
 
+        for idx in range(GRID_SIZE * GRID_SIZE):
+            self.sharedData.enemyArmyMat[idx] = self.current_state[STATE_START_ENEMY_MAT + idx]
+
     def GetSelfLoc(self, obs):
-        playerType = obs.observation["screen"][SC2_Params.PLAYER_RELATIVE]
-        unitType = obs.observation["screen"][SC2_Params.UNIT_TYPE]
+        playerType = obs.observation["feature_screen"][SC2_Params.PLAYER_RELATIVE]
+        unitType = obs.observation["feature_screen"][SC2_Params.UNIT_TYPE]
 
         allArmy_y = []
         allArmy_x = [] 
-        for key, spec in TerranUnit.UNIT_SPEC.items():
+        for key, spec in TerranUnit.ARMY_SPEC.items():
             s_y, s_x = ((playerType == SC2_Params.PLAYER_SELF) &(unitType == key)).nonzero()
             allArmy_y += list(s_y)
             allArmy_x += list(s_x)
@@ -323,16 +333,23 @@ class ArmyAttack(BaseAgent):
             self.selfLocCoord = [int(sum(allArmy_y) / len(allArmy_y)), int(sum(allArmy_x) / len(allArmy_x))]
 
     def GetEnemyArmyLoc(self, obs):
-        playerType = obs.observation["screen"][SC2_Params.PLAYER_RELATIVE]
-        unitType = obs.observation["screen"][SC2_Params.UNIT_TYPE]
+        playerType = obs.observation["feature_screen"][SC2_Params.PLAYER_RELATIVE]
+        unitType = obs.observation["feature_screen"][SC2_Params.UNIT_TYPE]
 
         enemyPoints = []
         enemyPower = []
-        for unit, spec in TerranUnit.UNIT_SPEC.items():
+        for unit in TerranUnit.ARMY:
             enemyArmy_y, enemyArmy_x = ((unitType == unit) & (playerType == SC2_Params.PLAYER_HOSTILE)).nonzero()
-            unitPoints, unitPower = CenterPoints(enemyArmy_y, enemyArmy_x, spec.numScreenPixels)
-            enemyPoints += unitPoints
-            enemyPower += unitPower
+            
+            if len(enemyArmy_y) > 0:
+                if unit in TerranUnit.ARMY_SPEC.keys():
+                    numScreenPixels = TerranUnit.ARMY_SPEC[unit].numScreenPixels
+                else:
+                    numScreenPixels = TerranUnit.DEFAULT_UNIT_NUM_SCREEN_PIXELS
+
+                unitPoints, unitPower = CenterPoints(enemyArmy_y, enemyArmy_x, numScreenPixels)
+                enemyPoints += unitPoints
+                enemyPower += unitPower
             
         self.enemyArmyGridLoc2ScreenLoc = {}
         for i in range(len(enemyPoints)):
@@ -343,7 +360,7 @@ class ArmyAttack(BaseAgent):
             else:
                 self.current_state[STATE_START_ENEMY_MAT + idx] = enemyPower[i]
                 self.enemyArmyGridLoc2ScreenLoc[idx] = enemyPoints[i]     
-       
+
     def GetScaledIdx(self, screenCord):
         locX = screenCord[SC2_Params.X_IDX]
         locY = screenCord[SC2_Params.Y_IDX]
@@ -386,30 +403,4 @@ class ArmyAttack(BaseAgent):
 
 if __name__ == "__main__":
     if "results" in sys.argv:
-        PlotResults(AGENT_NAME, RUN_TYPES)
-        # configFileNames = []
-        # for arg in sys.argv:
-        #     if arg.find(".txt") >= 0:
-        #         configFileNames.append(arg)
-
-        # configFileNames.sort()
-        # resultFnames = []
-        # directoryNames = []
-        # for configFname in configFileNames:
-        #     dm_Types = eval(open(configFname, "r+").read())
-        #     runType = RUN_TYPES[dm_Types[AGENT_NAME]]
-            
-        #     directory = dm_Types["directory"]
-        #     fName = runType[RESULTS]
-            
-        #     if DIRECTORY in runType.keys():
-        #         dirName = runType[DIRECTORY]
-        #     else:
-        #         dirName = ''
-
-        #     resultFnames.append(fName)
-        #     directoryNames.append(directory + "/" + AGENT_DIR + dirName)
-
-        # grouping = int(sys.argv[len(sys.argv) - 1])
-        # plot = PlotMngr(resultFnames, directoryNames, configFileNames, AGENT_DIR)
-        # plot.Plot(grouping)
+        PlotResults(AGENT_NAME, AGENT_DIR, RUN_TYPES)

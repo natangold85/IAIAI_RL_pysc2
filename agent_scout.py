@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from pysc2.lib import actions
+from pysc2.lib.units import Terran
 
 from utils import BaseAgent
 
@@ -126,8 +127,8 @@ class ScoutAgent(BaseAgent):
         return SC2_Actions.DO_NOTHING_SC2_ACTION, True
 
     def SelectScoutingUnit(self, obs):
-        unit2Select = TerranUnit.MARINE
-        unitMat = obs.observation['screen'][SC2_Params.UNIT_TYPE] == unit2Select
+        unit2Select = Terran.Marine
+        unitMat = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE] == unit2Select
         p_y, p_x = SelectUnitValidPoints(unitMat)
         if len(p_y) > 0:
             return [p_y[0], p_x[0]]
@@ -139,7 +140,7 @@ class ScoutAgent(BaseAgent):
         return len(unitStatus) > 0
 
     def IsScoutEnd(self, obs):
-        selfMat = obs.observation['minimap'][SC2_Params.PLAYER_RELATIVE_MINIMAP] == SC2_Params.PLAYER_SELF
+        selfMat = obs.observation['feature_minimap'][SC2_Params.PLAYER_RELATIVE_MINIMAP] == SC2_Params.PLAYER_SELF
         yTarget = self.goToLast[SC2_Params.Y_IDX]
         xTarget = self.goToLast[SC2_Params.X_IDX]
         

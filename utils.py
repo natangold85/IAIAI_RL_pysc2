@@ -5,6 +5,7 @@ import time
 from pysc2.agents import base_agent
 from pysc2.lib import actions
 from pysc2.lib import features
+from pysc2.lib.units import Terran
 
 #base class for all shared data classes
 class EmptySharedData:
@@ -32,7 +33,7 @@ class BaseAgent(base_agent.BaseAgent):
         super(BaseAgent, self).step(obs)
         return 0
         
-    def FirstStep(self, obs):
+    def FirstStep(self, obs = None):
         pass
 
     def LastStep(self, obs, reward = 0):
@@ -182,130 +183,69 @@ class SC2_Actions:
 
 
 
+
+
 class TerranUnit:
-    COMMANDCENTER = 18
-    SCV = 45 
-    SUPPLY_DEPOT = 19
-    OIL_REFINERY = 20
-    BARRACKS = 21
-    FACTORY = 27
-    REACTOR = 38
-    TECHLAB = 39
+    BUILDINGS = [Terran.Armory, Terran.AutoTurret, Terran.Barracks, Terran.BarracksReactor, Terran.BarracksTechLab, Terran.Bunker, Terran.CommandCenter, Terran.Cyclone, 
+                Terran.EngineeringBay, Terran.Factory, Terran.FactoryReactor, Terran.FactoryTechLab, Terran.FusionCore, Terran.GhostAcademy, Terran.MissileTurret, 
+                Terran.OrbitalCommand, Terran.PlanetaryFortress, Terran.Reactor, Terran.Refinery, Terran.SensorTower, Terran.Starport, Terran.StarportReactor, 
+                Terran.StarportTechLab, Terran.SupplyDepot, Terran.SupplyDepotLowered, Terran.TechLab]
 
-    MARINE = 48
-    REAPER = 49
-    MARAUDER = 51
-    HELLION = 53
-    SIEGE_TANK = 33
+                
+    ARMY= [Terran.Banshee, Terran.Ghost, Terran.Battlecruiser, Terran.Hellion, Terran.Hellbat, Terran.Liberator, Terran.LiberatorAG, Terran.Marauder, 
+            Terran.Marine, Terran.Medivac, Terran.Raven, Terran.Reaper, Terran.SCV, Terran.SiegeTank, Terran.SiegeTankSieged, Terran.Thor, Terran.ThorHighImpactMode, 
+            Terran.VikingAssault, Terran.VikingFighter]
 
-    ARMY= [53,40,48,49,33]
-
-    FLYING_BARRACKS = 46
-    FLYING_FACTORY = 43
+    FLYING_BUILDINGS = [Terran.BarracksFlying, Terran.CommandCenterFlying, Terran.FactoryFlying, Terran.OrbitalCommandFlying, Terran.StarportFlying]
 
     # building specific:
     class BuildingDetails:
-        def __init__(self,name, screenPixels, screenPixels1Axis, char4Print, miniMapSize, buildingValues, sc2ActionBuild = None):
+        def __init__(self,name, screenPixels, screenPixels1Axis, char4Print, miniMapSize, sc2Action = None):
             self.name = name
             self.numScreenPixels = screenPixels
             self.screenPixels1Axis = screenPixels1Axis
             self.char4Print = char4Print   
             self.miniMapSize = miniMapSize    
-            self.sc2ActionBuild = sc2ActionBuild
-            self.buildingValues = buildingValues
+            self.sc2Action = sc2Action
     
     # army specific:
 
     class UnitDetails:
-        def __init__(self,name, screenPixels, foodCapacity, char4Print):
+        def __init__(self,name, screenPixels, foodCapacity, char4Print, sc2Action = None):
             self.name = name
             self.numScreenPixels = screenPixels
             self.foodCapacity = foodCapacity
             self.char4Print = char4Print
+            self.sc2Action = sc2Action
+
             
     
     BUILDING_SPEC = {}
     # buildings
-    BUILDING_SPEC[COMMANDCENTER] = BuildingDetails("CommandCenter", 293, 18, 'C', 5, 5)
-    BUILDING_SPEC[SUPPLY_DEPOT] = BuildingDetails("SupplyDepot", 81, 9, 'S', 4, 1)
-    BUILDING_SPEC[BARRACKS] = BuildingDetails("Barracks", 144, 12, 'B', 4, 3)
-    BUILDING_SPEC[FACTORY] = BuildingDetails("Factory", 144, 12, 'F', 4, 3)
-    
-    UNIT_SPEC = {}
+    BUILDING_SPEC[Terran.CommandCenter] = BuildingDetails("CommandCenter", 293, 18, 'C', 5)
+    BUILDING_SPEC[Terran.SupplyDepot] = BuildingDetails("SupplyDepot", 81, 9, 'S', 4, SC2_Actions.BUILD_SUPPLY_DEPOT)
+    BUILDING_SPEC[Terran.Barracks] = BuildingDetails("Barracks", 144, 12, 'B', 4, SC2_Actions.BUILD_BARRACKS)
+    BUILDING_SPEC[Terran.Factory] = BuildingDetails("Factory", 144, 12, 'F', 4, SC2_Actions.BUILD_FACTORY)
+    BUILDING_SPEC[Terran.Refinery] = BuildingDetails("OilRefinery", 144, 12, 'G', 4, SC2_Actions.BUILD_OIL_REFINERY)
+    BUILDING_SPEC[Terran.Reactor] = BuildingDetails("Reactor", 9, 3, 'R', 2, SC2_Actions.BUILD_REACTOR)
+    BUILDING_SPEC[Terran.TechLab] = BuildingDetails("TechLab", 9, 3, 'T', 2, SC2_Actions.BUILD_TECHLAB)
+
+    ARMY_SPEC = {}
     # army
-    UNIT_SPEC[MARINE] = UnitDetails("marine", 9, 1, 'm')
-    # UNIT_SPEC[56] = UnitDetails("raven", 12, 2)
-    UNIT_SPEC[REAPER] = UnitDetails("reaper", 9, 1, 'r')
-    UNIT_SPEC[MARAUDER] = UnitDetails("marauder", 12, 2, 'a')
-    UNIT_SPEC[HELLION] = UnitDetails("hellion", 12, 2, 'h')
-    UNIT_SPEC[SIEGE_TANK] = UnitDetails("siege tank", 32, 3, 't')
+    ARMY_SPEC[Terran.Marine] = UnitDetails("marine", 9, 1, 'm', SC2_Actions.TRAIN_MARINE)
+    # ARMY_SPEC[56] = UnitDetails("raven", 12, 2)
+    ARMY_SPEC[Terran.Reaper] = UnitDetails("reaper", 9, 1, 'r', SC2_Actions.TRAIN_REAPER)
+    ARMY_SPEC[Terran.Marauder] = UnitDetails("marauder", 12, 2, 'a')
+    ARMY_SPEC[Terran.Hellion] = UnitDetails("hellion", 12, 2, 'h', SC2_Actions.TRAIN_HELLION)
+    ARMY_SPEC[Terran.SiegeTank] = UnitDetails("siege tank", 32, 3, 't', SC2_Actions.TRAIN_SIEGE_TANK)
+
+    DEFAULT_UNIT_NUM_SCREEN_PIXELS = 9
+    DEFAULT_BUILDING_NUM_SCREEN_PIXELS = 81
+
+    SCV_SPEC = UnitDetails("scv", 9, 1, 's')
 
     # lut:
-
-    UNIT_NAMES = {}
-    BUILDING_SIZES = {}
-    BUILDING_MINIMAP_SIZES = {}
-
-    UNIT_2_SC2ACTIONS = {}
     UNIT_CHAR = {}
-
-    UNIT_NAMES[COMMANDCENTER] = "CommandCenter"
-    UNIT_NAMES[SUPPLY_DEPOT] = "SupplyDepot"
-    UNIT_NAMES[BARRACKS] = "Barracks"
-    UNIT_NAMES[FACTORY] = "Factory"
-    UNIT_NAMES[OIL_REFINERY] = "OilRefinery"
-
-    UNIT_NAMES[REACTOR] = "Reactor"
-    UNIT_NAMES[TECHLAB] = "TechLab"
-
-    UNIT_NAMES[MARINE] = "marine"
-    UNIT_NAMES[REAPER] = "reaper"
-    UNIT_NAMES[HELLION] = "hellion"
-    UNIT_NAMES[SIEGE_TANK] = "siege_tank"
-
-
-    BUILDING_SIZES[SUPPLY_DEPOT] = 9
-    BUILDING_SIZES[BARRACKS] = 12
-    BUILDING_SIZES[FACTORY] = 12
-
-    BUILDING_SIZES[REACTOR] = 3
-    BUILDING_SIZES[TECHLAB] = 3
-
-    BUILDING_MINIMAP_SIZES[COMMANDCENTER] = 5
-    BUILDING_MINIMAP_SIZES[SUPPLY_DEPOT] = 4
-    BUILDING_MINIMAP_SIZES[BARRACKS] = 4
-    BUILDING_MINIMAP_SIZES[FACTORY] = 4
-
-    BUILDING_MINIMAP_SIZES[REACTOR] = 5
-    BUILDING_MINIMAP_SIZES[TECHLAB] = 5
-
-    UNIT_2_SC2ACTIONS[OIL_REFINERY] = SC2_Actions.BUILD_OIL_REFINERY
-    UNIT_2_SC2ACTIONS[SUPPLY_DEPOT] = SC2_Actions.BUILD_SUPPLY_DEPOT
-    UNIT_2_SC2ACTIONS[BARRACKS] = SC2_Actions.BUILD_BARRACKS
-    UNIT_2_SC2ACTIONS[FACTORY] = SC2_Actions.BUILD_FACTORY
-    
-    UNIT_2_SC2ACTIONS[REACTOR] = SC2_Actions.BUILD_REACTOR
-    UNIT_2_SC2ACTIONS[TECHLAB] = SC2_Actions.BUILD_TECHLAB
-
-    UNIT_2_SC2ACTIONS[MARINE] = SC2_Actions.TRAIN_MARINE
-    UNIT_2_SC2ACTIONS[REAPER] = SC2_Actions.TRAIN_REAPER
-    UNIT_2_SC2ACTIONS[HELLION] = SC2_Actions.TRAIN_HELLION
-    UNIT_2_SC2ACTIONS[SIEGE_TANK] = SC2_Actions.TRAIN_SIEGE_TANK
-
-    UNIT_CHAR[0] = '_'
-    UNIT_CHAR[COMMANDCENTER] = 'C'
-    UNIT_CHAR[SCV] = 's'
-    UNIT_CHAR[SUPPLY_DEPOT] = 'S'
-    UNIT_CHAR[OIL_REFINERY] = 'G'
-    UNIT_CHAR[BARRACKS] = 'B'
-    UNIT_CHAR[FACTORY] = 'F'
-    UNIT_CHAR[REACTOR] = 'R'
-    UNIT_CHAR[TECHLAB] = 'T'
-
-    UNIT_CHAR[FLYING_BARRACKS] = 'Y'
-    UNIT_CHAR[FLYING_FACTORY] = 'Y'
-
-    DO_NOTHING_BUILDING_CHECK = [COMMANDCENTER, SUPPLY_DEPOT, OIL_REFINERY, BARRACKS, FACTORY]
     for field in SC2_Params.NEUTRAL_MINERAL_FIELD[:]:
         UNIT_CHAR[field] = 'm'
     for gas in SC2_Params.VESPENE_GAS_FIELD[:]:
@@ -315,7 +255,7 @@ class TerranUnit:
         
 
 def GetUnitId(name):
-    for uId, unit in TerranUnit.UNIT_SPEC.items():
+    for uId, unit in TerranUnit.ARMY_SPEC.items():
         if unit.name == name:
             return uId
     
@@ -478,21 +418,21 @@ def PrintSingleBuildingSize(buildingMap, name):
         print(name , "size x = ", size_x, "size y = ", size_y)
 
 def PrintBuildingSizes(unit_type):
-    ccMap = unit_type == TerranUnit.COMMANDCENTER
+    ccMap = unit_type == Terran.CommandCenter
     PrintSingleBuildingSize(ccMap, "command center")
-    sdMap = unit_type == TerranUnit.SUPPLY_DEPOT
+    sdMap = unit_type == Terran.SupplyDepot
     PrintSingleBuildingSize(sdMap, "supply depot")
-    baMap = unit_type == TerranUnit.BARRACKS
+    baMap = unit_type == Terran.Barracks
     PrintSingleBuildingSize(baMap, "barracks")
 
 def GetScreenCorners(obs):
-    cameraLoc = obs.observation['minimap'][SC2_Params.CAMERA]
+    cameraLoc = obs.observation['feature_minimap'][SC2_Params.CAMERA]
     ca_y, ca_x = cameraLoc.nonzero()
 
     return [ca_y.min(), ca_x.min()] , [ca_y.max(), ca_x.max()]
 
 def BlockingType(unit):
-    return unit > 0 and unit != TerranUnit.SCV and unit not in TerranUnit.ARMY
+    return unit > 0 and unit != Terran.SCV and unit not in TerranUnit.ARMY
 
 def HaveSpace(unitType, heightsMap, yStart, xStart, neededSize):
     height = heightsMap[yStart][xStart]
@@ -523,8 +463,8 @@ def HaveSpaceMiniMap(occupyMat, heightsMap, yStart, xStart, neededSize):
     return True
 
 def PrintMiniMap(obs, cameraCornerNorthWest, cameraCornerSouthEast):
-    selfPnt_y, selfPnt_x = (obs.observation['minimap'][SC2_Params.PLAYER_RELATIVE] == SC2_Params.PLAYER_SELF).nonzero()
-    enemyPnt_y, enemyPnt_x = (obs.observation['minimap'][SC2_Params.PLAYER_RELATIVE] == SC2_Params.PLAYER_HOSTILE).nonzero()
+    selfPnt_y, selfPnt_x = (obs.observation['feature_minimap'][SC2_Params.PLAYER_RELATIVE] == SC2_Params.PLAYER_SELF).nonzero()
+    enemyPnt_y, enemyPnt_x = (obs.observation['feature_minimap'][SC2_Params.PLAYER_RELATIVE] == SC2_Params.PLAYER_HOSTILE).nonzero()
 
     for y in range(SC2_Params.MINIMAP_SIZE):
         for x in range(SC2_Params.MINIMAP_SIZE):
@@ -562,6 +502,10 @@ def PrintScreen(unitType, addPoints = [], valToPrint = -1):
                 print (' ', end = '')
             elif uType == valToPrint:
                 print ('V', end = '')
+            elif uType in TerranUnit.BUILDING_SPEC.keys():
+                print(TerranUnit.BUILDING_SPEC[uType].name, end = '')
+            elif uType in TerranUnit.ARMY_SPEC.keys():
+                print(TerranUnit.ARMY_SPEC[uType].name, end = '')
             elif uType in TerranUnit.UNIT_CHAR:
                 print(TerranUnit.UNIT_CHAR[uType], end = '')
             else:
@@ -585,12 +529,12 @@ def SearchNewBuildingPnt(unitType):
 
 
 def GetLocationForBuildingMiniMap(obs, commandCenterLoc, buildingType):
-    if buildingType == TerranUnit.OIL_REFINERY:
+    if buildingType == Terran.Refinery:
         return [-1,-1]
 
-    height_map = obs.observation['minimap'][SC2_Params.HEIGHT_MAP]
-    occupyMat = obs.observation['minimap'][SC2_Params.PLAYER_RELATIVE_MINIMAP] > 0
-    neededSize = TerranUnit.BUILDING_MINIMAP_SIZES[buildingType]
+    height_map = obs.observation['feature_minimap'][SC2_Params.HEIGHT_MAP]
+    occupyMat = obs.observation['feature_minimap'][SC2_Params.PLAYER_RELATIVE_MINIMAP] > 0
+    neededSize = TerranUnit.BUILDING_SPEC[buildingType].miniMapSize
 
     location = [-1, -1]
     minDist = SC2_Params.MAX_MINIMAP_DIST
@@ -610,7 +554,7 @@ def GetLocationForBuildingMiniMap(obs, commandCenterLoc, buildingType):
 
 def BlockingResourceGather(unitType, y, x, neededSize):
 
-    cc_y, cc_x = (unitType == TerranUnit.COMMANDCENTER).nonzero()
+    cc_y, cc_x = (unitType == Terran.CommandCenter).nonzero()
     if len (cc_y) == 0:
         return False
 
@@ -665,27 +609,28 @@ def BlockingResourceGather(unitType, y, x, neededSize):
                 intY = int(currY)
 
                 if IsInScreen(intY, intX):
-                    unit = TerranUnit.UNIT_CHAR[unitType[intY][intX]]
-                    if unit == 'm' or unit == 'g' or unit == 'G':
-                        return True
+                    uType = unitType[intY][intX]
+                    if uType in TerranUnit.UNIT_CHAR.keys():
+                        unit = TerranUnit.UNIT_CHAR[uType]
+                        if unit == 'm' or unit == 'g' or unit == 'G':
+                            return True
                 else:
                     break
      
     return False
 
 def GetLocationForBuilding(obs, cameraCornerNorthWest, cameraCornerSouthEast, buildingType):
-    unitType = obs.observation['screen'][SC2_Params.UNIT_TYPE]
-    if buildingType == TerranUnit.OIL_REFINERY:
+    unitType = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
+    if buildingType == Terran.Refinery:
         return GetLocationForOilRefinery(unitType)
 
-    neededSize = TerranUnit.BUILDING_SIZES[buildingType]
-    cameraHeightMap = obs.observation['screen'][SC2_Params.HEIGHT_MAP]
+    neededSize = TerranUnit.BUILDING_SPEC[buildingType].screenPixels1Axis
+    cameraHeightMap = obs.observation['feature_screen'][SC2_Params.HEIGHT_MAP]
 
     foundLoc = False
     location = [-1, -1]
     for y in range(0, SC2_Params.SCREEN_SIZE - neededSize):
         for x in range(0, SC2_Params.SCREEN_SIZE - neededSize):                
-            toPrint = False
             if HaveSpace(unitType, cameraHeightMap, y, x, neededSize) and not BlockingResourceGather(unitType, y, x, neededSize):
                 foundLoc = True
                 location = [y + int(neededSize / 2), x + int(neededSize / 2)]
@@ -697,7 +642,7 @@ def GetLocationForBuilding(obs, cameraCornerNorthWest, cameraCornerSouthEast, bu
     return location
 
 def GetLocationForOilRefinery(unitType):
-    refMat = unitType == TerranUnit.OIL_REFINERY
+    refMat = unitType == Terran.Refinery
     ref_y,ref_x = refMat.nonzero()
     gasMat = unitType == SC2_Params.VESPENE_GAS_FIELD
     vg_y, vg_x = gasMat.nonzero()
@@ -736,12 +681,12 @@ def GetLocationForOilRefinery(unitType):
 
     return [-1, -1]
 
-def GetLocationForBuildingAddition(obs, buildingType, camNorthWest, camSouthEast, defaultPnt = []):
-    neededSize = TerranUnit.BUILDING_SIZES[buildingType]
-    additionSize = TerranUnit.BUILDING_SIZES[TerranUnit.REACTOR]
-    unitType = obs.observation['screen'][SC2_Params.UNIT_TYPE]
+def GetLocationForBuildingAddition(obs, buildingType, buildingAddition, camNorthWest, camSouthEast, defaultPnt = []):
+    neededSize = TerranUnit.BUILDING_SPEC[buildingType].screenPixels1Axis
+    additionSize = TerranUnit.BUILDING_SPEC[buildingType].screenPixels1Axis
+    unitType = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
     
-    cameraHeightMap = obs.observation['screen'][SC2_Params.HEIGHT_MAP]
+    cameraHeightMap = obs.observation['feature_screen'][SC2_Params.HEIGHT_MAP]
   
     # find right edge of building
     if len(defaultPnt) > 0:

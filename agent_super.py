@@ -13,6 +13,7 @@ import tensorflow as tf
 
 
 from pysc2.lib import actions
+from pysc2.lib.units import Terran
 
 from utils import BaseAgent
 
@@ -52,7 +53,7 @@ AGENT_NAME = "super"
 basic_DM_Types = {'super': 'dqn', 'base_mngr': 'dqn_Embedding', 'battle_mngr': 'naive', 'do_nothing': 'naive', 'army_attack': 'dqn_Embedding', 'base_attack': 'naive', 'builder': 'dqn_Embedding', 'trainer': 'dqn_Embedding'}
 
 
-STEP_DURATION = 0.0
+STEP_DURATION = 0
 
 SUB_AGENT_ID_DONOTHING = 0
 SUB_AGENT_ID_BASE = 1
@@ -91,27 +92,34 @@ class STATE:
 
     GRID_SIZE = 2
 
-    SELF_POWER_BUCKETING = 5
-    ENEMY_POWER_BUCKETING = 5
-
     
     BASE_START = 0
     BASE_END = BASE.SIZE
 
     # power and fog mat
-    SELF_ATTACK_POWER = BASE_END
-    FOG_MAT_START = SELF_ATTACK_POWER + 1
+    SELF_POWER_START = BASE_END
+    SELF_POWER_END = SELF_POWER_START + GRID_SIZE * GRID_SIZE
+    FOG_MAT_START = SELF_POWER_END
     FOG_MAT_END = FOG_MAT_START + GRID_SIZE * GRID_SIZE
+    FOG_COUNTER_MAT_START = FOG_MAT_END
+    FOG_COUNTER_MAT_END = FOG_COUNTER_MAT_START + GRID_SIZE * GRID_SIZE
+
     ENEMY_ARMY_MAT_START = FOG_MAT_END
     ENEMY_ARMY_MAT_END = ENEMY_ARMY_MAT_START + GRID_SIZE * GRID_SIZE
     ENEMY_BUILDING_MAT_START = ENEMY_ARMY_MAT_END
     ENEMY_BUILDING_MAT_END = ENEMY_BUILDING_MAT_START + GRID_SIZE * GRID_SIZE  
 
+    LAST_ATTACK_ACTION_START = ENEMY_BUILDING_MAT_END
+    LAST_ATTACK_ACTION_END = LAST_ATTACK_ACTION_START + GRID_SIZE * GRID_SIZE  
+
+    TIME_LINE_IDX = LAST_ATTACK_ACTION_END
+
+    SIZE = TIME_LINE_IDX
+
     NON_VALID_MINIMAP_HEIGHT = 0  
     MAX_SCOUT_VAL = 10
     VAL_IS_SCOUTED = 8
 
-    SIZE = ENEMY_BUILDING_MAT_END
 
 class ACTIONS:
     
@@ -119,8 +127,7 @@ class ACTIONS:
     ACTION_DEVELOP_BASE = 1
     ACTION_SCOUT_START = 2
     ACTION_SCOUT_END = ACTION_SCOUT_START + STATE.GRID_SIZE * STATE.GRID_SIZE
-    ACTION_ATTACK_PREFORM = ACTION_SCOUT_END
-    ACTION_ATTACK_START = ACTION_ATTACK_PREFORM + 1
+    ACTION_ATTACK_START = ACTION_SCOUT_END
     ACTION_ATTACK_END = ACTION_ATTACK_START + STATE.GRID_SIZE * STATE.GRID_SIZE
     SIZE = ACTION_ATTACK_END
 
@@ -131,14 +138,12 @@ class ACTIONS:
     for a in range(ACTION_SCOUT_START, ACTION_SCOUT_END):
         ACTIONS2SUB_AGENTSID[a] = SUB_AGENT_ID_SCOUT
 
-    ACTIONS2SUB_AGENTSID[ACTION_ATTACK_PREFORM] = SUB_AGENT_ID_ATTACK
     for a in range(ACTION_ATTACK_START, ACTION_ATTACK_END):
         ACTIONS2SUB_AGENTSID[a] = SUB_AGENT_ID_ATTACK
 
     ACTION2STR = {}
     ACTION2STR[ACTION_DO_NOTHING] = "DoNothing"
     ACTION2STR[ACTION_DEVELOP_BASE] = "Develop_Base"
-    ACTION2STR[ACTION_ATTACK_PREFORM] = "PreformAttack"
     for a in range(ACTION_SCOUT_START, ACTION_SCOUT_END):
         ACTION2STR[a] = "Scout_" + str(a - ACTION_SCOUT_START)
 
@@ -232,10 +237,10 @@ class SuperAgent(BaseAgent):
         self.unitPower = {}
         table = pd.read_pickle(UNIT_VALUE_TABLE_NAME, compression='gzip')
         valVecMarine = table.ix['marine', :]
-        self.unitPower[TerranUnit.MARINE] = sum(valVecMarine) / len(valVecMarine)
-        self.unitPower[TerranUnit.REAPER] = sum(table.ix['reaper', :]) / len(valVecMarine)
-        self.unitPower[TerranUnit.HELLION] = sum(table.ix['hellion', :]) / len(valVecMarine)
-        self.unitPower[TerranUnit.SIEGE_TANK] = sum(table.ix['siege tank', :]) / len(valVecMarine)
+        self.unitPower[Terran.Marine] = sum(valVecMarine) / len(valVecMarine)
+        self.unitPower[Terran.Reaper] = sum(table.ix['reaper', :]) / len(valVecMarine)
+        self.unitPower[Terran.Hellion] = sum(table.ix['hellion', :]) / len(valVecMarine)
+        self.unitPower[Terran.SiegeTank] = sum(table.ix['siege tank', :]) / len(valVecMarine)
 
         # model params 
         self.terminalState = np.zeros(STATE.SIZE, dtype=np.int32, order='C')
@@ -273,7 +278,8 @@ class SuperAgent(BaseAgent):
         super(SuperAgent, self).step(obs)
         
         try:
-            self.unit_type = obs.observation['screen'][SC2_Params.UNIT_TYPE]
+            
+            self.unit_type = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
             
             if obs.last():
                 self.LastStep(obs)
@@ -285,16 +291,15 @@ class SuperAgent(BaseAgent):
             for sa in self.activeSubAgents:
                 self.subAgentsActions[sa] = self.subAgents[sa].step(obs, self.move_number)
 
-
+            self.UpdateFogData(obs)
             if self.move_number == 0:
                 self.CreateState(obs)
                 self.Learn()
 
                 self.current_action = self.ChooseAction()
-                # if self.playAgent:
-                #     print("valid actions =", self.ValidActions())
-                #     print("\nactionChosen =", self.Action2Str(False), "\nactionActed =", self.Action2Str(True))
-                #     self.PrintState()
+                if self.playAgent:
+                    print("\nactionChosen =", self.Action2Str(False), "\nactionActed =", self.Action2Str(True))
+                    self.PrintState()
             
             self.step_num += 1
             sc2Action = self.ActAction(obs)
@@ -311,15 +316,16 @@ class SuperAgent(BaseAgent):
 
         self.sharedData.__init__()
         
-        cc_y, cc_x = (self.unit_type == TerranUnit.COMMANDCENTER).nonzero()
+        cc_y, cc_x = (self.unit_type == Terran.CommandCenter).nonzero()
         if len(cc_y) > 0:
             middleCC = FindMiddle(cc_y, cc_x)
             cameraCornerNorthWest , cameraCornerSouthEast = GetScreenCorners(obs)
             miniMapLoc = Scale2MiniMap(middleCC, cameraCornerNorthWest , cameraCornerSouthEast)
-            self.sharedData.CommandCenterLoc = [miniMapLoc]
-    
+            self.sharedData.commandCenterLoc = [miniMapLoc]
+            self.sharedData.buildingCount[Terran.CommandCenter] += 1   
+
+
         self.sharedData.unitTrainValue = self.unitPower
-        self.sharedData.buildingCount[TerranUnit.COMMANDCENTER] += 1        
         self.sharedData.currBaseState = np.zeros(STATE.BASE_END - STATE.BASE_START, dtype=np.int32, order='C')
 
         # actions:
@@ -335,8 +341,8 @@ class SuperAgent(BaseAgent):
         self.previous_scaled_state = np.zeros(STATE.SIZE, dtype=np.int32, order='C')
         self.current_scaled_state = np.zeros(STATE.SIZE, dtype=np.int32, order='C')
 
-
-        self.scoutingInfo = [0.0, 0.0, 0.0, 0.0]
+        self.fogMat = [0] * (GRID_SIZE * GRID_SIZE)
+        self.fogCounterMat = [0] * (GRID_SIZE * GRID_SIZE)
 
     def LastStep(self, obs):
         reward = obs.reward
@@ -373,7 +379,7 @@ class SuperAgent(BaseAgent):
                 action = self.decisionMaker.choose_action(self.current_state)
         else:
             if self.subAgentPlay == SUB_AGENT_ID_ATTACK:
-                action = ACTIONS.ACTION_ATTACK_PREFORM
+                action = ACTIONS.ACTION_ATTACK_START
             else:
                 action = self.subAgentPlay
 
@@ -417,16 +423,9 @@ class SuperAgent(BaseAgent):
             self.current_state[si] = self.sharedData.currBaseState[si]
 
 
-        power = 0.0
-        for unit, num in self.sharedData.armyInAttack.items():
-            if unit in self.sharedData.unitTrainValue:
-                power += num * self.sharedData.unitTrainValue[unit]
-
-        self.current_state[STATE.SELF_ATTACK_POWER] = power
-
-        enemyMat = obs.observation['minimap'][SC2_Params.PLAYER_RELATIVE_MINIMAP] == SC2_Params.PLAYER_HOSTILE
-        miniMapVisi = obs.observation['minimap'][SC2_Params.VISIBILITY_MINIMAP]
-        miniMapHeight = obs.observation['minimap'][SC2_Params.HEIGHT_MAP]
+        enemyMat = obs.observation['feature_minimap'][SC2_Params.PLAYER_RELATIVE_MINIMAP] == SC2_Params.PLAYER_HOSTILE
+        miniMapVisi = obs.observation['feature_minimap'][SC2_Params.VISIBILITY_MINIMAP]
+        miniMapHeight = obs.observation['feature_minimap'][SC2_Params.HEIGHT_MAP]
 
         visibilityCount = []
         for i in range(STATE.GRID_SIZE * STATE.GRID_SIZE):
@@ -453,10 +452,12 @@ class SuperAgent(BaseAgent):
                 
                 ratio = (visibilityCount[idx][2] + visibilityCount[idx][1]) / allCount
                 self.current_state[idx + STATE.FOG_MAT_START] = round(ratio * STATE.MAX_SCOUT_VAL)
+                self.current_state[idx + STATE.SELF_POWER_START] = self.sharedData.armyLocation[idx]
 
         self.ScaleCurrState()
 
         
+    def UpdateFogData(self, obs):
 
     def AdjustAction2SubAgents(self):
         subAgentIdx = ACTIONS.ACTIONS2SUB_AGENTSID[self.current_action]
@@ -464,7 +465,7 @@ class SuperAgent(BaseAgent):
         if subAgentIdx == SUB_AGENT_ID_SCOUT:
             self.subAgentsActions[subAgentIdx] = self.current_action - ACTIONS.ACTION_SCOUT_START
         elif subAgentIdx == SUB_AGENT_ID_ATTACK:            
-            self.subAgentsActions[subAgentIdx] = self.current_action - ACTIONS.ACTION_ATTACK_PREFORM
+            self.subAgentsActions[subAgentIdx] = self.current_action - ACTIONS.ACTION_ATTACK_START
 
         return subAgentIdx, self.subAgentsActions[subAgentIdx]
 
@@ -490,13 +491,18 @@ class SuperAgent(BaseAgent):
 
     def PrintState(self):
         self.subAgents[SUB_AGENT_ID_BASE].PrintState()
-        print("attack power =", self.current_scaled_state[STATE.SELF_ATTACK_POWER])
-        print("fog mat\tenemy mat")
+
+        print("self mat\tfog mat\tenemy mat")
         for y in range(STATE.GRID_SIZE):
+            for x in range(STATE.GRID_SIZE):
+                idx = x + y * STATE.GRID_SIZE
+                print(self.current_scaled_state[STATE.SELF_POWER_START + idx], end = ' ')
+
             print(end = "   |   ")
             for x in range(STATE.GRID_SIZE):
                 idx = x + y * STATE.GRID_SIZE
-                print(self.current_scaled_state[STATE.FOG_MAT_START + idx], end = ' ')
+                print(self.current_scaled_state[STATE.FOG_MAT_START + idx], end = ',')
+                print(self.current_scaled_state[STATE.FOG_COUNTER_MAT_START + idx], end = ' ')
 
             print(end = "   |   ")
             for x in range(STATE.GRID_SIZE):

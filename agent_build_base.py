@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from pysc2.lib import actions
+from pysc2.lib.units import Terran
 
 from utils import TerranUnit
 from utils import SC2_Params
@@ -78,18 +79,18 @@ class ACTIONS:
     ACTION2STR = ["DoNothing" , "BuildSupplyDepot", "BuildOilRefinery", "BuildBarracks", "BuildFactory", "BuildBarrackReactor", "BuildFactoryTechLab"]
 
     BUILDING_2_ACTION_TRANSITION = {}
-    BUILDING_2_ACTION_TRANSITION[TerranUnit.SUPPLY_DEPOT] = ID_BUILD_SUPPLY_DEPOT
-    BUILDING_2_ACTION_TRANSITION[TerranUnit.OIL_REFINERY] = ID_BUILD_REFINERY
-    BUILDING_2_ACTION_TRANSITION[TerranUnit.BARRACKS] = ID_BUILD_BARRACKS
-    BUILDING_2_ACTION_TRANSITION[TerranUnit.FACTORY] = ID_BUILD_FACTORY
+    BUILDING_2_ACTION_TRANSITION[Terran.SupplyDepot] = ID_BUILD_SUPPLY_DEPOT
+    BUILDING_2_ACTION_TRANSITION[Terran.Refinery] = ID_BUILD_REFINERY
+    BUILDING_2_ACTION_TRANSITION[Terran.Barracks] = ID_BUILD_BARRACKS
+    BUILDING_2_ACTION_TRANSITION[Terran.Factory] = ID_BUILD_FACTORY
 
     ACTION_2_BUILDING_TRANSITION = {}
-    ACTION_2_BUILDING_TRANSITION[ID_BUILD_SUPPLY_DEPOT] = TerranUnit.SUPPLY_DEPOT
-    ACTION_2_BUILDING_TRANSITION[ID_BUILD_REFINERY] = TerranUnit.OIL_REFINERY
-    ACTION_2_BUILDING_TRANSITION[ID_BUILD_BARRACKS] = TerranUnit.BARRACKS
-    ACTION_2_BUILDING_TRANSITION[ID_BUILD_FACTORY] = TerranUnit.FACTORY
-    ACTION_2_BUILDING_TRANSITION[ID_BUILD_BARRACKS_REACTOR] = [TerranUnit.BARRACKS, TerranUnit.REACTOR]
-    ACTION_2_BUILDING_TRANSITION[ID_BUILD_FACTORY_TECHLAB] = [TerranUnit.FACTORY, TerranUnit.TECHLAB]
+    ACTION_2_BUILDING_TRANSITION[ID_BUILD_SUPPLY_DEPOT] = Terran.SupplyDepot
+    ACTION_2_BUILDING_TRANSITION[ID_BUILD_REFINERY] = Terran.Refinery
+    ACTION_2_BUILDING_TRANSITION[ID_BUILD_BARRACKS] = Terran.Barracks
+    ACTION_2_BUILDING_TRANSITION[ID_BUILD_FACTORY] = Terran.Factory
+    ACTION_2_BUILDING_TRANSITION[ID_BUILD_BARRACKS_REACTOR] = [Terran.Barracks, Terran.Reactor]
+    ACTION_2_BUILDING_TRANSITION[ID_BUILD_FACTORY_TECHLAB] = [Terran.Factory, Terran.TechLab]
 
 class STATE:
     # state details
@@ -118,13 +119,13 @@ class STATE:
     SIZE = 15
 
     BUILDING_2_STATE_TRANSITION = {}
-    BUILDING_2_STATE_TRANSITION[TerranUnit.COMMANDCENTER] = [COMMAND_CENTER_IDX, -1]
-    BUILDING_2_STATE_TRANSITION[TerranUnit.SUPPLY_DEPOT] = [SUPPLY_DEPOT_IDX, IN_PROGRESS_SUPPLY_DEPOT_IDX]
-    BUILDING_2_STATE_TRANSITION[TerranUnit.OIL_REFINERY] = [REFINERY_IDX, IN_PROGRESS_REFINERY_IDX]
-    BUILDING_2_STATE_TRANSITION[TerranUnit.BARRACKS] = [BARRACKS_IDX, IN_PROGRESS_BARRACKS_IDX]
-    BUILDING_2_STATE_TRANSITION[TerranUnit.FACTORY] = [FACTORY_IDX, IN_PROGRESS_FACTORY_IDX]
-    BUILDING_2_STATE_TRANSITION[TerranUnit.REACTOR] = [REACTORS_IDX, IN_PROGRESS_RECTORS_IDX]
-    BUILDING_2_STATE_TRANSITION[TerranUnit.TECHLAB] = [TECHLAB_IDX, IN_PROGRESS_TECHLAB_IDX]
+    BUILDING_2_STATE_TRANSITION[Terran.CommandCenter] = [COMMAND_CENTER_IDX, -1]
+    BUILDING_2_STATE_TRANSITION[Terran.SupplyDepot] = [SUPPLY_DEPOT_IDX, IN_PROGRESS_SUPPLY_DEPOT_IDX]
+    BUILDING_2_STATE_TRANSITION[Terran.Refinery] = [REFINERY_IDX, IN_PROGRESS_REFINERY_IDX]
+    BUILDING_2_STATE_TRANSITION[Terran.Barracks] = [BARRACKS_IDX, IN_PROGRESS_BARRACKS_IDX]
+    BUILDING_2_STATE_TRANSITION[Terran.Factory] = [FACTORY_IDX, IN_PROGRESS_FACTORY_IDX]
+    BUILDING_2_STATE_TRANSITION[Terran.Reactor] = [REACTORS_IDX, IN_PROGRESS_RECTORS_IDX]
+    BUILDING_2_STATE_TRANSITION[Terran.TechLab] = [TECHLAB_IDX, IN_PROGRESS_TECHLAB_IDX]
 
 class ActionRequirement:
     def __init__(self, mineralsPrice = 0, gasPrice = 0, buildingDependency = STATE.MINERALS_IDX):
@@ -275,7 +276,7 @@ class BuildBaseSubAgent:
     def step(self, obs, moveNum):  
 
         self.cameraCornerNorthWest , self.cameraCornerSouthEast = GetScreenCorners(obs)
-        self.unit_type = obs.observation['screen'][SC2_Params.UNIT_TYPE]
+        self.unit_type = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
         
         if obs.first():
             self.FirstStep(obs)
@@ -302,7 +303,7 @@ class BuildBaseSubAgent:
     def FirstStep(self, obs):
         self.numSteps = 0
 
-        player_y, player_x = (obs.observation['minimap'][SC2_Params.PLAYER_RELATIVE] == SC2_Params.PLAYER_SELF).nonzero()
+        player_y, player_x = (obs.observation['feature_minimap'][SC2_Params.PLAYER_RELATIVE] == SC2_Params.PLAYER_SELF).nonzero()
 
         self.base_top_left = 1 if player_y.any() and player_y.mean() <= 31 else 0
 
@@ -349,7 +350,7 @@ class BuildBaseSubAgent:
         if moveNum == 0:
             finishedAction = False
             # select scv
-            unit_y, unit_x = (self.unit_type == TerranUnit.SCV).nonzero()
+            unit_y, unit_x = (self.unit_type == Terran.SCV).nonzero()
                 
             if unit_y.any():
                 i = random.randint(0, len(unit_y) - 1)
@@ -360,7 +361,7 @@ class BuildBaseSubAgent:
         elif moveNum == 1:
             finishedAction = False
             buildingType = ACTIONS.ACTION_2_BUILDING_TRANSITION[self.current_action]
-            sc2Action = TerranUnit.UNIT_2_SC2ACTIONS[buildingType]
+            sc2Action = TerranUnit.BUILDING_SPEC[buildingType].sc2Action
 
             # preform build action. if action not available go back to harvest
             if sc2Action in obs.observation['available_actions']:
@@ -391,9 +392,9 @@ class BuildBaseSubAgent:
                 return actions.FunctionCall(SC2_Actions.SELECT_POINT, [SC2_Params.SELECT_ALL, SwapPnt(target)]), False
             
         elif moveNum == 1:
-            action = TerranUnit.UNIT_2_SC2ACTIONS[additionType]
+            action = TerranUnit.BUILDING_SPEC[additionType].sc2Action
             if action in obs.observation['available_actions']:
-                coord = GetLocationForBuildingAddition(obs, buildingType, self.cameraCornerNorthWest, self.cameraCornerSouthEast)
+                coord = GetLocationForBuildingAddition(obs, buildingType, additionType, self.cameraCornerNorthWest, self.cameraCornerSouthEast)
                 if coord[0] >= 0:
                     
                     numBuildingsCompleted = self.current_state[STATE.BUILDING_2_STATE_TRANSITION[buildingType][0]]
@@ -476,7 +477,7 @@ class BuildBaseSubAgent:
         if random.randint(0, 2) < 1:
             resourceList = SC2_Params.NEUTRAL_MINERAL_FIELD
         else:
-            resourceList = [TerranUnit.OIL_REFINERY]
+            resourceList = [Terran.Refinery]
 
         unit_y = []
         unit_x = []

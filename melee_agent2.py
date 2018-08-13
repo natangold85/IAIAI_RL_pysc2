@@ -184,7 +184,7 @@ def changeModelParams(gridSize = STATE.GRID_SIZE, powerBucketing = STATE.POWER_B
     STATE.POWER_BUCKETING = powerBucketing
     STATE.ORIGINAL_POWER_BUCKETING = origPowerBucketing
 
-for key,value in TerranUnit.UNIT_SPEC.items():
+for key,value in TerranUnit.ARMY_SPEC.items():
     if value.name == "marine":
         UNIT_IN_MAP = key
         NUM_UNIT_SCREEN_PIXELS = value.numScreenPixels
@@ -362,7 +362,7 @@ class Attack(base_agent.BaseAgent):
 
         self.screenStart = [0,0]
         self.screenSize = [0,0]
-        mat = (obs.observation['screen'][SC2_Params.VISIBILITY])
+        mat = (obs.observation['feature_screen'][SC2_Params.VISIBILITY])
         pnt_y, pnt_x = mat.nonzero()
         max_y = max(pnt_y)
         min_y = min(pnt_y)
@@ -387,7 +387,7 @@ class Attack(base_agent.BaseAgent):
                 self.coordStartLocation.append([yCoord,xCoord])      
 
         # unselect army
-        pnt_y, pnt_x = (obs.observation['screen'][SC2_Params.PLAYER_RELATIVE] == SC2_Params.PLAYER_SELF).nonzero()
+        pnt_y, pnt_x = (obs.observation['feature_screen'][SC2_Params.PLAYER_RELATIVE] == SC2_Params.PLAYER_SELF).nonzero()
         if len(pnt_y) > 0:
             target = [pnt_x[0], pnt_y[0]]
             return actions.FunctionCall(SC2_Actions.SELECT_POINT, [SC2_Params.NOT_QUEUED, target])
@@ -516,8 +516,8 @@ class Attack(base_agent.BaseAgent):
         for i in range (STATE.SELECTED_START_IDX, STATE.SELECTED_START_IDX + STATE.GRID_SIZE * STATE.GRID_SIZE):
             self.current_state[i] = 0
 
-        selectedMat = obs.observation['screen'][SC2_Params.SELECTED_IN_SCREEN]
-        pnt_y, pnt_x = (obs.observation['screen'][SC2_Params.PLAYER_RELATIVE] == SC2_Params.PLAYER_SELF).nonzero()
+        selectedMat = obs.observation['feature_screen'][SC2_Params.SELECTED_IN_SCREEN]
+        pnt_y, pnt_x = (obs.observation['feature_screen'][SC2_Params.PLAYER_RELATIVE] == SC2_Params.PLAYER_SELF).nonzero()
         
         for i in range(0, len(pnt_y)):
 
@@ -535,7 +535,7 @@ class Attack(base_agent.BaseAgent):
         for i in range (STATE.ENEMY_START_IDX, STATE.ENEMY_START_IDX + STATE.GRID_SIZE * STATE.GRID_SIZE):
             self.current_state[i] = 0
 
-        pnt_y, pnt_x = (obs.observation['screen'][SC2_Params.PLAYER_RELATIVE] == SC2_Params.PLAYER_HOSTILE).nonzero()
+        pnt_y, pnt_x = (obs.observation['feature_screen'][SC2_Params.PLAYER_RELATIVE] == SC2_Params.PLAYER_HOSTILE).nonzero()
         for i in range(0, len(pnt_y)):
             y, x = ScaleScreenPoint(pnt_y[i], pnt_x[i], self.screenStart, self.screenSize, STATE.GRID_SIZE)
             if x > 1 or y > 1:

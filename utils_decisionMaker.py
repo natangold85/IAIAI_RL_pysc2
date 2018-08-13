@@ -183,15 +183,15 @@ class LearnWithReplayMngr(BaseDecisionMaker):
             self.tTable.end_run(learnAndSave)
 
         if learnAndSave:
-            
-            print("start training with hist size = ", len(self.transitions["r"]), end = ' ')
             s,a,rVec,s_, terminal = self.ExperienceReplay()
-            print("after cutting experience training on size =", len(rVec))
-
             if len(a) > self.params.minReplaySize:
+                print("ExperienceReplay - training with hist size = ", len(rVec), end = ', ')
+                start = datetime.datetime.now()
                 self.decisionMaker.learn(s,a,rVec,s_, terminal)
-            
-
+                diff = datetime.datetime.now() - start
+                msDiff = diff.seconds * 1000 + diff.microseconds / 1000
+                print("training last", msDiff, "milliseconds")
+                
         self.decisionMaker.end_run(r, learnAndSave)
 
         self.endRunLock.release()

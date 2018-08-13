@@ -38,19 +38,23 @@ SUBAGENTS_NAMES = {}
 SUBAGENTS_NAMES[SUB_AGENT_ID_BATTLEMNGR] = "BattleMngr"
 
 CONTROL_GROUP_ID_ATTACK = [5]
+ATTACK_STARTED_RANGE_ENEMY = 10
 
 GRID_SIZE = 2
 
-ACTIONS_PREFORM_ATTACK = 0
-ACTIONS_START_IDX_ATTACK = ACTIONS_PREFORM_ATTACK + 1
+ACTIONS_START_IDX_ATTACK = 0
 ACTIONS_END_IDX_ATTACK = ACTIONS_START_IDX_ATTACK + GRID_SIZE * GRID_SIZE
 NUM_ACTIONS = ACTIONS_END_IDX_ATTACK
+
 
 class SharedDataAttack(SharedDataBattle):
     def __init__(self):
         super(SharedDataAttack, self).__init__()
         self.attackStarted = False
         self.armyInAttack = {}
+        
+        self.armyLocation = [0] * (GRID_SIZE * GRID_SIZE)
+
         self.attackGroupIdx = CONTROL_GROUP_ID_ATTACK
 
 
@@ -86,8 +90,6 @@ class AttackAgent(BaseAgent):
             
         self.SetGridSize(GRID_SIZE)
 
-        self.battleMngrAction = None
-
     def GetDecisionMaker(self):
         return self.decisionMaker
 
@@ -95,8 +97,8 @@ class AttackAgent(BaseAgent):
         super(AttackAgent, self).step(obs)
         
         if obs.first():
-            self.FirstStep(obs)
-
+            self.FirstStep()
+        
         return -1
     
     def LastStep(self, obs, reward = 0):
@@ -130,80 +132,63 @@ class AttackAgent(BaseAgent):
                 self.action2Start[ACTIONS_START_IDX_ATTACK + idx] = [int(p_y), int(p_x)]
                 self.action2End[ACTIONS_START_IDX_ATTACK + idx] = [int(pEnd_y), int(pEnd_x)]
 
-    def FirstStep(self, obs):
+    def FirstStep(self):
         if self.playAgent:
             self.destinationCoord = [-1,-1]
+            self.attackPreformAction = False
+        else:
+            self.attackPreformAction = True
+
+        for sa in self.activeSubAgents:
+            self.subAgents[sa].FirstStep() 
+
+    def Action2Str(self, a):
+        if self.attackPreformAction:
+            return self.subAgents[SUB_AGENT_ID_BATTLEMNGR].Action2Str()
+        else: 
+            return "GoTo_" + str(a)
 
     def IsDoNothingAction(self, a):
         return False
 
     def Action2SC2Action(self, obs, a, moveNum):
-        if a == ACTIONS_PREFORM_ATTACK and self.AttackStarted():
-            if self.playAgent:
-                print("\n\n\nAttackAction!!\n\n")
-                if moveNum == 0:
-                    # select attack force
-                    if SC2_Actions.SELECT_CONTROL_GROUP in obs.observation['available_actions']:       
-                        return actions.FunctionCall(SC2_Actions.SELECT_CONTROL_GROUP, [SC2_Params.CONTROL_GROUP_RECALL, CONTROL_GROUP_ID_ATTACK]), False
-                elif moveNum == 1:
-                    # goto attack scene
-                    army_y, army_x = obs.observation['minimap'][SC2_Params.SELECTED_IN_MINIMAP].nonzero()
-                    if len(army_y) > 0:
-                        middleArmy = FindMiddle(army_y, army_x)
-                        if SC2_Actions.MOVE_CAMERA in obs.observation['available_actions'] >= 0:
-                            self.attackPreformAction = True
-                            return actions.FunctionCall(SC2_Actions.MOVE_CAMERA, [SwapPnt(middleArmy)]), False
-                    else:
-                        print("failed to select attack group")
-                elif self.attackPreformAction:
-                    sc2Action, terminal = self.subAgents[SUB_AGENT_ID_BATTLEMNGR].Action2SC2Action(obs, self.battleMngrAction, moveNum - 1)
-                    self.attackPreformAction = not terminal
-                    return sc2Action, False
-                else:
-                    # go back to base
-                    print("\n\nGo Back to Base\n\n")
-                    return actions.FunctionCall(SC2_Actions.MOVE_CAMERA, [SwapPnt(self.sharedData.commandCenterLoc[0])]), True
-
-            else:
-                return self.subAgents[SUB_AGENT_ID_BATTLEMNGR].Action2SC2Action(obs, self.battleMngrAction, moveNum - self.playAgent)
-
-        if moveNum == 0:
-            if a >= ACTIONS_START_IDX_ATTACK:
+        if self.playAgent:
+            if moveNum == 0:
                 if SC2_Actions.SELECT_ARMY in obs.observation['available_actions']:
                     return actions.FunctionCall(SC2_Actions.SELECT_ARMY, [SC2_Params.NOT_QUEUED]), False
 
-        elif moveNum == 1:
-            if a >= ACTIONS_START_IDX_ATTACK:
+            elif moveNum == 1:
                 self.sharedData.armyInAttack = self.ArmySelected(obs)
+                self.sharedData.armyLocation = self.GetSelectedUnitsLocation(obs)
+
+
                 if len(self.sharedData.armyInAttack) > 0:
-                    if SC2_Actions.SELECT_CONTROL_GROUP in obs.observation['available_actions']:       
-                        return actions.FunctionCall(SC2_Actions.SELECT_CONTROL_GROUP, [SC2_Params.CONTROL_GROUP_SET, CONTROL_GROUP_ID_ATTACK]), False
-                else:
-                    self.sharedData.armyInAttack = {}
+                    coordBattle = self.InBattle(obs)
+                    if self.sharedData.inBattle:
+                        print("InBattle")
+                        self.attackPreformAction = True
+                        return actions.FunctionCall(SC2_Actions.MOVE_CAMERA, [SwapPnt(coordBattle)]), False
 
+                    elif SC2_Actions.ATTACK_MINIMAP in obs.observation['available_actions']:     
+                        coord = self.AttackCoord(a, obs)
+                        return actions.FunctionCall(SC2_Actions.ATTACK_MINIMAP, [SC2_Params.NOT_QUEUED, SwapPnt(coord)]), True
+                    
 
-        elif moveNum == 2:
-            if a >= ACTIONS_START_IDX_ATTACK:
-                enemyMat = obs.observation["minimap"][SC2_Params.PLAYER_RELATIVE_MINIMAP] == SC2_Params.PLAYER_HOSTILE
-                minDist = 100000
-                minCoord = [-1 -1]
-                coordStart = self.action2Start[a]
-                for y in range(self.action2Start[a][0], self.action2End[a][0]):
-                    for x in range(self.action2Start[a][1], self.action2End[a][1]):
-                        if enemyMat[y][x]:
-                            diffY = y - coordStart[0]
-                            diffX = x - coordStart[1]
-                            dist = diffY * diffY + diffX * diffX
-                            if dist < minDist:
-                                minDist = dist
-                                minCoord = [y, x]
+            elif moveNum >= 2:
+                if self.sharedData.inBattle:
+                    if self.attackPreformAction:
+                        self.moveNum = 0
+                        sc2Action, terminal = self.subAgents[SUB_AGENT_ID_BATTLEMNGR].Action2SC2Action(obs, self.moveNum)
+                        self.moveNum += 1
 
-                if minCoord[0] < 0:
-                    minCoord = coordStart
-
-                if SC2_Actions.ATTACK_MINIMAP in obs.observation['available_actions']:
-                    self.destinationCoord = minCoord
-                    return actions.FunctionCall(SC2_Actions.ATTACK_MINIMAP, [SC2_Params.NOT_QUEUED, SwapPnt(minCoord)]), True
+                        self.attackPreformAction = not terminal
+                        return sc2Action, False
+                    else:
+                        print("\n\nGo Back to Base", self.sharedData.commandCenterLoc,"\n\n")
+                        return actions.FunctionCall(SC2_Actions.MOVE_CAMERA, [SwapPnt(self.sharedData.commandCenterLoc[0])]), True
+        else:
+            return self.subAgents[SUB_AGENT_ID_BATTLEMNGR].Action2SC2Action(obs, moveNum)
+                    
         
         return SC2_Actions.DO_NOTHING_SC2_ACTION, True
 
@@ -229,11 +214,68 @@ class AttackAgent(BaseAgent):
             uType = unit[SC2_Params.UNIT_TYPE_IDX]
             
             if uType in unitCount:
-                unitCount[uType] += 1
+                unitCount[uType][0] += 1
             else:
-                unitCount[uType] = 1
+                unitCount[uType] = [1]
 
         return unitCount
 
+    def AttackCoord(self, action, obs):
+        enemyMat = obs.observation["feature_minimap"][SC2_Params.PLAYER_RELATIVE_MINIMAP] == SC2_Params.PLAYER_HOSTILE
+        minDist = 100000
 
+        coordStart = self.action2Start[action]
+        minCoord = coordStart
+        for y in range(self.action2Start[action][SC2_Params.Y_IDX], self.action2End[action][SC2_Params.Y_IDX]):
+            for x in range(self.action2Start[action][SC2_Params.X_IDX], self.action2End[action][SC2_Params.X_IDX]):
+                if enemyMat[y][x]:
+                    diffY = y - coordStart[0]
+                    diffX = x - coordStart[1]
+                    dist = diffY * diffY + diffX * diffX
+                    if dist < minDist:
+                        minDist = dist
+                        minCoord = [y, x]
+
+        return minCoord
+
+    def InBattle(self, obs):
+        s_y, s_x = obs.observation['feature_minimap'][SC2_Params.SELECTED_IN_MINIMAP].nonzero()
+        e_y, e_x = (obs.observation['feature_minimap'][SC2_Params.PLAYER_RELATIVE_MINIMAP] == SC2_Params.PLAYER_HOSTILE).nonzero()
+
+        
+        minDist = 1000
+        minIdx = -1
+        self.sharedData.inBattle = False
+
+        for s in range(len(s_y)):
+            for e in range(len(e_y)):
+                diffY = s_y[s] - e_y[e]
+                diffX = s_x[s] - e_x[e]
+                dist = diffY * diffY + diffX * diffX
+                if dist < minDist:
+                    minDist = dist
+                    minIdx = s
+
+        dist2Attack = ATTACK_STARTED_RANGE_ENEMY * ATTACK_STARTED_RANGE_ENEMY
+        if minDist < dist2Attack:
+            self.sharedData.inBattle = True
+            return [s_y[minIdx] , s_x[minIdx]]   
+        
+        return [-1,-1]
+
+    def GetSelectedUnitsLocation(self, obs):
+        armyLoc = [0] * (GRID_SIZE * GRID_SIZE)
+
+        army_y, army_x = obs.observation['feature_minimap'][SC2_Params.SELECTED_IN_MINIMAP].nonzero()
+        for i in range(len(army_y)):
+            idx = self.Scale2GridSize(army_y[i], army_x[i], SC2_Params.MINIMAP_SIZE)
+            armyLoc[idx] += 1
+        
+        return armyLoc
     
+    def Scale2GridSize(self,y,x, oldGridSize):
+        xScaled = int((x / oldGridSize) * GRID_SIZE)
+        yScaled = int((y / oldGridSize) * GRID_SIZE)
+
+        return xScaled + yScaled * GRID_SIZE
+        

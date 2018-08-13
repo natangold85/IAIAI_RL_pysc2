@@ -75,7 +75,7 @@ class Observe(base_agent.BaseAgent):
         super(Observe, self).__init__()
 
         unitNames = []
-        for val in TerranUnit.UNIT_SPEC.values():
+        for val in TerranUnit.ARMY_SPEC.values():
             unitNames.append(val.name)
 
         self.valueTable = ValueTable(unitNames)
@@ -101,19 +101,19 @@ class Observe(base_agent.BaseAgent):
     def FirstStep(self, obs):
         self.errorOccur = False
 
-        unitType = obs.observation['screen'][SC2_Params.UNIT_TYPE]
+        unitType = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
         # unselect army
-        self_y, self_x = (obs.observation['screen'][SC2_Params.PLAYER_RELATIVE] == SC2_Params.PLAYER_SELF).nonzero()
+        self_y, self_x = (obs.observation['feature_screen'][SC2_Params.PLAYER_RELATIVE] == SC2_Params.PLAYER_SELF).nonzero()
         if len(self_y) > 0:
             self.blueUType = unitType[self_y[0]][self_x[0]]
-            self.blueUNum = int (obs.observation['player'][SC2_Params.ARMY_SUPPLY] / TerranUnit.UNIT_SPEC[self.blueUType].foodCapacity)
+            self.blueUNum = int (obs.observation['player'][SC2_Params.ARMY_SUPPLY] / TerranUnit.ARMY_SPEC[self.blueUType].foodCapacity)
         else:
             self.errorOccur = True
 
-        enemy_y, enemy_x = (obs.observation['screen'][SC2_Params.PLAYER_RELATIVE] == SC2_Params.PLAYER_HOSTILE).nonzero()
+        enemy_y, enemy_x = (obs.observation['feature_screen'][SC2_Params.PLAYER_RELATIVE] == SC2_Params.PLAYER_HOSTILE).nonzero()
         if len(enemy_y) > 0:
             self.redUType = unitType[enemy_y[0]][enemy_x[0]]
-            self.redUNum = int(math.ceil(len(enemy_y) / TerranUnit.UNIT_SPEC[self.redUType].numScreenPixels))
+            self.redUNum = int(math.ceil(len(enemy_y) / TerranUnit.ARMY_SPEC[self.redUType].numScreenPixels))
         else:
             self.errorOccur = True
 
@@ -127,13 +127,13 @@ class Observe(base_agent.BaseAgent):
             return
         
         if obs.reward > 0:
-            uw = TerranUnit.UNIT_SPEC[self.blueUType].name
-            ul = TerranUnit.UNIT_SPEC[self.redUType].name
+            uw = TerranUnit.ARMY_SPEC[self.blueUType].name
+            ul = TerranUnit.ARMY_SPEC[self.redUType].name
             ratio = self.blueUNum / self.redUNum
             self.numWins += 1
         elif obs.reward < 0:
-            ul = TerranUnit.UNIT_SPEC[self.blueUType].name
-            uw = TerranUnit.UNIT_SPEC[self.redUType].name
+            ul = TerranUnit.ARMY_SPEC[self.blueUType].name
+            uw = TerranUnit.ARMY_SPEC[self.redUType].name
             ratio = self.redUNum / self.blueUNum
             self.numLoss += 1
         else:

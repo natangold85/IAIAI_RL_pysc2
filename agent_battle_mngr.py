@@ -18,6 +18,11 @@ from utils import BaseAgent
 from agent_base_attack import BaseAttack
 from agent_army_attack import ArmyAttack
 
+# shared data
+from agent_base_attack import SharedDataBaseAttack
+from agent_army_attack import SharedDataArmyAttack
+
+# sc2 utils
 from utils import TerranUnit
 from utils import SC2_Params
 from utils import SC2_Actions
@@ -37,11 +42,11 @@ from utils_dqn import DQN_EMBEDDING_PARAMS
 from utils_qtable import QTableParams
 from utils_qtable import QTableParamsExplorationDecay
 
-from utils import EmptySharedData
-
 from utils import SwapPnt
 from utils import DistForCmp
 from utils import CenterPoints
+
+STEP_DURATION = 0
 
 # possible types of play
 AGENT_DIR = "BattleMngr/"
@@ -83,13 +88,13 @@ class STATE:
     START_SELF_MAT = 0
     END_SELF_MAT = GRID_SIZE * GRID_SIZE
     
-    START_ENEMY_MAT = END_SELF_MAT
-    END_ENEMY_MAT = START_ENEMY_MAT + GRID_SIZE * GRID_SIZE
+    START_ENEMY_ARMY_MAT = END_SELF_MAT
+    END_ENEMY_ARMY_MAT = START_ENEMY_ARMY_MAT + GRID_SIZE * GRID_SIZE
     
-    START_BUILDING_MAT = END_ENEMY_MAT
-    END_BUILDING_MAT = START_BUILDING_MAT + GRID_SIZE * GRID_SIZE
+    START_ENEMY_BUILDING_MAT = END_ENEMY_ARMY_MAT
+    END_ENEMY_BUILDING_MAT = START_ENEMY_BUILDING_MAT + GRID_SIZE * GRID_SIZE
 
-    TIME_LINE_IDX = END_BUILDING_MAT
+    TIME_LINE_IDX = END_ENEMY_BUILDING_MAT
 
     SIZE = TIME_LINE_IDX + 1
 
@@ -127,14 +132,14 @@ RUN_TYPES[DQN][RESULTS] = "battleMngr_dqn_result"
 RUN_TYPES[DQN_EMBEDDING_LOCATIONS] = {}
 RUN_TYPES[DQN_EMBEDDING_LOCATIONS][TYPE] = "DQN_WithTarget"
 RUN_TYPES[DQN][DIRECTORY] = "battleMngr_dqn_Embedding"
-RUN_TYPES[DQN_EMBEDDING_LOCATIONS][PARAMS] = DQN_EMBEDDING_PARAMS(STATE.SIZE, STATE.END_BUILDING_MAT, NUM_ACTIONS)
+RUN_TYPES[DQN_EMBEDDING_LOCATIONS][PARAMS] = DQN_EMBEDDING_PARAMS(STATE.SIZE, STATE.END_ENEMY_BUILDING_MAT, NUM_ACTIONS)
 RUN_TYPES[DQN_EMBEDDING_LOCATIONS][DECISION_MAKER_NAME] = "battleMngr_dqn_Embedding_DQN"
 RUN_TYPES[DQN_EMBEDDING_LOCATIONS][HISTORY] = "battleMngr_dqn_Embedding_replayHistory"
 RUN_TYPES[DQN_EMBEDDING_LOCATIONS][RESULTS] = "battleMngr_dqn_Embedding_result"
 
 
 
-class SharedDataBattle(EmptySharedData):
+class SharedDataBattle(SharedDataArmyAttack, SharedDataBaseAttack):
     def __init__(self):
         super(SharedDataBattle, self).__init__()
 
@@ -210,15 +215,9 @@ class BattleMngr(BaseAgent):
         self.state_size = 3 * GRID_SIZE * GRID_SIZE + 1
 
         self.terminalState = np.zeros(self.state_size, dtype=np.int, order='C')
-        
-        self.BuildingValues = {}
-        for spec in TerranUnit.BUILDING_SPEC.values():
-            self.BuildingValues[spec.name] = 1
-
+    
 
     def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
-        
-
         if dmTypes[AGENT_NAME] == "naive":
             decisionMaker = NaiveDecisionMakerBattleMngr()
         else:
@@ -249,21 +248,25 @@ class BattleMngr(BaseAgent):
     def step(self, obs, moveNum):
         super(BattleMngr, self).step(obs)   
         if obs.first():
-            self.FirstStep(obs)
+            self.FirstStep()
             
+
         for sa in self.activeSubAgents:
             self.subAgentsActions[sa] = self.subAgents[sa].step(obs, moveNum) 
         
         if moveNum == 0:
             self.CreateState(obs)
             self.Learn()
-            self.current_action = self.ChooseAction()    
+            self.current_action = self.ChooseAction()  
+            self.PrintState()
+              
+        time.sleep(STEP_DURATION)
 
         self.numStep += 1        
 
         return self.current_action
 
-    def FirstStep(self, obs):        
+    def FirstStep(self):        
         self.numStep = 0
 
         self.current_state = np.zeros(self.state_size, dtype=np.int, order='C')
@@ -275,6 +278,9 @@ class BattleMngr(BaseAgent):
         self.subAgentsActions = {}
         for sa in range(NUM_ACTIONS):
             self.subAgentsActions[sa] = None
+        
+        for sa in self.activeSubAgents:
+            self.subAgentsActions[sa] = self.subAgents[sa].FirstStep() 
 
     def LastStep(self, obs, reward = 0):
 
@@ -323,7 +329,10 @@ class BattleMngr(BaseAgent):
 
         return action
 
-    def Action2Str(self, a):
+    def Action2Str(self, a = None):
+        if a == None:
+            a = self.current_action
+
         return ACTION2STR[a] + "-->" + self.subAgents[a].Action2Str(self.subAgentsActions[a])
 
     def IsDoNothingAction(self, a):
@@ -340,17 +349,20 @@ class BattleMngr(BaseAgent):
         self.current_state = np.zeros(self.state_size, dtype=np.int, order='C')
         
         self.GetSelfLoc(obs)
-        self.GetEnemyArmyLoc(obs)
-        self.GetEnemyBuildingLoc(obs)
+        for idx in range(GRID_SIZE * GRID_SIZE):
+            self.current_state[STATE.START_ENEMY_BUILDING_MAT + idx] = self.sharedData.enemyBuildingMat[idx]
+            self.current_state[STATE.START_ENEMY_ARMY_MAT + idx] = self.sharedData.enemyArmyMat[idx]
+
+        #self.GetEnemyBuildingLoc(obs)
         self.current_state[self.state_timeLineIdx] = int(self.numStep / STATE.TIME_LINE_BUCKETING)
 
     def GetSelfLoc(self, obs):
-        playerType = obs.observation["screen"][SC2_Params.PLAYER_RELATIVE]
-        unitType = obs.observation["screen"][SC2_Params.UNIT_TYPE]
+        playerType = obs.observation["feature_screen"][SC2_Params.PLAYER_RELATIVE]
+        unitType = obs.observation["feature_screen"][SC2_Params.UNIT_TYPE]
 
         allArmy_y = []
         allArmy_x = [] 
-        for key, spec in TerranUnit.UNIT_SPEC.items():
+        for key, spec in TerranUnit.ARMY_SPEC.items():
             s_y, s_x = ((playerType == SC2_Params.PLAYER_SELF) &(unitType == key)).nonzero()
             allArmy_y += list(s_y)
             allArmy_x += list(s_x)
@@ -367,12 +379,12 @@ class BattleMngr(BaseAgent):
             self.selfLocCoord = [int(sum(allArmy_y) / len(allArmy_y)), int(sum(allArmy_x) / len(allArmy_x))]
 
     def GetEnemyArmyLoc(self, obs):
-        playerType = obs.observation["screen"][SC2_Params.PLAYER_RELATIVE]
-        unitType = obs.observation["screen"][SC2_Params.UNIT_TYPE]
+        playerType = obs.observation["feature_screen"][SC2_Params.PLAYER_RELATIVE]
+        unitType = obs.observation["feature_screen"][SC2_Params.UNIT_TYPE]
 
         enemyPoints = []
         enemyPower = []
-        for unit, spec in TerranUnit.UNIT_SPEC.items():
+        for unit, spec in TerranUnit.ARMY_SPEC.items():
             enemyArmy_y, enemyArmy_x = ((unitType == unit) & (playerType == SC2_Params.PLAYER_HOSTILE)).nonzero()
             unitPoints, unitPower = CenterPoints(enemyArmy_y, enemyArmy_x, spec.numScreenPixels)
             enemyPoints += unitPoints
@@ -385,8 +397,8 @@ class BattleMngr(BaseAgent):
             self.current_state[self.state_startEnemyMat + idx] += enemyPower[i]
 
     def GetEnemyBuildingLoc(self, obs):
-        playerType = obs.observation["screen"][SC2_Params.PLAYER_RELATIVE]
-        unitType = obs.observation["screen"][SC2_Params.UNIT_TYPE]
+        playerType = obs.observation["feature_screen"][SC2_Params.PLAYER_RELATIVE]
+        unitType = obs.observation["feature_screen"][SC2_Params.UNIT_TYPE]
 
         enemyBuildingPoints = []
         enemyBuildingPower = []
@@ -395,6 +407,8 @@ class BattleMngr(BaseAgent):
             buildingPoints, buildingPower = CenterPoints(enemyArmy_y, enemyArmy_x, spec.numScreenPixels)
             enemyBuildingPoints += buildingPoints
             enemyBuildingPower += buildingPower * self.BuildingValues[spec.name]
+        
+
         
         self.buildingsExist = False
         for i in range(len(enemyBuildingPoints)):
@@ -430,17 +444,24 @@ class BattleMngr(BaseAgent):
         return valid
 
     def PrintState(self):
+        print("\nAttack action =", self.Action2Str())
         print("\n\nstate: timeline =", self.current_state[self.state_timeLineIdx])
         for y in range(GRID_SIZE):
             for x in range(GRID_SIZE):
                 idx = self.state_startSelfMat + x + y * GRID_SIZE
-                print(int(self.current_state[idx]), end = '')
+                if self.current_state[idx] < 10:
+                    print(self.current_state[idx], end = '  ')
+                else:
+                    print(self.current_state[idx], end = ' ')
             
             print(end = '  |  ')
             
             for x in range(GRID_SIZE):
                 idx = self.state_startEnemyMat + x + y * GRID_SIZE
-                print(int(self.current_state[idx]), end = '')
+                if self.current_state[idx] < 10:
+                    print(self.current_state[idx], end = '  ')
+                else:
+                    print(self.current_state[idx], end = ' ')
 
             print(end = '  |  ')
             

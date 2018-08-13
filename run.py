@@ -7,8 +7,10 @@ import os
 import threading
 import time
 import tensorflow as tf
+import collections
 from absl import app
 from absl import flags
+
 from pysc2.env import run_loop
 from pysc2.env import sc2_env
 
@@ -16,6 +18,7 @@ from pysc2.env import sc2_env
 from agent_super import SuperAgent
 
 from utils import SC2_Params
+
 
 PARALLEL_THREADS = 16
 RENDER = False
@@ -28,6 +31,7 @@ flags.DEFINE_string("typeFile", "none", "config file that builds heirarchi for d
 flags.DEFINE_string("train", "True", "Which agent to train.")
 flags.DEFINE_string("map", "none", "Which map to run.")
 
+singlePlayerMaps = ["ArmyAttack5x5", "AttackBase"]
 
 """Script for starting all agents (a3c, very simple and slightly smarter).
 
@@ -36,38 +40,25 @@ By default it runs the A3C agent.
 """
 
 def run_thread(agent, display=False, difficulty = None):
-    """Runs an agent thread.
+    """Runs an agent thread."""
+    players = [sc2_env.Agent(race=sc2_env.Race.terran)]
+    if flags.FLAGS.map not in singlePlayerMaps:
+        players.append(sc2_env.Bot(race=sc2_env.Race.terran, difficulty=difficulty))
 
-    This helper function creates the evironment for an agent and starts the main loop of one thread.
 
-    :param agent: agent to run
-    :param ssize_x: X-size of the screen
-    :param ssize_y: Y-size of the screen
-    :param msize_x: X-size of the minimap
-    :param msize_y: Y-size of the minimap
-    :param display: whether to display the pygame output of an agent, for performance reasons deactivated by default
-    """
+    agent_interface_format=sc2_env.AgentInterfaceFormat(feature_dimensions=sc2_env.Dimensions(screen=SCREEN_SIZE,minimap=MINIMAP_SIZE))
+
     with sc2_env.SC2Env(map_name=flags.FLAGS.map,
-                        agent_race='T',
-                        bot_race='T',
-                        difficulty=difficulty,
+                        players=players,
                         game_steps_per_episode=0,
-                        screen_size_px=(SCREEN_SIZE, SCREEN_SIZE),
-                        minimap_size_px=(MINIMAP_SIZE, MINIMAP_SIZE),
+                        agent_interface_format=agent_interface_format,
                         visualize=display) as env:
         run_loop.run_loop([agent], env)
 
 
 def start_agent():
-    """Starts the pysc2 agent.
+    """Starts the pysc2 agent."""
 
-    Helper function for setting up the A3C agents. If it is in training mode it starts PARALLEL_THREADS agents, otherwise
-    it will only start one agent. It creates the TensorFlow session and TensorFlow's summary writer. If it is continuing
-    a previous session and can't find an agent instance, it will just ignore this instance. It also initialises the
-    weights of the neural network, if it doesn't find a previously saved one and initialises it. If it should show the
-    pygame output of an agent, it only shows it for the first instance. Most of it's behaviour can be controlled with
-    the same constants that can be found in a3c_agent.py and are also used by the A3C agent.
-    """
     training = eval(flags.FLAGS.train)  
     if not training:
         parallel = 1

@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from pysc2.lib import actions
+from pysc2.lib.units import Terran
 
 from utils import BaseAgent
 
@@ -32,7 +33,6 @@ from utils import FindMiddle
 from utils import GetScreenCorners
 from utils import IsolateArea
 from utils import Scale2MiniMap
-from utils import GetLocationForBuildingAddition
 from utils import GetUnitId
 from utils import SelectBuildingValidPoint
 
@@ -100,17 +100,17 @@ STATE_SIZE = 11
 STATE_IDX2STR = ["min", "gas", "sd", "ba", "fa", "re", "te", "power", "ba_q", "fa_q", "te_q"]
 
 BUILDING_2_STATE_TRANSITION = {}
-BUILDING_2_STATE_TRANSITION[TerranUnit.SUPPLY_DEPOT] = STATE_SUPPLY_DEPOT_IDX
-BUILDING_2_STATE_TRANSITION[TerranUnit.BARRACKS] = STATE_BARRACKS_IDX
-BUILDING_2_STATE_TRANSITION[TerranUnit.FACTORY] = STATE_FACTORY_IDX
-BUILDING_2_STATE_TRANSITION[TerranUnit.REACTOR] = STATE_REACTORS_IDX
-BUILDING_2_STATE_TRANSITION[TerranUnit.TECHLAB] = STATE_TECHLAB_IDX
+BUILDING_2_STATE_TRANSITION[Terran.SupplyDepot] = STATE_SUPPLY_DEPOT_IDX
+BUILDING_2_STATE_TRANSITION[Terran.Barracks] = STATE_BARRACKS_IDX
+BUILDING_2_STATE_TRANSITION[Terran.Factory] = STATE_FACTORY_IDX
+BUILDING_2_STATE_TRANSITION[Terran.Reactor] = STATE_REACTORS_IDX
+BUILDING_2_STATE_TRANSITION[Terran.TechLab] = STATE_TECHLAB_IDX
 
 BUILDING_2_STATE_QUEUE_TRANSITION = {}
 
-BUILDING_2_STATE_QUEUE_TRANSITION[TerranUnit.BARRACKS] = STATE_QUEUE_BARRACKS
-BUILDING_2_STATE_QUEUE_TRANSITION[TerranUnit.FACTORY] = STATE_QUEUE_FACTORY
-BUILDING_2_STATE_QUEUE_TRANSITION[TerranUnit.TECHLAB] = STATE_QUEUE_FACTORY_WITH_TECHLAB
+BUILDING_2_STATE_QUEUE_TRANSITION[Terran.Barracks] = STATE_QUEUE_BARRACKS
+BUILDING_2_STATE_QUEUE_TRANSITION[Terran.Factory] = STATE_QUEUE_FACTORY
+BUILDING_2_STATE_QUEUE_TRANSITION[Terran.TechLab] = STATE_QUEUE_FACTORY_WITH_TECHLAB
 
 class SharedDataTrain(EmptySharedData):
     def __init__(self):
@@ -210,14 +210,13 @@ class TrainArmySubAgent(BaseAgent):
         # model params
         self.unit_type = None
 
-        self.currentBuildingTypeSelected = TerranUnit.BARRACKS
         self.currentBuildingCoordinate = [-1,-1]
 
         self.actionsRequirement = {}
-        self.actionsRequirement[ID_ACTION_TRAIN_MARINE] = ActionRequirement(50, 0, TerranUnit.BARRACKS)
-        self.actionsRequirement[ID_ACTION_TRAIN_REAPER] = ActionRequirement(50, 50, TerranUnit.BARRACKS)
-        self.actionsRequirement[ID_ACTION_TRAIN_HELLION] = ActionRequirement(100, 0, TerranUnit.FACTORY)
-        self.actionsRequirement[ID_ACTION_TRAIN_SIEGETANK] = ActionRequirement(150, 125, TerranUnit.TECHLAB)
+        self.actionsRequirement[ID_ACTION_TRAIN_MARINE] = ActionRequirement(50, 0, Terran.Barracks)
+        self.actionsRequirement[ID_ACTION_TRAIN_REAPER] = ActionRequirement(50, 50, Terran.Barracks)
+        self.actionsRequirement[ID_ACTION_TRAIN_HELLION] = ActionRequirement(100, 0, Terran.Factory)
+        self.actionsRequirement[ID_ACTION_TRAIN_SIEGETANK] = ActionRequirement(150, 125, Terran.TechLab)
 
     def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
         if dmTypes[AGENT_NAME] == "naive":
@@ -245,7 +244,7 @@ class TrainArmySubAgent(BaseAgent):
     def step(self, obs, moveNum):  
         super(TrainArmySubAgent, self).step(obs) 
 
-        self.unit_type = obs.observation['screen'][SC2_Params.UNIT_TYPE]
+        self.unit_type = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
         
         if obs.first():
             self.FirstStep(obs)
@@ -292,7 +291,7 @@ class TrainArmySubAgent(BaseAgent):
         if moveNum == 1:
             finishedAction = True
             unit2Train = ACTION_2_UNIT[a]
-            sc2Action = TerranUnit.UNIT_2_SC2ACTIONS[unit2Train]
+            sc2Action = TerranUnit.ARMY_SPEC[unit2Train].sc2Action
             if sc2Action in obs.observation['available_actions']:
                 self.sharedData.prevActionReward = self.sharedData.unitTrainValue[unit2Train]
 
@@ -383,9 +382,9 @@ class TrainArmySubAgent(BaseAgent):
     def BuildingType(self, action):
         if action > ID_ACTION_DO_NOTHING:
             if action > ID_ACTION_TRAIN_REAPER:
-                return TerranUnit.FACTORY
+                return Terran.Factory
             else:
-                return TerranUnit.BARRACKS
+                return Terran.Barracks
         else:
             return None
 

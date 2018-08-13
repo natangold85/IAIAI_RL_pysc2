@@ -9,44 +9,62 @@ from utils_decisionMaker import LearnWithReplayMngr
 from utils_ttable import TransitionTable
 
 from utils_dtn import DTN_PARAMS
+from utils_dtn import DTN2
 from utils_dtn import DTN
 from utils_dtn import Filtered_DTN
 
 from maze_game import SimpleMazeGame
+from maze_game import MazeGame
 
-def dtn_3LayersFunc(inputLayerState, inputLayerActions, num_output, scope):      
-    with tf.variable_scope(scope):
-
-        el1 = tf.contrib.layers.fully_connected(inputLayerState, 256)
-        middleLayer = tf.concat([el1, inputLayerActions], 1)
-        fc1 = tf.contrib.layers.fully_connected(middleLayer, 256)
-        fc2 = tf.contrib.layers.fully_connected(fc1, 256)
-
-        output = tf.contrib.layers.fully_connected(fc2, num_output)
-        outputSoftmax = tf.nn.softmax(output, name="softmax_tensor")
-
-    return outputSoftmax
 
 def dtn_1LayersFunc(inputLayerState, inputLayerActions, num_output, scope):      
     with tf.variable_scope(scope):
 
         inputLayer = tf.concat([inputLayerState, inputLayerActions], 1)
         fc1 = tf.contrib.layers.fully_connected(inputLayer, 256)
-
         output = tf.contrib.layers.fully_connected(fc1, num_output)
         outputSoftmax = tf.nn.softmax(output, name="softmax_tensor")
 
     return outputSoftmax
 
+def dtn_2LayersFunc(inputLayerState, inputLayerActions, num_output, scope):      
+    with tf.variable_scope(scope):
+
+        inputLayer = tf.concat([inputLayerState, inputLayerActions], 1)
+        fc1 = tf.contrib.layers.fully_connected(inputLayer, 256)
+        fc2 = tf.contrib.layers.fully_connected(fc1, 256)
+        output = tf.contrib.layers.fully_connected(fc2, num_output)
+        outputSoftmax = tf.nn.softmax(output, name="softmax_tensor")
+
+    return outputSoftmax
+
+
+def dtn_3LayersFunc(inputLayerState, inputLayerActions, num_output, scope):      
+    with tf.variable_scope(scope):
+
+        inputLayer = tf.concat([inputLayerState, inputLayerActions], 1)
+        
+        fc1 = tf.contrib.layers.fully_connected(inputLayer, 256)
+        fc2 = tf.contrib.layers.fully_connected(fc1, 256)
+        fc3 = tf.contrib.layers.fully_connected(fc2, 256)
+
+        output = tf.contrib.layers.fully_connected(fc3, num_output)
+        outputSoftmax = tf.nn.softmax(output, name="softmax_tensor")
+
+    return outputSoftmax
+
+
 def dtn_4LayersFunc(inputLayerState, inputLayerActions, num_output, scope):      
     with tf.variable_scope(scope):
 
-        el1 = tf.contrib.layers.fully_connected(inputLayerState, 256)
-        middleLayer = tf.concat([el1, inputLayerActions], 1)
-        fc1 = tf.contrib.layers.fully_connected(middleLayer, 256)
+        inputLayer = tf.concat([inputLayerState, inputLayerActions], 1)
+        
+        fc1 = tf.contrib.layers.fully_connected(inputLayer, 256)
         fc2 = tf.contrib.layers.fully_connected(fc1, 256)
         fc3 = tf.contrib.layers.fully_connected(fc2, 256)
-        output = tf.contrib.layers.fully_connected(fc3, num_output)
+        fc4 = tf.contrib.layers.fully_connected(fc3, 256)
+
+        output = tf.contrib.layers.fully_connected(fc4, num_output)
         outputSoftmax = tf.nn.softmax(output, name="softmax_tensor")
 
     return outputSoftmax
@@ -54,13 +72,15 @@ def dtn_4LayersFunc(inputLayerState, inputLayerActions, num_output, scope):
 def dtn_5LayersFunc(inputLayerState, inputLayerActions, num_output, scope):      
     with tf.variable_scope(scope):
 
-        el1 = tf.contrib.layers.fully_connected(inputLayerState, 256)
-        middleLayer = tf.concat([el1, inputLayerActions], 1)
-        fc1 = tf.contrib.layers.fully_connected(middleLayer, 256)
+        inputLayer = tf.concat([inputLayerState, inputLayerActions], 1)
+        
+        fc1 = tf.contrib.layers.fully_connected(inputLayer, 256)
         fc2 = tf.contrib.layers.fully_connected(fc1, 256)
         fc3 = tf.contrib.layers.fully_connected(fc2, 256)
         fc4 = tf.contrib.layers.fully_connected(fc3, 256)
-        output = tf.contrib.layers.fully_connected(fc4, num_output)
+        fc5 = tf.contrib.layers.fully_connected(fc4, 256)
+
+        output = tf.contrib.layers.fully_connected(fc5, num_output)
         outputSoftmax = tf.nn.softmax(output, name="softmax_tensor")
 
     return outputSoftmax
@@ -68,39 +88,108 @@ def dtn_5LayersFunc(inputLayerState, inputLayerActions, num_output, scope):
 def dtn_6LayersFunc(inputLayerState, inputLayerActions, num_output, scope):      
     with tf.variable_scope(scope):
 
-        el1 = tf.contrib.layers.fully_connected(inputLayerState, 256)
-        middleLayer = tf.concat([el1, inputLayerActions], 1)
-        fc1 = tf.contrib.layers.fully_connected(middleLayer, 256)
+        inputLayer = tf.concat([inputLayerState, inputLayerActions], 1)
+        
+        fc1 = tf.contrib.layers.fully_connected(inputLayer, 256)
+        fc2 = tf.contrib.layers.fully_connected(fc1, 256)
+        fc3 = tf.contrib.layers.fully_connected(fc2, 256)
+        fc4 = tf.contrib.layers.fully_connected(fc3, 256)
+        fc5 = tf.contrib.layers.fully_connected(fc4, 256)
+        fc6 = tf.contrib.layers.fully_connected(fc5, 256)
+
+        output = tf.contrib.layers.fully_connected(fc6, num_output)
+        outputSoftmax = tf.nn.softmax(output, name="softmax_tensor")
+
+    return outputSoftmax
+
+
+def dtn2_1LayersFunc(inputLayerState, inputLayerNextState, inputLayerActions, num_output, scope):      
+    with tf.variable_scope(scope):
+
+        inputLayer = tf.concat([inputLayerState, inputLayerNextState, inputLayerActions], 1)
+        fc1 = tf.contrib.layers.fully_connected(inputLayer, 256)
+
+        output = tf.contrib.layers.fully_connected(fc1, num_output)
+
+    return output
+
+def dtn2_2LayersFunc(inputLayerState, inputLayerNextState, inputLayerActions, num_output, scope):      
+    with tf.variable_scope(scope):
+
+        inputLayer = tf.concat([inputLayerState, inputLayerNextState, inputLayerActions], 1)
+        fc1 = tf.contrib.layers.fully_connected(inputLayer, 256)
+        fc2 = tf.contrib.layers.fully_connected(fc1, 256)
+
+        output = tf.contrib.layers.fully_connected(fc2, num_output, activation_fn= tf.nn.sigmoid)
+
+    return output
+
+
+def dtn2_3LayersFunc(inputLayerState, inputLayerNextState, inputLayerActions, num_output, scope):      
+    with tf.variable_scope(scope):
+
+        inputLayer = tf.concat([inputLayerState, inputLayerNextState, inputLayerActions], 1)
+        fc1 = tf.contrib.layers.fully_connected(inputLayer, 256)
+        fc2 = tf.contrib.layers.fully_connected(fc1, 256)
+        fc3 = tf.contrib.layers.fully_connected(fc2, 256)
+        output = tf.contrib.layers.fully_connected(fc3, num_output)
+
+    return output
+
+
+def dtn2_4LayersFunc(inputLayerState, inputLayerNextState, inputLayerActions, num_output, scope):      
+    with tf.variable_scope(scope):
+        
+        inputLayer = tf.concat([inputLayerState, inputLayerNextState, inputLayerActions], 1)
+        fc1 = tf.contrib.layers.fully_connected(inputLayer, 256)
+        fc2 = tf.contrib.layers.fully_connected(fc1, 256)
+        fc3 = tf.contrib.layers.fully_connected(fc2, 256)
+        fc4 = tf.contrib.layers.fully_connected(fc3, 256)
+        output = tf.contrib.layers.fully_connected(fc4, num_output)
+
+    return output
+
+def dtn2_5LayersFunc(inputLayerState, inputLayerNextState, inputLayerActions, num_output, scope):      
+    with tf.variable_scope(scope):
+        
+        inputLayer = tf.concat([inputLayerState, inputLayerNextState, inputLayerActions], 1)
+        fc1 = tf.contrib.layers.fully_connected(inputLayer, 256)
         fc2 = tf.contrib.layers.fully_connected(fc1, 256)
         fc3 = tf.contrib.layers.fully_connected(fc2, 256)
         fc4 = tf.contrib.layers.fully_connected(fc3, 256)
         fc5 = tf.contrib.layers.fully_connected(fc4, 256)
         output = tf.contrib.layers.fully_connected(fc5, num_output)
-        outputSoftmax = tf.nn.softmax(output, name="softmax_tensor")
 
-    return outputSoftmax
+    return output
 
-def dtn_7LayersFunc(inputLayerState, inputLayerActions, num_output, scope):      
+def dtn2_6LayersFunc(inputLayerState, inputLayerNextState, inputLayerActions, num_output, scope):      
     with tf.variable_scope(scope):
-
-        el1 = tf.contrib.layers.fully_connected(inputLayerState, 256)
-        middleLayer = tf.concat([el1, inputLayerActions], 1)
-        fc1 = tf.contrib.layers.fully_connected(middleLayer, 256)
+        
+        inputLayer = tf.concat([inputLayerState, inputLayerNextState, inputLayerActions], 1)
+        fc1 = tf.contrib.layers.fully_connected(inputLayer, 256)
         fc2 = tf.contrib.layers.fully_connected(fc1, 256)
         fc3 = tf.contrib.layers.fully_connected(fc2, 256)
         fc4 = tf.contrib.layers.fully_connected(fc3, 256)
         fc5 = tf.contrib.layers.fully_connected(fc4, 256)
         fc6 = tf.contrib.layers.fully_connected(fc5, 256)
         output = tf.contrib.layers.fully_connected(fc6, num_output)
-        outputSoftmax = tf.nn.softmax(output, name="softmax_tensor")
 
-    return outputSoftmax
+    return output
 
 class Simulator:
     def __init__(self, dirName = "maze_game", trials2Save = 100):
         self.illigalSolvedInModel = True
         #self.env = MazeGame()
-        self.env = SimpleMazeGame()
+        holes = []
+        # holes.append([1,9])
+        # holes.append([4,7])
+        # holes.append([8,2])
+        # holes.append([8,7])
+        # holes.append([5,4])
+        # holes.append([2,3])
+        # holes.append([1,4])
+
+        self.env = MazeGame(gridSize=10, holesCoord=holes)
         
         fullDir = "./" + dirName + "/"
 
@@ -109,26 +198,23 @@ class Simulator:
         self.dqn = LearnWithReplayMngr(typeDecision, params, decisionMakerName = "maze_game_dm_Time", resultFileName = "results_Time", directory = dirName, numTrials2Learn=trials2Save)            
 
         self.allDTN = []
-        dtnParams1LTT = DTN_PARAMS(self.env.stateSize, self.env.numActions, 0, self.env.stateSize, outputGraph=True, nn_Func=dtn_1LayersFunc)
-        self.allDTN.append(DTN(dtnParams1LTT, "dtn1Layers_Time", directory = fullDir + 'maze_dtn_1Layers_Time/'))
+        dtn2Params = DTN_PARAMS(self.env.stateSize, self.env.numActions, 0, self.env.stateSize, outputGraph=True, nn_Func=dtn2_2LayersFunc)
+        self.allDTN.append(DTN2(dtn2Params, "dtn2_2Layers", directory = fullDir + 'maze_dtn2_2Layers/'))
 
-        dtnParams2LTT = DTN_PARAMS(self.env.stateSize, self.env.numActions, 0, self.env.stateSize, outputGraph=True)
-        self.allDTN.append(DTN(dtnParams2LTT, "dtn2Layers_Time", directory = fullDir + 'maze_dtn_2Layers_Time/'))
+        dtnParams = DTN_PARAMS(self.env.stateSize, self.env.numActions, 0, self.env.stateSize, outputGraph=True, nn_Func=dtn_2LayersFunc)
+        self.allDTN.append(DTN(dtnParams, "dtn_2Layers", directory = fullDir + 'maze_dtn_2Layers/'))
 
-        dtnParams3LTT = DTN_PARAMS(self.env.stateSize, self.env.numActions, 0, self.env.stateSize, outputGraph=True, nn_Func=dtn_3LayersFunc)
-        self.allDTN.append(DTN(dtnParams3LTT, "dtn3Layers_Time", directory = fullDir + 'maze_dtn_3Layers_Time/'))
+        # dtnParams3LTT = DTN_PARAMS(self.env.stateSize, self.env.numActions, 0, self.env.stateSize, outputGraph=True, nn_Func=dtn_3LayersFunc)
+        # self.allDTN.append(DTN2(dtnParams3LTT, "dtn3Layers_Time", directory = fullDir + 'maze_dtn_3Layers_Time/'))
 
-        dtnParams4LTT = DTN_PARAMS(self.env.stateSize, self.env.numActions, 0, self.env.stateSize, outputGraph=True, nn_Func=dtn_4LayersFunc)
-        self.allDTN.append(DTN(dtnParams4LTT, "dtn4Layers_Time", directory = fullDir + 'maze_dtn_4Layers_Time/'))
+        # dtnParams4LTT = DTN_PARAMS(self.env.stateSize, self.env.numActions, 0, self.env.stateSize, outputGraph=True, nn_Func=dtn_4LayersFunc)
+        # self.allDTN.append(DTN2(dtnParams4LTT, "dtn4Layers_Time", directory = fullDir + 'maze_dtn_4Layers_Time/'))
 
-        dtnParams5LTT = DTN_PARAMS(self.env.stateSize, self.env.numActions, 0, self.env.stateSize, outputGraph=True, nn_Func=dtn_5LayersFunc)
-        self.allDTN.append(DTN(dtnParams5LTT, "dtn5Layers_Time", directory = fullDir + 'maze_dtn_5Layers_Time/'))
+        # dtnParams5LTT = DTN_PARAMS(self.env.stateSize, self.env.numActions, 0, self.env.stateSize, outputGraph=True, nn_Func=dtn_5LayersFunc)
+        # self.allDTN.append(DTN2(dtnParams5LTT, "dtn5Layers_Time", directory = fullDir + 'maze_dtn_5Layers_Time/'))
 
-        dtnParams6LTT = DTN_PARAMS(self.env.stateSize, self.env.numActions, 0, self.env.stateSize, outputGraph=True, nn_Func=dtn_6LayersFunc)
-        self.allDTN.append(DTN(dtnParams6LTT, "dtn6Layers_Time", directory = fullDir + 'maze_dtn_6Layers_Time/'))
-
-        dtnParams7LTT = DTN_PARAMS(self.env.stateSize, self.env.numActions, 0, self.env.stateSize, outputGraph=True, nn_Func=dtn_7LayersFunc)
-        self.allDTN.append(DTN(dtnParams7LTT, "dtn7Layers_Time", directory = fullDir + 'maze_dtn_7Layers_Time/'))
+        # dtnParams6LTT = DTN_PARAMS(self.env.stateSize, self.env.numActions, 0, self.env.stateSize, outputGraph=True, nn_Func=dtn_6LayersFunc)
+        # self.allDTN.append(DTN2(dtnParams6LTT, "dtn6Layers_Time", directory = fullDir + 'maze_dtn_6Layers_Time/'))
 
         self.transitionTable = TransitionTable(self.env.numActions, fullDir + "maze_ttable_cmp_Time")
     
@@ -164,11 +250,12 @@ class Simulator:
                 s = s_
             
             self.transitionTable.end_run(True)
-            self.dqn.end_run(r,sumR,numSteps)
+            toLearn = self.dqn.end_run(r,sumR,numSteps)
+
+        self.TrainAccording2TTable()
 
         for dtn in self.allDTN:
-            self.TrainAccording2TTable(dtn, numRuns)
-            dtn.end_run(False, numRuns)
+            dtn.end_run(toLearn, False, numRuns)
         
         for i in range(len(self.allDTN)):
             self.trainDuration[i] += self.allDTN[i].LastTrainDuration()
@@ -183,11 +270,24 @@ class Simulator:
             a = np.random.choice(validActions)
 
             realDistribution = self.env.RealDistribution(s,a)
-            for i in range(len(self.allDTN)):
+            for dtnIdx in range(len(self.allDTN)):
+                if type(self.allDTN[dtnIdx]) is DTN:
+                    outDTN = self.allDTN[dtnIdx].predict(s, a)[0]
+                else:
+                    outDTN = np.zeros(len(s), float)
+                    for loc in range(len(s)):
+                        s_ = np.zeros(len(s), int)
+                        s_[loc] = 1
+                        prob = self.allDTN[dtnIdx].TransitionProb(s, a, s_)
+                        outDTN[loc] = prob
 
-                outDtn = self.allDTN[i].predict(s,a)
-                mse = sum(pow(outDtn[0] - realDistribution, 2)) 
-                mseResults[i] += mse / numTests
+                    outDTN = outDTN / sum(outDTN)
+                    
+
+
+                mse = sum(pow(outDTN - realDistribution, 2)) 
+
+                mseResults[dtnIdx] += mse / numTests
             
             outTransitionTable = self.CalcDistTTable(s,a)                        
             mseTable = sum(pow(outTransitionTable - realDistribution, 2))
@@ -223,27 +323,29 @@ class Simulator:
 
         return outTransitionTable
 
-    def TrainAccording2TTable(self, dtn, numTrains = 1):
+    def TrainAccording2TTable(self):
         states = list(self.transitionTable.table.keys())
         
-        sLearn = []
-        aLearn = []
-        s_Learn = []
-        for i in range(numTrains):
-            for sStr in states:
-                if sStr != "TrialsData":
-                    s = np.fromstring(sStr.replace("[", "").replace("]", ""), dtype=int, sep=' ')
-                    transition = self.transitionTable.table[sStr][0]
-                    actionCount = self.transitionTable.table[sStr][1]
-                    for a in range(self.env.numActions):
-                        if actionCount[a] > 0:
-                            label = self.CalcDistTTable(s,a)
-                            sLearn.append(s)
-                            aLearn.append(a)
-                            s_Learn.append(label)
-        
-        if len(aLearn) >= dtn.params.batchSize:
-            dtn.learn(np.array(sLearn), np.array(aLearn), np.array(s_Learn))
+
+        for sStr in states:
+            if sStr != "TrialsData":
+                s = np.fromstring(sStr.replace("[", "").replace("]", ""), dtype=int, sep=' ')
+                actionCount = self.transitionTable.table[sStr][1]
+                for a in range(self.env.numActions):
+                    if actionCount[a] > 0:
+                        label = self.CalcDistTTable(s,a)
+                        
+                        for dtn in self.allDTN:
+                            if type(dtn) is DTN:
+                                dtn.NewExperience(s, a, label)
+                            else:
+                                for loc in range(len(label)):
+                                    s_ = np.zeros(len(label), int)
+                                    s_[loc] = 1
+                                    p = label[loc]
+
+                                    dtn.NewExperience(s, a, s_, p)
+                                
     
     def Reset(self):
         self.dqn.ResetAllData()
@@ -276,106 +378,174 @@ def plot_mean_and_CI(mean, lb, ub, color_mean=None):
 if __name__ == "__main__":
     
     dirName = "maze_game"
-    fMsePlotName = "./" + dirName + "/maze_time_duration.png"
+    fMsePlotName = "./" + dirName + "/maze_dtn_layers.png"
 
     numRuns = 1000
-    numRounds = 20
+    numRounds = 10
     numTrialsInRound = 20
 
-    leg = ["1Layers", "2Layers", "3Layers", "4Layers", "5Layers", "6Layers", "7Layers"]
+    leg = ["s2p", "s2s_", "ttable"]
     colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#bcbd22', '#17becf']
 
     
     sim = Simulator(dirName=dirName, trials2Save=numTrialsInRound)
-    trainDuration = []
-    saveDuration= []
-    for i in range(len(sim.allDTN)):
-        trainDuration.append([])
-        saveDuration.append([])
+    # trainDuration = []
+    # saveDuration= []
+    # for i in range(len(sim.allDTN)):
+    #     trainDuration.append([])
+    #     saveDuration.append([])
 
+    mseAllResults = []
+    t = np.arange(numRounds + 1) * numTrialsInRound
+    minMseAllResults = []
+
+    for i in range(len(leg)):
+        minMseAllResults.append([100])
+
+    print("\n\nfinished init!\n")
     for rnd in range(numRuns):
-          
+        mseResults = []
         sim.Reset()
         for i in range(numRounds):
+            mse = sim.TestTransition(100)
+            print("mse = ", mse)
+            mseResults.append(mse)
+            
             sim.Simulate(numTrialsInRound)
         
-        sim.SaveDTN()   
-        sumTrainDur, currSaveDur = sim.GetDTNDuration()
-        
-        print(sumTrainDur)
+        mse = sim.TestTransition(100)
+        mseResults.append(mse)
+        mseAllResults.append(mseResults)
 
-        avgTrainDur = np.array(sumTrainDur) / numRounds
-
-        print(avgTrainDur)
-
-        for i in range(len(avgTrainDur)):
-            trainDuration[i].append(avgTrainDur[i])
-            saveDuration[i].append(currSaveDur[i])
+        mseResultsNp = np.array(mseResults)
+        for i in range(len(mse)):
+            currMinMse = minMseAllResults[i][-1]
+            if (mse[i] < currMinMse):
+                minMseAllResults[i] = mseResultsNp[:, i]
 
         print("\n\nfinished round #", rnd, end = '\n\n\n')
 
-        allRuns = np.arange(rnd + 1)
-        trainDurationNP = np.matrix.transpose(np.array(trainDuration))
-        saveDurationNP = np.matrix.transpose(np.array(saveDuration))
         if rnd > 0:
+            mseAllResultsNp = np.array(mseAllResults)
+            resultsMseAvg = np.average(mseAllResultsNp, axis=0)
+            resultsMseStd = np.std(mseAllResultsNp, axis=0)
+
             fig = plt.figure(figsize=(19.0, 11.0))
-            plt.subplot(2,1,1)
-            plt.plot(allRuns, trainDurationNP)
-            plt.title("train duration")
+            plt.subplot(2,2,1)
+            for i in range(len(leg)):
+                ub = resultsMseAvg[:,i] + resultsMseStd[:,i]
+                lb = resultsMseAvg[:,i] - resultsMseStd[:,i]
+
+                plot_mean_and_CI(resultsMseAvg[:,i], lb, ub, colors[i])
+
+            plt.title("mse results for maze")
+            plt.ylabel('mse')
             plt.legend(leg, loc='best')
-            plt.ylabel('[ms]')
-            plt.xlabel('#runs')
-            plt.subplot(2,1,2)
-            plt.plot(allRuns, saveDurationNP)
-            plt.title("save duration")
+            plt.xlabel('#trials')
+
+            finalResults = mseAllResultsNp[:,-1,:]
+            finalResultAvg = np.average(finalResults, axis=0)
+            plt.subplot(2,2,2)
+            idx = np.arange(len(finalResultAvg))
+
+            plt.bar(idx, finalResultAvg, yerr = np.std(finalResults, axis=0))
+            plt.xticks(idx, leg)
+            plt.title("mse final results for maze")
+            plt.ylabel('final mse')
+
+            # best result:
+
+            minMseAllResultsNp = np.matrix.transpose(np.array(minMseAllResults))
+            plt.subplot(2,2,3)
+            plt.plot(t, minMseAllResultsNp)
+            plt.title("mse best results for maze")
+            plt.ylabel('mse')
             plt.legend(leg, loc='best')
-            plt.ylabel('[ms]')
-            plt.xlabel('#runs')
+            plt.xlabel('#trials')
+
+            finalResultAvgMin = minMseAllResultsNp[-1,:]
+            plt.subplot(2,2,4)
+            idx = np.arange(len(finalResultAvgMin))
+            plt.bar(idx, finalResultAvgMin)
+            plt.xticks(idx, leg)
+            plt.title("mse final best results for maze")
+            plt.ylabel('final mse')
+
             fig.savefig(fMsePlotName)
 
+        # sim.SaveDTN()   
+        # sumTrainDur, currSaveDur = sim.GetDTNDuration()
+        
+        # print(sumTrainDur)
+
+        # avgTrainDur = np.array(sumTrainDur) / numRounds
+
+        # print(avgTrainDur)
+
+        # for i in range(len(avgTrainDur)):
+        #     trainDuration[i].append(avgTrainDur[i])
+        #     saveDuration[i].append(currSaveDur[i])
+
+        # print("\n\nfinished round #", rnd, end = '\n\n\n')
+
+        # allRuns = np.arange(rnd + 1)
+        # trainDurationNP = np.matrix.transpose(np.array(trainDuration))
+        # saveDurationNP = np.matrix.transpose(np.array(saveDuration))
+        # if rnd > 0:
         #     fig = plt.figure(figsize=(19.0, 11.0))
-        #     plt.subplot(2,2,1)
-        #     for i in range(len(leg)):
-        #         ub = resultsMseAvg[:,i] + resultsMseStd[:,i]
-        #         lb = resultsMseAvg[:,i] - resultsMseStd[:,i]
-
-        #         plot_mean_and_CI(resultsMseAvg[:,i], lb, ub, colors[i])
-
-        #     plt.title("mse results for maze")
-        #     plt.ylabel('mse')
+        #     plt.subplot(2,1,1)
+        #     plt.plot(allRuns, trainDurationNP)
+        #     plt.title("train duration")
         #     plt.legend(leg, loc='best')
-        #     plt.xlabel('#trials')
-
-        #     finalResults = mseAllResultsNp[:,-1,:]
-        #     finalResultAvg = np.average(finalResults, axis=0)
-        #     plt.subplot(2,2,2)
-        #     idx = np.arange(len(finalResultAvg))
-
-        #     plt.bar(idx, finalResultAvg, yerr = np.std(finalResults, axis=0))
-        #     plt.xticks(idx, leg)
-        #     plt.title("mse final results for maze")
-        #     plt.ylabel('final mse')
-
-        #     # best result:
-
-        #     minMseAllResultsNp = np.matrix.transpose(np.array(minMseAllResults))
-        #     plt.subplot(2,2,3)
-        #     plt.plot(t, minMseAllResultsNp)
-        #     plt.title("mse best results for maze")
-        #     plt.ylabel('mse')
+        #     plt.ylabel('[ms]')
+        #     plt.xlabel('#runs')
+        #     plt.subplot(2,1,2)
+        #     plt.plot(allRuns, saveDurationNP)
+        #     plt.title("save duration")
         #     plt.legend(leg, loc='best')
-        #     plt.xlabel('#trials')
-
-        #     finalResultAvgMin = minMseAllResultsNp[-1,:]
-        #     plt.subplot(2,2,4)
-        #     idx = np.arange(len(finalResultAvgMin))
-        #     plt.bar(idx, finalResultAvgMin)
-        #     plt.xticks(idx, leg)
-        #     plt.title("mse final best results for maze")
-        #     plt.ylabel('final mse')
-
+        #     plt.ylabel('[ms]')
+        #     plt.xlabel('#runs')
         #     fig.savefig(fMsePlotName)
+        
+
+
+def Create():
+    fullDir = "./maze_game/"
+    params = DTN_PARAMS(1, 2 , 0, 1, nn_Func=dtn_2LayersFunc)
+    dtn = DTN2(params, "dtn2Layers", directory = fullDir + 'maze_dtn_2Layers_Time/')
+    
+    return dtn
+
+def Train(dtn, n = 100):
+    valRange = np.array([-2, -1, 1, 2])
+
+    for i in range(n):
+        s = np.zeros(1, int)
+        s[0] = np.random.choice(valRange)
+        a = np.random.randint(0, 2)
+        s_ = s.copy()
+        if np.random.uniform() > 0.8:
+            p = 0.8
+            s_[0] = s_[0] + 1 if a == 0 else s_[0] - 1
+        else:
+            p = 0.2
+        
+        dtn.insert2Hist(s, a, s_, p)
+
+
+    dtn.end_run()
 
 
 
-
+def Test(dtn):
+    testSet = []
+    testSet.append(np.array([-2]))
+    testSet.append(np.array([-1]))
+    testSet.append(np.array([1]))
+    testSet.append(np.array([2]))
+    for i in range(4):
+        s = testSet[i]
+        a = 0
+        s_ = s.copy()
+        s_[0] += 1
+        print(dtn.TransitionProb(s,a,s_))

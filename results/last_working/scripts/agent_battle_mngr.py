@@ -221,7 +221,7 @@ class BaseMngr(base_agent.BaseAgent):
         
         try:
 
-            self.unit_type = obs.observation['screen'][SC2_Params.UNIT_TYPE]
+            self.unit_type = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
 
             if obs.last():
                 self.LastStep(obs)

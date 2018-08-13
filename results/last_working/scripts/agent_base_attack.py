@@ -59,7 +59,7 @@ NUM_UNIT_SCREEN_PIXELS = 0
 SCREEN_MIN = [3,3]
 SCREEN_MAX = [59,80]
 
-for key,value in TerranUnit.UNIT_SPEC.items():
+for key,value in TerranUnit.ARMY_SPEC.items():
     if value.name == "marine":
         NUM_UNIT_SCREEN_PIXELS = value.numScreenPixels
 
@@ -322,7 +322,7 @@ class BaseAttack(base_agent.BaseAgent):
         self.current_state[self.state_timeLineIdx] = int(self.numStep / TIME_LINE_BUCKETING)
 
     def GetSelfLoc(self, obs):
-        screenMap = obs.observation["screen"][SC2_Params.PLAYER_RELATIVE]
+        screenMap = obs.observation["feature_screen"][SC2_Params.PLAYER_RELATIVE]
         s_y, s_x = (screenMap == SC2_Params.PLAYER_SELF).nonzero()
         selfPoints, selfPower = CenterPoints(s_y, s_x)
 
@@ -335,8 +335,8 @@ class BaseAttack(base_agent.BaseAgent):
             self.selfLocCoord = [int(sum(s_y) / len(s_y)), int(sum(s_x) / len(s_x))]
 
     def GetEnemyBuildingLoc(self, obs):
-        playerType = obs.observation["screen"][SC2_Params.PLAYER_RELATIVE]
-        unitType = obs.observation["screen"][SC2_Params.UNIT_TYPE]
+        playerType = obs.observation["feature_screen"][SC2_Params.PLAYER_RELATIVE]
+        unitType = obs.observation["feature_screen"][SC2_Params.UNIT_TYPE]
 
         enemyBuildingPoints = []
         enemyBuildingPower = []

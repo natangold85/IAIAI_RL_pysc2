@@ -87,7 +87,7 @@ class AttackSubAgent:
 
     def step(self, obs):
         self.cameraCornerNorthWest , self.cameraCornerSouthEast = GetScreenCorners(obs)
-        self.unit_type = obs.observation['screen'][SC2_Params.UNIT_TYPE]
+        self.unit_type = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
 
         sc2Action = DO_NOTHING_SC2_ACTION
 
@@ -155,7 +155,7 @@ class AttackSubAgent:
         
         self.current_state[STATE_ARMY_POWER_IDX] = obs.observation['player'][SC2_Params.ARMY_SUPPLY]
 
-        enemy_y, enemy_x = (obs.observation['minimap'][SC2_Params.PLAYER_RELATIVE] == SC2_Params.PLAYER_HOSTILE).nonzero()
+        enemy_y, enemy_x = (obs.observation['feature_minimap'][SC2_Params.PLAYER_RELATIVE] == SC2_Params.PLAYER_HOSTILE).nonzero()
 
         minDist = SC2_Params.MAX_MINIMAP_DIST
 
@@ -208,7 +208,7 @@ class AttackSubAgent:
             self.current_scaled_state[STATE_ENEMY_BASE_POWER_IDX] = math.ceil(self.current_state[STATE_ENEMY_BASE_POWER_IDX] / STATE_POWER_BUCKETING) * STATE_POWER_BUCKETING  
 
     def FindClosestToEnemyBase(self, obs):
-        enemyPnt_y, enemyPnt_x = (obs.observation['minimap'][SC2_Params.PLAYER_RELATIVE] == SC2_Params.PLAYER_HOSTILE).nonzero()
+        enemyPnt_y, enemyPnt_x = (obs.observation['feature_minimap'][SC2_Params.PLAYER_RELATIVE] == SC2_Params.PLAYER_HOSTILE).nonzero()
         if len(enemyPnt_y) > 0:
             return [-1,-1]
 
@@ -227,8 +227,8 @@ class AttackSubAgent:
     def ComputeAttackResults(self, obs):
         range2Include = 4
 
-        selfMat = (obs.observation['minimap'][SC2_Params.PLAYER_RELATIVE] == SC2_Params.PLAYER_SELF)
-        enemyMat = (obs.observation['minimap'][SC2_Params.PLAYER_RELATIVE] == SC2_Params.PLAYER_HOSTILE)
+        selfMat = (obs.observation['feature_minimap'][SC2_Params.PLAYER_RELATIVE] == SC2_Params.PLAYER_SELF)
+        enemyMat = (obs.observation['feature_minimap'][SC2_Params.PLAYER_RELATIVE] == SC2_Params.PLAYER_HOSTILE)
 
         for attack in self.attackCommands[:]:
             if attack.m_inTheWayBattle[SC2_Params.Y_IDX] == -1:

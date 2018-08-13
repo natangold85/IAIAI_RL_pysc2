@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from pysc2.lib import actions
+from pysc2.lib.units import Terran
 
 from utils import BaseAgent
 
@@ -216,11 +217,11 @@ class Gather(BaseAgent):
         
         elif moveNum == 1:
             finishedAction = False
-            sc2Action = TerranUnit.UNIT_2_SC2ACTIONS[TerranUnit.OIL_REFINERY]
+            sc2Action = TerranUnit.BUILDING_SPEC[Terran.Refinery].sc2Action
 
             if sc2Action in obs.observation['available_actions']:
                 self.cameraCornerNorthWest , self.cameraCornerSouthEast = GetScreenCorners(obs)
-                coord = GetLocationForBuilding(obs, self.cameraCornerNorthWest, self.cameraCornerSouthEast, TerranUnit.OIL_REFINERY)
+                coord = GetLocationForBuilding(obs, self.cameraCornerNorthWest, self.cameraCornerSouthEast, Terran.Refinery)
 
                 if coord[SC2_Params.Y_IDX] >= 0:
                     self.refBuildCmd += 1
@@ -231,7 +232,7 @@ class Gather(BaseAgent):
 
     def MonitorRefBuild(self, obs, moveNum):
         if moveNum == 0:
-            target = SelectBuildingValidPoint(obs.observation['screen'][SC2_Params.UNIT_TYPE], TerranUnit.OIL_REFINERY)
+            target = SelectBuildingValidPoint(obs.observation['feature_screen'][SC2_Params.UNIT_TYPE], Terran.Refinery)
             if target[0] >= 0 and SC2_Actions.SELECT_POINT in obs.observation['available_actions']:
                 return actions.FunctionCall(SC2_Actions.SELECT_POINT, [SC2_Params.SELECT_ALL, SwapPnt(target)]), False
 
@@ -253,7 +254,7 @@ class Gather(BaseAgent):
             if len(buildingStatus) == 0:
                 return self.refBuildComplete
 
-        if buildingStatus[0][SC2_Params.UNIT_TYPE_IDX] != TerranUnit.OIL_REFINERY:
+        if buildingStatus[0][SC2_Params.UNIT_TYPE_IDX] != Terran.Refinery:
             return self.refBuildComplete
 
         numComplete = 0
@@ -296,7 +297,7 @@ class GatherResourcesSubAgent:
     def step(self, obs, moveNum = 0, sharedData = None):  
 
         self.cameraCornerNorthWest , self.cameraCornerSouthEast = GetScreenCorners(obs)
-        self.unit_type = obs.observation['screen'][SC2_Params.UNIT_TYPE]
+        self.unit_type = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
         
         if obs.first():
             self.FirstStep(obs)
@@ -386,7 +387,7 @@ class GatherResourcesSubAgent:
         elif moveNum == 1:
             finishedAction = True
             if SC2_Actions.HARVEST_GATHER in obs.observation['available_actions']:
-                target = self.GatherResource([TerranUnit.OIL_REFINERY] + SC2_Params.VESPENE_GAS_FIELD )
+                target = self.GatherResource([Terran.Refinery] + SC2_Params.VESPENE_GAS_FIELD )
                 if target[0] >= 0:
                     self.sharedData.scvGas += 1
                     if self.takeScvFrom == STATE.SCV_MINERALS:
@@ -404,7 +405,7 @@ class GatherResourcesSubAgent:
                 self.takeScvFrom = STATE.SCV_IDLE
                 return actions.FunctionCall(SC2_Actions.SELECT_IDLE_WORKER, [SC2_Params.SELECT_SINGLE]), finishedAction
             elif STATE.SCV_GAS > 0:
-                target = self.FindClosestSCVFromRes([TerranUnit.OIL_REFINERY] + SC2_Params.VESPENE_GAS_FIELD)
+                target = self.FindClosestSCVFromRes([Terran.Refinery] + SC2_Params.VESPENE_GAS_FIELD)
                 if target[0] >= 0 and SC2_Actions.SELECT_POINT in obs.observation['available_actions']:
                     self.takeScvFrom = STATE.SCV_GAS
                     return actions.FunctionCall(SC2_Actions.SELECT_POINT, [SC2_Params.NOT_QUEUED, SwapPnt(target)]), finishedAction
@@ -424,7 +425,7 @@ class GatherResourcesSubAgent:
 
     def CreateScv(self, obs, moveNum):
         if moveNum == 0:
-            target = SelectBuildingValidPoint(self.unit_type, TerranUnit.COMMANDCENTER)
+            target = SelectBuildingValidPoint(self.unit_type, Terran.CommandCenter)
             if target[0] >= 0:
                 return actions.FunctionCall(SC2_Actions.SELECT_POINT, [SC2_Params.SELECT_SINGLE, SwapPnt(target)]), False
         elif moveNum == 1:
@@ -537,7 +538,7 @@ class GatherResourcesSubAgent:
         return res_y, res_x
     
     def RefineryCount(self):
-        onlyBuilding = self.unit_type == TerranUnit.OIL_REFINERY
+        onlyBuilding = self.unit_type == Terran.Refinery
         buildingAndResource = onlyBuilding
         for res in SC2_Params.VESPENE_GAS_FIELD:
             buildingAndResource = buildingAndResource | (self.unit_type == res)
@@ -577,7 +578,7 @@ class GatherResourcesSubAgent:
     def FindClosestSCVFromRes(self, resList):
         minDist = 10000
         idxMin = -1
-        scv_y, scv_x = SelectUnitValidPoints(self.unit_type == TerranUnit.SCV)
+        scv_y, scv_x = SelectUnitValidPoints(self.unit_type == Terran.SCV)
         for resVal in resList:
             res_y, res_x = (self.unit_type == resVal).nonzero()
             for s in range(len(scv_y)):
@@ -613,9 +614,7 @@ class GatherResourcesSubAgent:
         if len(select) == 0:
             return False
 
-        return select[0][SC2_Params.UNIT_TYPE_IDX] == TerranUnit.SCV
-
-
+        return select[0][SC2_Params.UNIT_TYPE_IDX] == Terran.SCV
 
 if __name__ == "__main__":
     if "results" in sys.argv:

@@ -367,7 +367,7 @@ class Agent(base_agent.BaseAgent):
 
     def CreateState(self, obs):
         self.current_state = np.zeros((STATE_GRID_SIZE , STATE_GRID_SIZE), dtype=np.int32, order='C')
-        screenMap = obs.observation["screen"][SC2_Params.PLAYER_RELATIVE]
+        screenMap = obs.observation["feature_screen"][SC2_Params.PLAYER_RELATIVE]
         
         selfLocX = []
         selfLocY = []
@@ -383,7 +383,7 @@ class Agent(base_agent.BaseAgent):
             yMid = int(sum(selfLocY) / len(selfLocY))
             self.selfLocCoord = [yMid, xMid]
         else:
-            selfLocY, selfLocX = (obs.observation["screen"][SC2_Params.UNIT_DENSITY] > 1).nonzero()
+            selfLocY, selfLocX = (obs.observation["feature_screen"][SC2_Params.UNIT_DENSITY] > 1).nonzero()
             if len(selfLocX) > 0:
                 xMid = int(sum(selfLocX) / len(selfLocX))
                 yMid = int(sum(selfLocY) / len(selfLocY))

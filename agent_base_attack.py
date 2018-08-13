@@ -10,8 +10,10 @@ import numpy as np
 import pandas as pd
 
 from pysc2.lib import actions
+from pysc2.lib.units import Terran
 
 from utils import BaseAgent
+from utils import EmptySharedData
 
 from utils import TerranUnit
 from utils import SC2_Params
@@ -65,7 +67,7 @@ TIME_LINE_BUCKETING = 25
 
 NUM_UNIT_SCREEN_PIXELS = 0
 
-for key,value in TerranUnit.UNIT_SPEC.items():
+for key,value in TerranUnit.ARMY_SPEC.items():
     if value.name == "marine":
         NUM_UNIT_SCREEN_PIXELS = value.numScreenPixels
 
@@ -121,6 +123,16 @@ RUN_TYPES[NAIVE] = {}
 RUN_TYPES[NAIVE][TYPE] = "naive"
 RUN_TYPES[NAIVE][RESULTS] = ""
 
+class SharedDataBaseAttack(EmptySharedData):
+    def __init__(self):
+        super(SharedDataBaseAttack, self).__init__()
+        self.enemyBuildingMat = [0] * (GRID_SIZE * GRID_SIZE)
+
+
+class BuildingUnit:
+    def __init__(self, numScreenPixels, value = 1):
+        self.numScreenPixels = numScreenPixels
+        self.value = value
 
 class NaiveDecisionMakerBaseAttack(BaseDecisionMaker):
     def __init__(self):
@@ -176,11 +188,18 @@ class BaseAttack(BaseAgent):
 
         self.terminalState = np.zeros(STATE_SIZE, dtype=np.int, order='C')
 
-
-        self.BuildingValues = {}
-
-        for spec in TerranUnit.BUILDING_SPEC.values():
-            self.BuildingValues[spec.name] = 1
+        allTerranBuildings = TerranUnit.BUILDINGS + [Terran.SCV]
+        
+        self.buildingDetails = {}
+        for unit in allTerranBuildings:
+            if unit in TerranUnit.BUILDING_SPEC.keys():
+                numPixels = TerranUnit.BUILDING_SPEC[unit].numScreenPixels
+            elif unit == Terran.SCV:
+                numPixels = TerranUnit.SCV_SPEC.numScreenPixels
+            else:
+                numPixels = TerranUnit.DEFAULT_BUILDING_NUM_SCREEN_PIXELS
+            
+            self.buildingDetails[unit] = BuildingUnit(numPixels)
 
         self.lastValidAttackAction = None
         self.enemyBuildingGridLoc2ScreenLoc = {}
@@ -213,7 +232,7 @@ class BaseAttack(BaseAgent):
     def step(self, obs, moveNum):
         super(BaseAttack, self).step(obs)
         if obs.first():
-            self.FirstStep(obs)
+            self.FirstStep()
         
         if moveNum == 0:
             self.CreateState(obs)
@@ -224,7 +243,7 @@ class BaseAttack(BaseAgent):
         self.numStep += 1
         return self.current_action
 
-    def FirstStep(self, obs):
+    def FirstStep(self):
         self.numStep = 0
 
         self.current_state = np.zeros(STATE_SIZE, dtype=np.int, order='C')
@@ -302,20 +321,22 @@ class BaseAttack(BaseAgent):
         self.GetEnemyBuildingLoc(obs)
         self.current_state[STATE_TIME_LINE_IDX] = int(self.numStep / TIME_LINE_BUCKETING)
 
+        for idx in range(GRID_SIZE * GRID_SIZE):
+           self.sharedData.enemyBuildingMat[idx] = self.current_state[STATE_START_ENEMY_MAT + idx]
+
     def GetSelfLoc(self, obs):
-        playerType = obs.observation["screen"][SC2_Params.PLAYER_RELATIVE]
-        unitType = obs.observation["screen"][SC2_Params.UNIT_TYPE]
+        playerType = obs.observation["feature_screen"][SC2_Params.PLAYER_RELATIVE]
+        unitType = obs.observation["feature_screen"][SC2_Params.UNIT_TYPE]
 
         allArmy_y = []
         allArmy_x = [] 
-        for key, spec in TerranUnit.UNIT_SPEC.items():
+        for key, spec in TerranUnit.ARMY_SPEC.items():
             s_y, s_x = ((playerType == SC2_Params.PLAYER_SELF) &(unitType == key)).nonzero()
             allArmy_y += list(s_y)
             allArmy_x += list(s_x)
             
             selfPoints, selfPower = CenterPoints(s_y, s_x)
-
-
+            
             for i in range(len(selfPoints)):
                 idx = self.GetScaledIdx(selfPoints[i])
                 power = math.ceil(selfPower[i] / spec.numScreenPixels)
@@ -325,16 +346,17 @@ class BaseAttack(BaseAgent):
             self.selfLocCoord = [int(sum(allArmy_y) / len(allArmy_y)), int(sum(allArmy_x) / len(allArmy_x))]
 
     def GetEnemyBuildingLoc(self, obs):
-        playerType = obs.observation["screen"][SC2_Params.PLAYER_RELATIVE]
-        unitType = obs.observation["screen"][SC2_Params.UNIT_TYPE]
+        playerType = obs.observation["feature_screen"][SC2_Params.PLAYER_RELATIVE]
+        unitType = obs.observation["feature_screen"][SC2_Params.UNIT_TYPE]
 
         enemyBuildingPoints = []
         enemyBuildingPower = []
-        for unit, spec in TerranUnit.BUILDING_SPEC.items():
+        for unit , spec in self.buildingDetails.items():
             enemyArmy_y, enemyArmy_x = ((unitType == unit) & (playerType == SC2_Params.PLAYER_HOSTILE)).nonzero()
-            buildingPoints, buildingPower = CenterPoints(enemyArmy_y, enemyArmy_x, spec.numScreenPixels)
-            enemyBuildingPoints += buildingPoints
-            enemyBuildingPower += buildingPower * self.BuildingValues[spec.name]
+            if len(enemyArmy_y) > 0:
+                buildingPoints, buildingPower = CenterPoints(enemyArmy_y, enemyArmy_x, spec.numScreenPixels)
+                enemyBuildingPoints += buildingPoints
+                enemyBuildingPower += buildingPower * spec.value
         
         self.enemyBuildingGridLoc2ScreenLoc = {}
         for i in range(len(enemyBuildingPoints)):
@@ -345,7 +367,7 @@ class BaseAttack(BaseAgent):
             else:
                 self.current_state[STATE_START_ENEMY_MAT + idx] = enemyBuildingPower[i]
                 self.enemyBuildingGridLoc2ScreenLoc[idx] = enemyBuildingPoints[i]   
-       
+
     def GetScaledIdx(self, screenCord):
         locX = screenCord[SC2_Params.X_IDX]
         locY = screenCord[SC2_Params.Y_IDX]

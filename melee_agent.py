@@ -57,7 +57,7 @@ NUM_UNIT_SCREEN_PIXELS = 0
 SCREEN_MIN = [3,3]
 SCREEN_MAX = [59,80]
 
-for key,value in TerranUnit.UNIT_SPEC.items():
+for key,value in TerranUnit.ARMY_SPEC.items():
     if value.name == "marine":
         NUM_UNIT_SCREEN_PIXELS = value.numScreenPixels
 
@@ -328,7 +328,7 @@ class Attack(base_agent.BaseAgent):
         self.current_state[self.state_timeLineIdx] = int(self.numStep / TIME_LINE_BUCKETING)
 
     def GetLocationsAndPower(self, obs):
-        screenMap = obs.observation["screen"][SC2_Params.PLAYER_RELATIVE]
+        screenMap = obs.observation["feature_screen"][SC2_Params.PLAYER_RELATIVE]
 
         selfLocY, selfLocX = (screenMap == SC2_Params.PLAYER_SELF).nonzero()
         enemyLocY , enemyLocX = (screenMap == SC2_Params.PLAYER_HOSTILE).nonzero()
@@ -338,7 +338,7 @@ class Attack(base_agent.BaseAgent):
             yMid = int(sum(selfLocY) / len(selfLocY))
             self.selfLocCoord = [yMid, xMid]
         else:
-            selfLocY, selfLocX = (obs.observation["screen"][SC2_Params.UNIT_DENSITY] > 1).nonzero()
+            selfLocY, selfLocX = (obs.observation["feature_screen"][SC2_Params.UNIT_DENSITY] > 1).nonzero()
             if len(selfLocX) > 0:
                 xMid = int(sum(selfLocX) / len(selfLocX))
                 yMid = int(sum(selfLocY) / len(selfLocY))
