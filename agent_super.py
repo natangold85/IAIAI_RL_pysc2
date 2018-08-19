@@ -1,8 +1,6 @@
 import random
 import math
 import os.path
-import logging
-import traceback
 import datetime
 import time
 import sys
@@ -42,6 +40,7 @@ from agent_scout import SharedDataScout
 
 from agent_base_mngr import BASE_STATE
 
+from utils import SwapPnt
 from utils import FindMiddle
 from utils import Scale2MiniMap
 from utils import GetScreenCorners
@@ -106,19 +105,18 @@ class STATE:
 
     ENEMY_ARMY_MAT_START = FOG_MAT_END
     ENEMY_ARMY_MAT_END = ENEMY_ARMY_MAT_START + GRID_SIZE * GRID_SIZE
+    
     ENEMY_BUILDING_MAT_START = ENEMY_ARMY_MAT_END
     ENEMY_BUILDING_MAT_END = ENEMY_BUILDING_MAT_START + GRID_SIZE * GRID_SIZE  
 
-    LAST_ATTACK_ACTION_START = ENEMY_BUILDING_MAT_END
-    LAST_ATTACK_ACTION_END = LAST_ATTACK_ACTION_START + GRID_SIZE * GRID_SIZE  
+    TIME_LINE_IDX = ENEMY_BUILDING_MAT_END
 
-    TIME_LINE_IDX = LAST_ATTACK_ACTION_END
+    SIZE = TIME_LINE_IDX + 1
 
-    SIZE = TIME_LINE_IDX
-
-    NON_VALID_MINIMAP_HEIGHT = 0  
     MAX_SCOUT_VAL = 10
     VAL_IS_SCOUTED = 8
+
+    TIME_LINE_BUCKETING = 20
 
 
 class ACTIONS:
@@ -196,10 +194,17 @@ UNIT_VALUE_TABLE_NAME = 'unit_value_table.gz'
 class SharedDataSuper(SharedDataBase, SharedDataAttack, SharedDataScout):
     def __init__(self):
         super(SharedDataSuper, self).__init__()
+        self.numStep = 0
+        self.numAgentStep = 0
+
+
+NORMALIZATION_TRAIN_LOCAL_REWARD = 20
+NORMALIZATION_TRAIN_GAME_REWARD = 100
+
     
 class SuperAgent(BaseAgent):
-    def __init__(self, dmTypes, decisionMaker = None, isMultiThreaded = False, playList = None, trainList = None):
-        super(SuperAgent, self).__init__()
+    def __init__(self, dmTypes, useMapRewards, decisionMaker = None, isMultiThreaded = False, playList = None, trainList = None):
+        super(SuperAgent, self).__init__(STATE.SIZE)
 
         self.sharedData = SharedDataSuper()
 
@@ -242,8 +247,9 @@ class SuperAgent(BaseAgent):
         self.unitPower[Terran.Hellion] = sum(table.ix['hellion', :]) / len(valVecMarine)
         self.unitPower[Terran.SiegeTank] = sum(table.ix['siege tank', :]) / len(valVecMarine)
 
-        # model params 
-        self.terminalState = np.zeros(STATE.SIZE, dtype=np.int32, order='C')
+        self.useMapRewards = useMapRewards
+
+        self.move_number = 0
 
     def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
         
@@ -276,43 +282,45 @@ class SuperAgent(BaseAgent):
 
     def step(self, obs):
         super(SuperAgent, self).step(obs)
+
+        self.unit_type = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
+        if obs.first():
+            self.FirstStep(obs)
+            return self.SendAction(self.go2BaseAction)
+        elif self.sharedData.numStep == 1:
+            # get default screen location
+            cameraCornerNorthWest , cameraCornerSouthEast = GetScreenCorners(obs)
+            self.baseNorthWestScreenCorner = cameraCornerNorthWest
+        elif obs.last():
+            self.LastStep(obs)
+            return SC2_Actions.DO_NOTHING_SC2_ACTION
+
+        time.sleep(STEP_DURATION)
+
+        self.MonitorObservation(obs)
+        if self.move_number == 0:
+            cameraCornerNorthWest , cameraCornerSouthEast = GetScreenCorners(obs)
+            
+            if cameraCornerNorthWest != self.baseNorthWestScreenCorner:
+                print("\nnot in base location:", cameraCornerNorthWest, "!=", self.baseNorthWestScreenCorner)
+                return self.SendAction(self.go2BaseAction)
+
+            self.sharedData.numAgentStep += 1
+            self.CreateState(obs)
+            self.Learn()
+            self.ChooseAction()
+            # if self.playAgent:
+            #     print("\nactionChosen =", self.Action2Str(False), "\nactionActed =", self.Action2Str(True))
+            #     self.PrintState()
         
-        try:
-            
-            self.unit_type = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
-            
-            if obs.last():
-                self.LastStep(obs)
-                return SC2_Actions.DO_NOTHING_SC2_ACTION
-            elif obs.first():
-                self.FirstStep(obs)
-            
-            time.sleep(STEP_DURATION)
-            for sa in self.activeSubAgents:
-                self.subAgentsActions[sa] = self.subAgents[sa].step(obs, self.move_number)
+        sc2Action = self.ActAction(obs)
 
-            self.UpdateFogData(obs)
-            if self.move_number == 0:
-                self.CreateState(obs)
-                self.Learn()
-
-                self.current_action = self.ChooseAction()
-                if self.playAgent:
-                    print("\nactionChosen =", self.Action2Str(False), "\nactionActed =", self.Action2Str(True))
-                    self.PrintState()
-            
-            self.step_num += 1
-            sc2Action = self.ActAction(obs)
-            return sc2Action
-
-        except Exception as e:
-            print(e)
-            print(traceback.format_exc())
-            logging.error(traceback.format_exc())
+        return self.SendAction(sc2Action)
 
     def FirstStep(self, obs):
         self.move_number = 0
-        self.step_num = 0 
+        self.sharedData.numStep = 0 
+        self.sharedData.numAgentStep = 0
 
         self.sharedData.__init__()
         
@@ -320,9 +328,10 @@ class SuperAgent(BaseAgent):
         if len(cc_y) > 0:
             middleCC = FindMiddle(cc_y, cc_x)
             cameraCornerNorthWest , cameraCornerSouthEast = GetScreenCorners(obs)
-            miniMapLoc = Scale2MiniMap(middleCC, cameraCornerNorthWest , cameraCornerSouthEast)
+            miniMapLoc = Scale2MiniMap(middleCC, cameraCornerNorthWest, cameraCornerSouthEast)
             self.sharedData.commandCenterLoc = [miniMapLoc]
             self.sharedData.buildingCount[Terran.CommandCenter] += 1   
+            print("first step North East =", cameraCornerNorthWest)
 
 
         self.sharedData.unitTrainValue = self.unitPower
@@ -331,33 +340,57 @@ class SuperAgent(BaseAgent):
         # actions:
         self.current_action = None
 
-        self.subAgentsActions = {}
-        for sa in range(NUM_SUB_AGENTS):
-            self.subAgentsActions[sa] = None
-
         # states:
-        self.previous_state = np.zeros(STATE.SIZE, dtype=np.int32, order='C')
         self.current_state = np.zeros(STATE.SIZE, dtype=np.int32, order='C')
         self.previous_scaled_state = np.zeros(STATE.SIZE, dtype=np.int32, order='C')
         self.current_scaled_state = np.zeros(STATE.SIZE, dtype=np.int32, order='C')
 
-        self.fogMat = [0] * (GRID_SIZE * GRID_SIZE)
-        self.fogCounterMat = [0] * (GRID_SIZE * GRID_SIZE)
+        if SUB_AGENT_ID_BASE in self.activeSubAgents and not self.trainAgent:
+            self.accumulatedTrainReward = 0.0
+            self.discountForLocalReward = 0.99
+
+        self.subAgentsActions = {}
+        for sa in range(NUM_SUB_AGENTS):
+            self.subAgentsActions[sa] = None
+            self.subAgents[sa].FirstStep(obs)
+        
+        coord = self.sharedData.commandCenterLoc[0]
+
+        self.go2BaseAction = actions.FunctionCall(SC2_Actions.MOVE_CAMERA, [SwapPnt(coord)])
 
     def LastStep(self, obs):
-        reward = obs.reward
-        if self.trainAgent:
-            self.CreateState(obs)
-            self.Learn(reward, True)
+        if self.useMapRewards:
+            reward = obs.reward
+        else:
+            reward = 0
 
-            score = obs.observation["score_cumulative"][0]
-            self.decisionMaker.end_run(reward, score, self.step_num)
+        baseReward =reward
+        if SUB_AGENT_ID_BASE in self.activeSubAgents and not self.trainAgent:
+            reward += self.accumulatedTrainReward / NORMALIZATION_TRAIN_GAME_REWARD
+        
+        print("\nbase reward =", baseReward, "real reward =", reward, "accumulatedReward =", self.accumulatedTrainReward)
+
+        score = obs.observation["score_cumulative"][0]
+
+        self.CreateState(obs)
+        self.Learn(reward, True)  
+        self.EndRun(reward, score, self.sharedData.numStep)
+
+    def SendAction(self, sc2Action):
+        self.sharedData.numStep += 1
+        return sc2Action
+
+    def EndRun(self, reward, score, numStep):
+        if self.trainAgent:
+            self.decisionMaker.end_run(reward, score, numStep)
         
         for sa in self.activeSubAgents:
-            self.subAgents[sa].LastStep(obs, reward) 
-
+            self.subAgents[sa].EndRun(reward, score, numStep) 
 
     def ChooseAction(self):
+        for sa in self.activeSubAgents:
+                self.subAgentsActions[sa] = self.subAgents[sa].ChooseAction()
+
         if self.playAgent:
             if self.illigalmoveSolveInModel:
                 validActions = self.ValidActions()
@@ -383,6 +416,7 @@ class SuperAgent(BaseAgent):
             else:
                 action = self.subAgentPlay
 
+        self.current_action = action
         return action
 
     def ValidActions(self):
@@ -399,18 +433,22 @@ class SuperAgent(BaseAgent):
         return valid
 
     def Action2Str(self, realAct):
+        subAgent, subAgentAction = self.AdjustAction2SubAgents()
         if realAct:
-            subAgent, subAgentAction = self.GetAction2Act()
-        else:
-            subAgent, subAgentAction = self.AdjustAction2SubAgents()
-
+            subAgent, subAgentAction = self.GetAction2Act(subAgent, subAgentAction)
 
         return SUBAGENTS_NAMES[subAgent] + "-->" + self.subAgents[subAgent].Action2Str(subAgentAction)
 
     def ActAction(self, obs): 
-        subAgent, subAgentAction = self.GetAction2Act()
+        # get subagent and action
+        subAgent, subAgentAction = self.AdjustAction2SubAgents()
+        # mark to sub agent that his action was chosen
+        self.subAgents[subAgent].SubAgentActionChosen(subAgentAction)
+        # find real action to act
+        subAgent, subAgentAction = self.GetAction2Act(subAgent, subAgentAction)
+        # preform action
         sc2Action, terminal = self.subAgents[subAgent].Action2SC2Action(obs, subAgentAction, self.move_number)
-        
+
         if terminal:
             self.move_number = 0
         else:
@@ -418,46 +456,28 @@ class SuperAgent(BaseAgent):
 
         return sc2Action
 
+
+    def MonitorObservation(self, obs):
+        for sa in self.activeSubAgents:
+            self.subAgents[sa].MonitorObservation(obs)
+                     
     def CreateState(self, obs):
+        for subAgent in self.subAgents.values():
+            subAgent.CreateState(obs)
+
         for si in range(STATE.BASE_START, STATE.BASE_END):
             self.current_state[si] = self.sharedData.currBaseState[si]
 
-
-        enemyMat = obs.observation['feature_minimap'][SC2_Params.PLAYER_RELATIVE_MINIMAP] == SC2_Params.PLAYER_HOSTILE
-        miniMapVisi = obs.observation['feature_minimap'][SC2_Params.VISIBILITY_MINIMAP]
-        miniMapHeight = obs.observation['feature_minimap'][SC2_Params.HEIGHT_MAP]
-
-        visibilityCount = []
-        for i in range(STATE.GRID_SIZE * STATE.GRID_SIZE):
-            visibilityCount.append([0,0,0])
-            self.current_state[i + STATE.ENEMY_ARMY_MAT_START] = 0
-
-        for y in range(SC2_Params.MINIMAP_SIZE):
-            pixY = int(y / (SC2_Params.MINIMAP_SIZE / STATE.GRID_SIZE))
-            for x in range(SC2_Params.MINIMAP_SIZE):
-                pixX = int(x / (SC2_Params.MINIMAP_SIZE / STATE.GRID_SIZE))
-                idx = pixX + pixY * STATE.GRID_SIZE
-                self.current_state[idx + STATE.ENEMY_ARMY_MAT_START] += enemyMat[y][x]
-                
-                if miniMapHeight[y][x] != STATE.NON_VALID_MINIMAP_HEIGHT:
-                    visibilityCount[idx][miniMapVisi[y][x]] += 1
-                
-
-        
         for y in range(STATE.GRID_SIZE):
             for x in range(STATE.GRID_SIZE):
-                idx = x + y * STATE.GRID_SIZE  
-                allCount = sum(visibilityCount[idx])
-                allCount = 0.1 if allCount == 0 else allCount
-                
-                ratio = (visibilityCount[idx][2] + visibilityCount[idx][1]) / allCount
-                self.current_state[idx + STATE.FOG_MAT_START] = round(ratio * STATE.MAX_SCOUT_VAL)
-                self.current_state[idx + STATE.SELF_POWER_START] = self.sharedData.armyLocation[idx]
+                idx = x + y * STATE.GRID_SIZE
+               
+                self.current_state[idx + STATE.ENEMY_ARMY_MAT_START] = self.sharedData.enemyMatObservation[y, x]
+                self.current_state[idx + STATE.FOG_MAT_START] = int( self.sharedData.fogRatioMat[y, x] * STATE.MAX_SCOUT_VAL)
+                self.current_state[idx + STATE.FOG_COUNTER_MAT_START] = self.sharedData.fogCounterMat[y, x]
 
+        self.current_state[STATE.TIME_LINE_IDX] = self.sharedData.numStep    
         self.ScaleCurrState()
-
-        
-    def UpdateFogData(self, obs):
 
     def AdjustAction2SubAgents(self):
         subAgentIdx = ACTIONS.ACTIONS2SUB_AGENTSID[self.current_action]
@@ -469,9 +489,7 @@ class SuperAgent(BaseAgent):
 
         return subAgentIdx, self.subAgentsActions[subAgentIdx]
 
-    def GetAction2Act(self):
-        subAgentIdx, subAgentAction = self.AdjustAction2SubAgents()
-        
+    def GetAction2Act(self, subAgentIdx, subAgentAction):  
         if SUB_AGENT_ID_DONOTHING in self.activeSubAgents and self.subAgents[subAgentIdx].IsDoNothingAction(subAgentAction):
             subAgentIdx = ACTIONS.ACTION_DO_NOTHING
             subAgentAction = self.subAgentsActions[subAgentIdx]
@@ -479,20 +497,30 @@ class SuperAgent(BaseAgent):
         return subAgentIdx, subAgentAction
 
     def Learn(self, reward = 0, terminal = False):
+        
+        if SUB_AGENT_ID_BASE in self.activeSubAgents and not self.trainAgent:
+            localReward = self.sharedData.prevTrainActionReward * pow(self.discountForLocalReward, self.sharedData.numAgentStep)
+            reward = localReward / NORMALIZATION_TRAIN_LOCAL_REWARD + reward
+            self.accumulatedTrainReward += localReward
+            self.sharedData.prevTrainActionReward = 0
+
         if self.trainAgent and self.current_action is not None:
             self.decisionMaker.learn(self.previous_scaled_state, self.current_action, reward, self.current_scaled_state, terminal)
 
         self.previous_scaled_state[:] = self.current_scaled_state[:]
+
         for sa in self.activeSubAgents:
-            self.subAgents[sa].Learn(reward)
+            self.subAgents[sa].Learn(reward, terminal)
      
     def ScaleCurrState(self):
         self.current_scaled_state[:] = self.current_state[:]
 
+        self.current_scaled_state[STATE.TIME_LINE_IDX] = int(self.current_state[STATE.TIME_LINE_IDX] / STATE.TIME_LINE_BUCKETING)
+
     def PrintState(self):
         self.subAgents[SUB_AGENT_ID_BASE].PrintState()
 
-        print("self mat\tfog mat\tenemy mat")
+        print("self mat     fog mat     enemy mat")
         for y in range(STATE.GRID_SIZE):
             for x in range(STATE.GRID_SIZE):
                 idx = x + y * STATE.GRID_SIZE

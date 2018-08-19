@@ -3,6 +3,7 @@ import random
 import math
 import os.path
 import sys
+from multiprocessing import Lock
 
 import numpy as np
 import pandas as pd
@@ -20,6 +21,8 @@ from utils import SC2_Actions
 from utils_decisionMaker import LearnWithReplayMngr
 from utils_decisionMaker import UserPlay
 from utils_decisionMaker import BaseDecisionMaker
+
+from utils_results import ResultFile
 
 # params
 from utils_dqn import DQN_PARAMS
@@ -46,10 +49,10 @@ AGENT_NAME = "trainer"
 QTABLE = 'q'
 DQN = 'dqn'
 DQN_EMBEDDING_LOCATIONS = 'dqn_Embedding' 
-
+NAIVE = "naive"
 USER_PLAY = 'play'
 
-ALL_TYPES = set([USER_PLAY, QTABLE, DQN, DQN_EMBEDDING_LOCATIONS])
+ALL_TYPES = set([USER_PLAY, QTABLE, DQN, DQN_EMBEDDING_LOCATIONS, NAIVE])
 
 # data for run type
 TYPE = "type"
@@ -125,10 +128,15 @@ class SharedDataTrain(EmptySharedData):
             self.armySize[unit] = 0
             self.unitTrainValue[unit] = 0.0
 
-        self.prevActionReward = 0.0
+        self.prevTrainActionReward = 0.0
 
 
 
+class BuildingDetailsForProduction:
+    def __init__(self, screenCoord):
+        self.screenCoord = screenCoord
+        self.qSize = 0
+        self.hasAddition = False
 
 
 class TrainCmd:
@@ -157,9 +165,44 @@ RUN_TYPES[DQN][DIRECTORY] = "trainArmy_dqn"
 RUN_TYPES[DQN][HISTORY] = "replayHistory"
 RUN_TYPES[DQN][RESULTS] = "result"
 
+RUN_TYPES[NAIVE] = {}
+RUN_TYPES[NAIVE][DIRECTORY] = "trainArmy_naive"
+RUN_TYPES[NAIVE][RESULTS] = "trainArmy_result"
+
 class NaiveDecisionMakerTrain(BaseDecisionMaker):
-    def __init__(self):
+    def __init__(self, resultFName = None, directory = None, numTrials2Learn = 20):
         super(NaiveDecisionMakerTrain, self).__init__()
+        self.resultFName = resultFName
+        self.trialNum = 0
+        self.numTrials2Learn = numTrials2Learn
+
+        if resultFName != None:
+            self.lock = Lock()
+            if directory != None:
+                fullDirectoryName = "./" + directory +"/"
+            else:
+                fullDirectoryName = "./"
+
+            if "new" in sys.argv:
+                loadFiles = False
+            else:
+                loadFiles = True
+
+            self.resultFile = ResultFile(fullDirectoryName + resultFName, numTrials2Learn, loadFiles)
+
+    def end_run(self, r, score, steps):
+        saveFile = False
+        self.trialNum += 1
+        
+        if self.resultFName != None:
+            self.lock.acquire()
+            if self.trialNum % self.numTrials2Learn == 0:
+                saveFile = True
+
+            self.resultFile.end_run(r, score, steps, saveFile)
+            self.lock.release()
+       
+        return saveFile 
 
     def ActionValuesVec(self, state, target = True):    
         vals = np.zeros(NUM_ACTIONS,dtype = float)
@@ -189,7 +232,7 @@ class NaiveDecisionMakerTrain(BaseDecisionMaker):
 
 class TrainArmySubAgent(BaseAgent):
     def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList):     
-        super(TrainArmySubAgent, self).__init__()     
+        super(TrainArmySubAgent, self).__init__(STATE_SIZE)     
 
         self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
         self.trainAgent = AGENT_NAME in trainList
@@ -208,10 +251,6 @@ class TrainArmySubAgent(BaseAgent):
         self.sharedData = sharedData
 
         # model params
-        self.unit_type = None
-
-        self.currentBuildingCoordinate = [-1,-1]
-
         self.actionsRequirement = {}
         self.actionsRequirement[ID_ACTION_TRAIN_MARINE] = ActionRequirement(50, 0, Terran.Barracks)
         self.actionsRequirement[ID_ACTION_TRAIN_REAPER] = ActionRequirement(50, 50, Terran.Barracks)
@@ -219,14 +258,15 @@ class TrainArmySubAgent(BaseAgent):
         self.actionsRequirement[ID_ACTION_TRAIN_SIEGETANK] = ActionRequirement(150, 125, Terran.TechLab)
 
     def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
+        runType = RUN_TYPES[dmTypes[AGENT_NAME]]
+        # create agent dir
+        directory = dmTypes["directory"] + "/" + AGENT_DIR
+        if not os.path.isdir("./" + directory):
+            os.makedirs("./" + directory)
+
         if dmTypes[AGENT_NAME] == "naive":
-            decisionMaker = NaiveDecisionMakerTrain()
-        else:
-            runType = RUN_TYPES[dmTypes[AGENT_NAME]]
-            # create agent dir
-            directory = dmTypes["directory"] + "/" + AGENT_DIR
-            if not os.path.isdir("./" + directory):
-                os.makedirs("./" + directory)
+            decisionMaker = NaiveDecisionMakerTrain(resultFName=runType[RESULTS], directory=directory + runType[DIRECTORY])
+        else:        
             decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME],  
                                                 resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY], isMultiThreaded=isMultiThreaded)
 
@@ -240,76 +280,101 @@ class TrainArmySubAgent(BaseAgent):
             return 1
         
         return -1
-        
-    def step(self, obs, moveNum):  
-        super(TrainArmySubAgent, self).step(obs) 
-
-        self.unit_type = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
-        
-        if obs.first():
-            self.FirstStep(obs)
-
-        if moveNum == 0: 
-            self.CreateState(obs)
-            self.current_action = self.ChooseAction()
-        
-        self.numSteps += 1
-
-        return self.current_action
 
     def FirstStep(self, obs):
+        super(TrainArmySubAgent, self).FirstStep(obs)   
+
         # states and action:
         self.current_action = None
-        self.previous_state = np.zeros(STATE_SIZE, dtype=np.int32, order='C')
         self.current_state = np.zeros(STATE_SIZE, dtype=np.int32, order='C')
         self.previous_scaled_state = np.zeros(STATE_SIZE, dtype=np.int32, order='C')
         self.current_scaled_state = np.zeros(STATE_SIZE, dtype=np.int32, order='C')
 
         self.numSteps = 0
 
-        self.isActionCommitted = False
-        self.lastActionCommittedAction = None
+        self.countBuildingsQueue = {}
+        for key in BUILDING_2_STATE_QUEUE_TRANSITION.keys():
+            self.countBuildingsQueue = []
 
     def IsDoNothingAction(self, a):
         return a == ID_ACTION_DO_NOTHING
 
-    def LastStep(self, obs, reward):
-        if self.trainAgent and self.lastActionCommittedAction is not None:
-            self.decisionMaker.learn(self.lastActionCommittedState.copy(), self.lastActionCommittedAction, reward, self.lastActionCommittedNextState.copy(), True)
-
-            score = obs.observation["score_cumulative"][0]
-            self.decisionMaker.end_run(reward, score, self.numSteps)
+    def EndRun(self, reward, score, stepNum):
+        if self.trainAgent:
+            self.decisionMaker.end_run(reward, score, stepNum)
 
     def Action2SC2Action(self, obs, a, moveNum):
-        self.isActionCommitted = True
         if moveNum == 0:
             finishedAction = False
             buildingType = self.BuildingType(a)
-            target = SelectBuildingValidPoint(self.unit_type, buildingType)
+            unitType = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
+            target = SelectBuildingValidPoint(unitType, buildingType)
             if target[0] >= 0:
                 return actions.FunctionCall(SC2_Actions.SELECT_POINT, [SC2_Params.SELECT_ALL, SwapPnt(target)]), finishedAction
-        if moveNum == 1:
+        if moveNum == 2:
             finishedAction = True
             unit2Train = ACTION_2_UNIT[a]
             sc2Action = TerranUnit.ARMY_SPEC[unit2Train].sc2Action
             if sc2Action in obs.observation['available_actions']:
-                self.sharedData.prevActionReward = self.sharedData.unitTrainValue[unit2Train]
-
+                self.sharedData.prevTrainActionReward = self.sharedData.unitTrainValue[unit2Train]
                 buildingReq4Train = self.actionsRequirement[a].buildingDependency
                 self.sharedData.trainingQueue[buildingReq4Train].append(TrainCmd(unit2Train))
                 return actions.FunctionCall(sc2Action, [SC2_Params.QUEUED]), finishedAction
 
         return DO_NOTHING_SC2_ACTION, True
 
-    def Learn(self, reward = 0):
-        if self.trainAgent and self.isActionCommitted:
-            self.decisionMaker.learn(self.previous_scaled_state, self.current_action, reward, self.current_scaled_state)
-        
-        self.previous_state[:] = self.current_state[:]
+    def UpdateNewBuildings(self, obs):
+        self.UpdateSingleBuilding(obs, Terran.Barracks)
+        self.UpdateSingleBuilding(obs, Terran.Factory)
+
+    def UpdateSingleBuilding(self, obs, buildingType):
+        stateIdx = BUILDING_2_STATE_TRANSITION[buildingType]
+        currNum = self.current_scaled_state[stateIdx]
+        prevNum = self.previous_scaled_state[stateIdx]
+        if currNum == prevNum:
+            return   
+        elif currNum > prevNum:
+            print("\ntrain agent found new buildings")
+            exit()
+            for i in range(prevNum, currNum):
+                self.AddNewBuilding(obs, Terran.Barracks)
+        else:
+            self.RemoveDestroyedBuildings(obs, Terran.Barracks)
+
+    def AddNewBuilding(self, obs, buildingType):
+        unitType = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
+        buildingMat = unitType == buildingType
+        for building in self.countBuildingsQueue[buildingType]:
+            b_y, b_x = IsolateArea(building.screenCoord, buildingMat)
+            buildingMat[b_y][b_x] = False
+
+        new_y, new_x = buildingMat.nonzero()
+        if len(new_y) > 0:
+            newSingle_y, newSingle_x = IsolateArea((new_y[0], new_x[0]), buildingMat)
+            midPnt = FindMiddle(newSingle_y, newSingle_x)
+            self.countBuildingsQueue[buildingType].append(BuildingDetailsForProduction(midPnt))
+        else:
+            print("didn't found new building")
+
+    def RemoveDestroyedBuildings(self, obs, buildingType):
+        pass
+
+    def Learn(self, reward, terminal):            
+        if self.trainAgent:
+            if self.isActionCommitted:
+                self.decisionMaker.learn(self.previous_scaled_state, self.lastActionCommitted, reward, self.current_scaled_state, terminal)
+            elif terminal:
+                # if terminal reward entire state if action is not chosen for current step
+                for a in range(NUM_ACTIONS):
+                    self.decisionMaker.learn(self.previous_scaled_state, a, reward, self.terminalState, terminal)
+                    self.decisionMaker.learn(self.current_scaled_state, a, reward, self.terminalState, terminal)
+
         self.previous_scaled_state[:] = self.current_scaled_state[:]
         self.isActionCommitted = False
 
     def CreateState(self, obs):
+        self.UpdateNewBuildings(obs)
+        
         self.current_state[STATE_MINERALS_IDX] = obs.observation['player'][SC2_Params.MINERALS]
         self.current_state[STATE_GAS_IDX] = obs.observation['player'][SC2_Params.VESPENE]
         for key, value in BUILDING_2_STATE_TRANSITION.items():
@@ -325,11 +390,6 @@ class TrainArmySubAgent(BaseAgent):
         self.current_state[STATE_ARMY_POWER] = round(power)
 
         self.ScaleState()
-
-        if self.isActionCommitted:
-            self.lastActionCommittedAction = self.current_action
-            self.lastActionCommittedState = self.previous_scaled_state
-            self.lastActionCommittedNextState = self.current_scaled_state
 
     def ScaleState(self):
         self.current_scaled_state[:] = self.current_state[:]

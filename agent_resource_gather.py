@@ -130,7 +130,7 @@ class ScvCmd:
 
 class Gather(BaseAgent):
     def __init__(self, runArg = None, decisionMaker = None, isMultiThreaded = False):
-        super(Gather, self).__init__()
+        super(Gather, self).__init__(STATE.SIZE)
 
         if runArg == None:
             runTypeArg = list(ALL_TYPES.intersection(sys.argv))
@@ -221,7 +221,7 @@ class Gather(BaseAgent):
 
             if sc2Action in obs.observation['available_actions']:
                 self.cameraCornerNorthWest , self.cameraCornerSouthEast = GetScreenCorners(obs)
-                coord = GetLocationForBuilding(obs, self.cameraCornerNorthWest, self.cameraCornerSouthEast, Terran.Refinery)
+                coord = GetLocationForBuilding(obs, Terran.Refinery)
 
                 if coord[SC2_Params.Y_IDX] >= 0:
                     self.refBuildCmd += 1

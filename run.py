@@ -1,7 +1,10 @@
 #!/usr/bin/python3
 
 # run example: python .\run.py --map=Simple64 --typeFile=NaiveRunDiff2.txt --trainAgent=super --train=True
-# kill al sc ps:  $ Taskkill /IM SC2_x64.exe /F
+# kill all sc ps:  $ Taskkill /IM SC2_x64.exe /F
+
+import logging
+import traceback
 
 import os
 import threading
@@ -28,10 +31,12 @@ MINIMAP_SIZE = SC2_Params.MINIMAP_SIZE
 flags.DEFINE_string("trainAgent", "none", "Which agent to train.")
 flags.DEFINE_string("play", "none", "Which agent to play.")
 flags.DEFINE_string("typeFile", "none", "config file that builds heirarchi for decision maker (should contain a dict name dm_Types)")
-flags.DEFINE_string("train", "True", "Which agent to train.")
+flags.DEFINE_string("train", "True", "open multiple threads for train.")
 flags.DEFINE_string("map", "none", "Which map to run.")
 
-singlePlayerMaps = ["ArmyAttack5x5", "AttackBase"]
+nonRelevantRewardMap = ["BaseMngr"]
+singlePlayerMaps = ["ArmyAttack5x5", "AttackBase", "AttackMngr"]
+
 
 """Script for starting all agents (a3c, very simple and slightly smarter).
 
@@ -39,21 +44,25 @@ This scripts is the starter for all agents, it has one command line parameter (-
 By default it runs the A3C agent.
 """
 
-def run_thread(agent, display=False, difficulty = None):
+def run_thread(agent, display, players):
     """Runs an agent thread."""
-    players = [sc2_env.Agent(race=sc2_env.Race.terran)]
-    if flags.FLAGS.map not in singlePlayerMaps:
-        players.append(sc2_env.Bot(race=sc2_env.Race.terran, difficulty=difficulty))
 
+    try:
 
-    agent_interface_format=sc2_env.AgentInterfaceFormat(feature_dimensions=sc2_env.Dimensions(screen=SCREEN_SIZE,minimap=MINIMAP_SIZE))
+        agent_interface_format=sc2_env.AgentInterfaceFormat(feature_dimensions=sc2_env.Dimensions(screen=SCREEN_SIZE,minimap=MINIMAP_SIZE))
 
-    with sc2_env.SC2Env(map_name=flags.FLAGS.map,
-                        players=players,
-                        game_steps_per_episode=0,
-                        agent_interface_format=agent_interface_format,
-                        visualize=display) as env:
-        run_loop.run_loop([agent], env)
+        with sc2_env.SC2Env(map_name=flags.FLAGS.map,
+                            players=players,
+                            game_steps_per_episode=0,
+                            agent_interface_format=agent_interface_format,
+                            visualize=display) as env:
+            run_loop.run_loop([agent], env)
+
+    
+    except Exception as e:
+        print(e)
+        print(traceback.format_exc())
+        logging.error(traceback.format_exc())
 
 
 def start_agent():
@@ -86,11 +95,13 @@ def start_agent():
     print("train list =", trainList, "\n\n\n")
     isMultiThreaded = parallel > 1
 
+    useMapRewards = flags.FLAGS.map not in nonRelevantRewardMap
+
     decisionMaker = None
     agents = []
     for i in range(parallel):
         print("\n\n\n running thread #", i, "\n\n\n")
-        agent = SuperAgent(decisionMaker=decisionMaker, isMultiThreaded=isMultiThreaded, dmTypes = dm_Types, playList=playList, trainList=trainList)
+        agent = SuperAgent(decisionMaker=decisionMaker, isMultiThreaded=isMultiThreaded, dmTypes = dm_Types, playList=playList, trainList=trainList, useMapRewards=useMapRewards)
         
         if i == 0:
             decisionMaker = agent.GetDecisionMaker()
@@ -100,14 +111,14 @@ def start_agent():
     threads = []
     show = show_render
     
-    if "difficulty" in dm_Types:
-        difficulty = int(dm_Types["difficulty"])
-    else:
-        print("run type not include difficulty\nExitting...")
-        exit()
+
+    difficulty = int(dm_Types["difficulty"])
+    players = [sc2_env.Agent(race=sc2_env.Race.terran)]
+    if flags.FLAGS.map not in singlePlayerMaps:
+        players.append(sc2_env.Bot(race=sc2_env.Race.terran, difficulty=difficulty))
 
     for agent in agents:
-        thread_args = (agent, show, difficulty)
+        thread_args = (agent, show, players)
         t = threading.Thread(target=run_thread, args=thread_args)
         threads.append(t)
         t.start()

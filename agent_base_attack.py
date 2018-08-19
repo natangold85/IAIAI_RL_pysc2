@@ -173,7 +173,7 @@ class NaiveDecisionMakerBaseAttack(BaseDecisionMaker):
 
 class BaseAttack(BaseAgent):
     def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList):        
-        super(BaseAttack, self).__init__()
+        super(BaseAttack, self).__init__(STATE_SIZE)
 
         self.sharedData = sharedData
         self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
@@ -228,48 +228,32 @@ class BaseAttack(BaseAgent):
             return 1
         
         return -1
-        
-    def step(self, obs, moveNum):
-        super(BaseAttack, self).step(obs)
-        if obs.first():
-            self.FirstStep()
-        
-        if moveNum == 0:
-            self.CreateState(obs)
-            self.Learn()
-            self.current_action = self.ChooseAction()
-
-
-        self.numStep += 1
-        return self.current_action
-
-    def FirstStep(self):
-        self.numStep = 0
+    
+    def FirstStep(self, obs):
+        super(BaseAttack, self).FirstStep()
 
         self.current_state = np.zeros(STATE_SIZE, dtype=np.int, order='C')
         self.previous_state = np.zeros(STATE_SIZE, dtype=np.int, order='C')
         
-        self.current_action = None
         self.enemyBuildingGridLoc2ScreenLoc = {}
         self.selfLocCoord = None      
-
-        self.prevReward = 0
     
-    def LastStep(self, obs, reward = 0):
-        
+    def EndRun(self, reward, score, stepNum):
         if self.trainAgent:
-            if self.current_action is not None:
-                self.decisionMaker.learn(self.current_state.copy(), self.current_action, float(reward), self.terminalState.copy(), True)
+            self.decisionMaker.end_run(reward, score, stepNum)
 
-            score = obs.observation["score_cumulative"][0]
-            self.decisionMaker.end_run(reward, score, self.numStep)
-    
-    def Learn(self, rewrad = 0):
-        if self.trainAgent and self.current_action is not None:
-            self.decisionMaker.learn(self.previous_state.copy(), self.current_action, float(self.prevReward), self.current_state.copy())
+    def Learn(self, reward, terminal):
+        if self.trainAgent:
+            if self.isActionCommitted:
+                self.decisionMaker.learn(self.previous_state, self.lastActionCommitted, reward, self.current_state, terminal)
+            elif terminal:
+                # if terminal reward entire state if action is not chosen for current step
+                for a in range(NUM_ACTIONS):
+                    self.decisionMaker.learn(self.previous_state, a, reward, self.terminalState, terminal)
+                    self.decisionMaker.learn(self.current_state, a, reward, self.terminalState, terminal)
 
         self.previous_state[:] = self.current_state[:]
-        self.prevReward = 0.0
+        self.isActionCommitted = False
 
     def IsDoNothingAction(self, a):
         return a == ACTION_DO_NOTHING
@@ -313,6 +297,7 @@ class BaseAttack(BaseAgent):
         else:
             action = ACTION_DO_NOTHING
 
+        self.current_action = action
         return action
 
     def CreateState(self, obs):

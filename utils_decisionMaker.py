@@ -134,10 +134,10 @@ class LearnWithReplayMngr(BaseDecisionMaker):
         return self.decisionMaker.NumRuns()
 
     def learn(self, s, a, r, s_, terminal = False):
-        self.transitions["s"].append(s)
+        self.transitions["s"].append(s.copy())
         self.transitions["a"].append(a)
         self.transitions["r"].append(r)
-        self.transitions["s_"].append(s_)
+        self.transitions["s_"].append(s_.copy())
         self.transitions["terminal"].append(terminal)
 
     def ExperienceReplay(self):            

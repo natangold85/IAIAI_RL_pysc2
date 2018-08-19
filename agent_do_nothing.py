@@ -28,11 +28,12 @@ from utils import SC2_Actions
 from agent_build_base import BuildingCmd
 
 from utils import GetScreenCorners
-from utils import GetLocationForBuildingAddition
+from utils import GetLocationForBuilding
 from utils import SwapPnt
 from utils import FindMiddle
 from utils import Scale2MiniMap
 from utils import SelectBuildingValidPoint
+from utils import SelectUnitValidPoints
 from utils import PrintScreen
 
 ACTION_BUILDING_COUNT = 0
@@ -51,18 +52,15 @@ CLOSE_TO_ENEMY_RANGE_SQUARE = 10 * 10
 
 class DoNothingSubAgent(BaseAgent):
     def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList):
-        
+        super(DoNothingSubAgent, self).__init__()
+
         self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
 
         self.isActionFailed = False
         self.current_action = None
 
         self.action2Str = ["BuildingCount", "LandBarracks", "LandFactory", "IdleWorkerEmployment", "Return2Base", "QueueCheck", "Attack_Monitor"]
-        
-        self.unit_type = None
-        self.cameraCornerNorthWest = None
-        self.cameraCornerSouthEast = None
-                  
+                       
         self.building2Check = [Terran.CommandCenter, Terran.SupplyDepot, Terran.Refinery, Terran.Barracks, Terran.Factory, Terran.Reactor, Terran.TechLab] 
 
         self.sharedData = sharedData
@@ -76,9 +74,9 @@ class DoNothingSubAgent(BaseAgent):
         self.unitInQueue[Terran.SiegeTank] = Terran.TechLab
 
         self.defaultActionProb = {}
-        self.defaultActionProb[ACTION_BUILDING_COUNT] = 0.5
+        self.defaultActionProb[ACTION_BUILDING_COUNT] = 0.75
         self.defaultActionProb[ACTION_ARMY_COUNT] = 0.25
-        self.defaultActionProb[ACTION_ATTACK_MONITOR] = 0.25
+        self.defaultActionProb[ACTION_ATTACK_MONITOR] = 0
 
         
     def GetDecisionMaker(self):
@@ -90,38 +88,29 @@ class DoNothingSubAgent(BaseAgent):
         
         return -1
         
-    def step(self, obs, moveNum):
-
-        self.cameraCornerNorthWest , self.cameraCornerSouthEast = GetScreenCorners(obs)
-        self.unit_type = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
-        if obs.first():
-            self.FirstStep(obs)
-        
-        if moveNum == 0:
-            self.current_action = self.ChooseAction(obs)
-
-        return self.current_action
-
-    def FirstStep(self, obs):      
+    def FirstStep(self, obs):    
+        super(DoNothingSubAgent, self).FirstStep()  
         self.currBuilding2Check = 0
         self.realBuilding2Check = None
 
     def IsDoNothingAction(self, a):
         return True
-    
-    def Learn(self, reward = 0):
-        return
 
-    def ChooseAction(self, obs):
+    def CreateState(self, obs):
+        self.numIdleWorkers = obs.observation['player'][SC2_Params.IDLE_WORKER_COUNT]
+        self.unitType = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
+
+
+    def ChooseAction(self):
         # if (self.unit_type == Terran.FLYING_BARRACKS).any():
         #     return ACTION_LAND_BARRACKS
         # elif (self.unit_type == Terran.FLYING_FACTORY).any():
         #     return ACTION_LAND_FACTORY
         #el
-        if obs.observation['player'][SC2_Params.IDLE_WORKER_COUNT] > 0 and self.HasResources():
+        if self.numIdleWorkers > 0 and self.HasResources():
             return ACTION_IDLEWORKER_EMPLOYMENT
         else:
-            if self.ShouldReturnt2Base() and len(self.sharedData.commandCenterLoc) > 0:  
+            if self.ShouldReturnt2Base(self.unitType) and len(self.sharedData.commandCenterLoc) > 0:  
                 return ACTION_RETURN2BASE
             else:
                 randNum = np.random.uniform()
@@ -145,7 +134,8 @@ class DoNothingSubAgent(BaseAgent):
             self.isActionFailed = False 
             finishedAction = False
             if action == ACTION_BUILDING_COUNT:
-                target = self.SelectBuildingPoint()
+                unitType = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
+                target = self.SelectBuildingPoint(unitType)
                 if target[0] >= 0 and SC2_Actions.SELECT_POINT in obs.observation['available_actions']:
                     return actions.FunctionCall(SC2_Actions.SELECT_POINT, [SC2_Params.SELECT_ALL, SwapPnt(target)]), finishedAction
                     
@@ -155,12 +145,12 @@ class DoNothingSubAgent(BaseAgent):
                     return actions.FunctionCall(SC2_Actions.SELECT_ARMY, [SC2_Params.NOT_QUEUED]), finishedAction
 
             elif action == ACTION_LAND_BARRACKS:
-                target = SelectBuildingValidPoint(self.unit_type, Terran.BarracksFlying)
+                target = SelectBuildingValidPoint(self.unitType, Terran.BarracksFlying)
                 if target[0] >= 0:    
                     return actions.FunctionCall(SC2_Actions.SELECT_POINT, [SC2_Params.NOT_QUEUED, SwapPnt(target)]), finishedAction  
 
             elif action == ACTION_LAND_FACTORY :
-                target = SelectBuildingValidPoint(self.unit_type, Terran.FactoryFlying)
+                target = SelectBuildingValidPoint(self.unitType, Terran.FactoryFlying)
                 if target[0] >= 0:    
                     return actions.FunctionCall(SC2_Actions.SELECT_POINT, [SC2_Params.NOT_QUEUED, SwapPnt(target)]), finishedAction
                           
@@ -172,12 +162,10 @@ class DoNothingSubAgent(BaseAgent):
                 if SC2_Actions.MOVE_CAMERA in obs.observation['available_actions']:
                     return actions.FunctionCall(SC2_Actions.MOVE_CAMERA, [SwapPnt(coord)]), finishedAction
 
-            elif action == ACTION_ATTACK_MONITOR:
-                return actions.FunctionCall(SC2_Actions.SELECT_CONTROL_GROUP, [SC2_Params.CONTROL_GROUP_RECALL, self.sharedData.attackGroupIdx]), False
-
 
         elif moveNum == 1 and not self.isActionFailed:
             finishedAction = True
+            cameraCornerNorthWest, cameraCornerSouthEast = GetScreenCorners(obs)
             if action == ACTION_BUILDING_COUNT:
                 # possible to exploit this move for another check
                 actionSucceed = self.UpdateBuildingCompletion(obs)
@@ -192,24 +180,25 @@ class DoNothingSubAgent(BaseAgent):
 
 
             elif action == ACTION_LAND_BARRACKS:
-                target = GetLocationForBuildingAddition(obs, Terran.Barracks, Terran.Reactor,self.cameraCornerNorthWest, self.cameraCornerSouthEast)
+                target = GetLocationForBuilding(obs, Terran.Barracks, Terran.Reactor)
                 if target[SC2_Params.Y_IDX] >= 0:
                     return actions.FunctionCall(SC2_Actions.SELECT_POINT, [SC2_Params.SELECT_SINGLE, SwapPnt(target)]), finishedAction
 
-            elif action == ACTION_LAND_FACTORY :
-                target = GetLocationForBuildingAddition(obs, Terran.Factory, Terran.TechLab, self.cameraCornerNorthWest, self.cameraCornerSouthEast)
+            elif action == ACTION_LAND_FACTORY:
+                target = GetLocationForBuilding(obs, Terran.Factory, Terran.TechLab)
                 if target[SC2_Params.Y_IDX] >= 0:
                     return actions.FunctionCall(SC2_Actions.SELECT_POINT, [SC2_Params.SELECT_SINGLE, SwapPnt(target)]), finishedAction
 
             elif action == ACTION_IDLEWORKER_EMPLOYMENT:
-                if self.ShouldReturnt2Base():
+                unitType = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
+                if self.ShouldReturnt2Base(unitType):
                     # go back to base
                     coord = self.sharedData.commandCenterLoc[0]
                     if SC2_Actions.MOVE_CAMERA in obs.observation['available_actions']:
                         return actions.FunctionCall(SC2_Actions.MOVE_CAMERA, [SwapPnt(coord)]), finishedAction
 
                 if SC2_Actions.HARVEST_GATHER in obs.observation['available_actions']:
-                    target = self.GatherHarvest()
+                    target = self.GatherHarvest(unitType)
                     if target[0] >= 0:
                         return actions.FunctionCall(SC2_Actions.HARVEST_GATHER, [SC2_Params.QUEUED, SwapPnt(target)]), finishedAction
 
@@ -222,15 +211,16 @@ class DoNothingSubAgent(BaseAgent):
         elif moveNum == 2:
             if action == ACTION_IDLEWORKER_EMPLOYMENT:
                 if SC2_Actions.HARVEST_GATHER in obs.observation['available_actions']:
-                    target = self.GatherHarvest()
+                    unitType = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
+                    target = self.GatherHarvest(unitType)
                     if target[0] >= 0:
                         return actions.FunctionCall(SC2_Actions.HARVEST_GATHER, [SC2_Params.QUEUED, SwapPnt(target)]), finishedAction
 
         self.isActionFailed = True
         return SC2_Actions.DO_NOTHING_SC2_ACTION, True
     
-    def ShouldReturnt2Base(self):
-        cc_y, cc_x = (self.unit_type == Terran.CommandCenter).nonzero()
+    def ShouldReturnt2Base(self, unitType):
+        cc_y, cc_x = (unitType == Terran.CommandCenter).nonzero()
         if len(cc_y) == 0:
             return True  
         
@@ -238,19 +228,14 @@ class DoNothingSubAgent(BaseAgent):
         maxDiff = max(SC2_Params.SCREEN_SIZE / 2 - midPnt[SC2_Params.X_IDX], SC2_Params.SCREEN_SIZE / 2 - midPnt[SC2_Params.Y_IDX])
         return maxDiff > 20
 
-    def GatherHarvest(self):
-        if random.randint(0, 4) < 4:
+    def GatherHarvest(self, unitType):
+        if random.randint(0, 2) < 1:
             resourceList = SC2_Params.NEUTRAL_MINERAL_FIELD
         else:
             resourceList = [Terran.Refinery]
 
-        unit_y = []
-        unit_x = []
-        for val in resourceList[:]:
-            p_y, p_x = (self.unit_type == val).nonzero()
-            unit_y += list(p_y)
-            unit_x += list(p_x)
-
+        allResMat = np.in1d(unitType, resourceList).reshape(unitType.shape)
+        unit_y, unit_x = SelectUnitValidPoints(allResMat)
         if len(unit_y) > 0:
             i = random.randint(0, len(unit_y) - 1)
             return [unit_y[i], unit_x[i]]
@@ -260,16 +245,13 @@ class DoNothingSubAgent(BaseAgent):
     def HasResources(self):
         resourceList = SC2_Params.NEUTRAL_MINERAL_FIELD + SC2_Params.VESPENE_GAS_FIELD
         for val in resourceList[:]:
-            if (self.unit_type == val).any():
+            if (self.unitType == val).any():
                 return True
         
         #print("\n\n\nout of resources!!\n\n")
         return False
 
-    def LastStep(self, obs, reward = 0):
-        return
-
-    def SelectBuildingPoint(self):
+    def SelectBuildingPoint(self, unitType):
         prevCheck = self.currBuilding2Check
         wholeRound = False
 
@@ -277,7 +259,7 @@ class DoNothingSubAgent(BaseAgent):
             self.currBuilding2Check = (self.currBuilding2Check + 1) % len(self.building2Check)
             
             buildingType = self.building2Check[self.currBuilding2Check] 
-            target = SelectBuildingValidPoint(self.unit_type, buildingType)
+            target = SelectBuildingValidPoint(unitType, buildingType)
             if target[0] >= 0:
                 self.realBuilding2Check = buildingType
                 return target

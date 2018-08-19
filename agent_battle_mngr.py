@@ -61,23 +61,21 @@ USER_PLAY = 'play'
 
 ALL_TYPES = set([USER_PLAY, QTABLE, DQN, DQN_EMBEDDING_LOCATIONS, NAIVE_DECISION])
 
-
 GRID_SIZE = 5
 
-SUB_AGENT_DONOTHING = 0
-SUB_AGENT_ARMY_BATTLE = 1
-SUB_AGENT_BASE_BATTLE = 2
-NUM_SUB_AGENTS = 3
+ACTION_DO_NOTHING = 0
+ACTION_ARMY_BATTLE = 1
+ACTION_BASE_BATTLE = 2
+NUM_ACTIONS = 3
+
+SUB_AGENT_ARMY_BATTLE = ACTION_ARMY_BATTLE
+SUB_AGENT_BASE_BATTLE = ACTION_BASE_BATTLE
+ALL_SUB_AGENTS = [SUB_AGENT_ARMY_BATTLE, SUB_AGENT_BASE_BATTLE]
 
 SUBAGENTS_NAMES = {}
-SUBAGENTS_NAMES[SUB_AGENT_DONOTHING] = "BaseAgent"
 SUBAGENTS_NAMES[SUB_AGENT_ARMY_BATTLE] = "ArmyAttack"
 SUBAGENTS_NAMES[SUB_AGENT_BASE_BATTLE] = "BaseAttack"
 
-ACTION_DO_NOTHING = SUB_AGENT_DONOTHING
-ACTION_ARMY_BATTLE = SUB_AGENT_ARMY_BATTLE
-ACTION_BASE_BATTLE = SUB_AGENT_BASE_BATTLE
-NUM_ACTIONS = 3
 
 ACTION2STR = {}
 ACTION2STR[ACTION_DO_NOTHING] = "Do_Nothing"
@@ -171,7 +169,7 @@ class NaiveDecisionMakerBattleMngr(BaseDecisionMaker):
 
 class BattleMngr(BaseAgent):
     def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList):        
-        super(BattleMngr, self).__init__()
+        super(BattleMngr, self).__init__(STATE.SIZE)
         self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
         if self.playAgent:
             saPlayList = ["inherit"]
@@ -199,7 +197,7 @@ class BattleMngr(BaseAgent):
             self.subAgentPlay = self.FindActingHeirarchi()
             self.activeSubAgents = [self.subAgentPlay]
         else: 
-            self.activeSubAgents = list(range(NUM_SUB_AGENTS))
+            self.activeSubAgents = ALL_SUB_AGENTS
 
 
         self.current_action = None
@@ -242,69 +240,50 @@ class BattleMngr(BaseAgent):
         for key, sa in self.subAgents.items():
             if sa.FindActingHeirarchi() >= 0:
                 return key
-        
+
         return -1
 
-    def step(self, obs, moveNum):
-        super(BattleMngr, self).step(obs)   
-        if obs.first():
-            self.FirstStep()
-            
-
-        for sa in self.activeSubAgents:
-            self.subAgentsActions[sa] = self.subAgents[sa].step(obs, moveNum) 
-        
-        if moveNum == 0:
-            self.CreateState(obs)
-            self.Learn()
-            self.current_action = self.ChooseAction()  
-            self.PrintState()
-              
-        time.sleep(STEP_DURATION)
-
-        self.numStep += 1        
-
-        return self.current_action
-
-    def FirstStep(self):        
-        self.numStep = 0
+    def FirstStep(self, obs):        
+        super(BattleMngr, self).FirstStep()
 
         self.current_state = np.zeros(self.state_size, dtype=np.int, order='C')
         self.previous_state = np.zeros(self.state_size, dtype=np.int, order='C')
         
-        self.current_action = None
-        self.isActionCommitted = False
-
         self.subAgentsActions = {}
         for sa in range(NUM_ACTIONS):
             self.subAgentsActions[sa] = None
         
-        for sa in self.activeSubAgents:
-            self.subAgentsActions[sa] = self.subAgents[sa].FirstStep() 
+        for sa in SUBAGENTS_NAMES.keys():
+            self.subAgentsActions[sa] = self.subAgents[sa].FirstStep(obs) 
 
-    def LastStep(self, obs, reward = 0):
-
-        if self.trainAgent and self.current_action is not None:
-            self.decisionMaker.learn(self.current_state.copy(), self.current_action, float(reward), self.terminalState.copy(), True)
-
-            score = obs.observation["score_cumulative"][0]
-            self.decisionMaker.end_run(reward, score, self.numStep)
+    def EndRun(self, reward, score, stepNum):
+        if self.trainAgent:
+            self.decisionMaker.end_run(reward, score, stepNum)
         
-        for sa in self.activeSubAgents:
-            self.subAgents[sa].LastStep(obs)
+        for sa in ALL_SUB_AGENTS:
+            self.subAgents[sa].EndRun(reward, score, stepNum)
 
     
-    def Learn(self, reward = 0):
-        if self.trainAgent and self.isActionCommitted:
-            self.decisionMaker.learn(self.previous_state.copy(), self.current_action, reward, self.current_state.copy())
+    def Learn(self, reward, terminal):
+        if self.trainAgent:
+            if self.isActionCommitted:
+                self.decisionMaker.learn(self.previous_state, self.lastActionCommitted, reward, self.current_state, terminal)
+            elif terminal:
+                # if terminal reward entire state if action is not chosen for current step
+                for a in range(NUM_ACTIONS):
+                    self.decisionMaker.learn(self.previous_state, a, reward, self.terminalState, terminal)
+                    self.decisionMaker.learn(self.current_state, a, reward, self.terminalState, terminal)
 
         for sa in self.activeSubAgents:
-            self.subAgents[sa].Learn(reward)
+            self.subAgents[sa].Learn(reward, terminal)
 
         self.previous_state[:] = self.current_state[:]
         self.isActionCommitted = False
 
     def ChooseAction(self):
+        for sa in self.activeSubAgents:
+           self.subAgents[sa].ChooseAction()       
+    
         if self.playAgent:
             if self.illigalmoveSolveInModel:
                 validActions = self.ValidActions()
@@ -327,25 +306,33 @@ class BattleMngr(BaseAgent):
         else:
             action = self.subAgentPlay
 
+        self.current_action = action
         return action
 
-    def Action2Str(self, a = None):
-        if a == None:
-            a = self.current_action
-
-        return ACTION2STR[a] + "-->" + self.subAgents[a].Action2Str(self.subAgentsActions[a])
+    def Action2Str(self, a):
+        if a == ACTION_DO_NOTHING:
+            return ACTION2STR[a]
+        else:
+            return ACTION2STR[a] + "-->" + self.subAgents[a].Action2Str(self.subAgentsActions[a])
 
     def IsDoNothingAction(self, a):
         return self.subAgents[a].IsDoNothingAction(self.subAgentsActions[a])
 
     def Action2SC2Action(self, obs, moveNum):
         print("\n\nBattle mngr action\n\n")
-        action = self.step(obs, moveNum)
+        if moveNum == 0:
+            self.CreateState(obs)
+            self.Learn()
+            self.ChooseAction()
 
         self.isActionCommitted = True
-        return self.subAgents[action].Action2SC2Action(obs, self.subAgentsActions[action], moveNum)
+        self.lastActionCommitted = self.current_action
+        return self.subAgents[self.current_action].Action2SC2Action(obs, self.subAgentsActions[self.current_action], moveNum)
 
     def CreateState(self, obs):
+        for sa in ALL_SUB_AGENTS:
+            self.subAgents[sa].CreateState()
+
         self.current_state = np.zeros(self.state_size, dtype=np.int, order='C')
         
         self.GetSelfLoc(obs)
@@ -406,7 +393,7 @@ class BattleMngr(BaseAgent):
             enemyArmy_y, enemyArmy_x = ((unitType == unit) & (playerType == SC2_Params.PLAYER_HOSTILE)).nonzero()
             buildingPoints, buildingPower = CenterPoints(enemyArmy_y, enemyArmy_x, spec.numScreenPixels)
             enemyBuildingPoints += buildingPoints
-            enemyBuildingPower += buildingPower * self.BuildingValues[spec.name]
+            enemyBuildingPower += buildingPower # * self.BuildingValues[spec.name]
         
 
         

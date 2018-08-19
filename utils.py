@@ -7,6 +7,8 @@ from pysc2.lib import actions
 from pysc2.lib import features
 from pysc2.lib.units import Terran
 
+import numpy as np
+
 #base class for all shared data classes
 class EmptySharedData:
     def __init__(self):
@@ -19,9 +21,11 @@ class EmptyLock:
         return
 
 class BaseAgent(base_agent.BaseAgent):
-    def __init__(self, sharedData = None, dmTypes = None, decisionMaker = None, isMultiThreaded = None, playList = None, trainList = None):
+    def __init__(self, stateSize = None):
         super(BaseAgent, self).__init__()
-        pass
+        
+        if stateSize != None:
+            self.terminalState = np.zeros(stateSize, int)
     
     def GetDecisionMaker(self):
         return None
@@ -29,17 +33,22 @@ class BaseAgent(base_agent.BaseAgent):
     def FindActingHeirarchi(self):
         return -1
 
-    def step(self, obs, moveNum = None):
-        super(BaseAgent, self).step(obs)
-        return 0
-        
-    def FirstStep(self, obs = None):
+    def CreateState(self, obs):
         pass
 
-    def LastStep(self, obs, reward = 0):
+    def MonitorObservation(self, obs):
+        pass
+
+    def FirstStep(self, obs = None):
+        self.isActionCommitted = False
+
+        self.current_action = None
+        self.lastActionCommitted = None
+
+    def EndRun(self, reward, score, stepNum):
         pass
     
-    def Learn(self, reward = 0):
+    def Learn(self, reward = 0, terminal = False):
         pass
 
     def Action2SC2Action(self, obs, a, moveNum):
@@ -50,6 +59,10 @@ class BaseAgent(base_agent.BaseAgent):
 
     def Action2Str(self, a):
         return "None"
+    
+    def SubAgentActionChosen(self, action):
+        self.isActionCommitted = True
+        self.lastActionCommitted = action
 
 
 # params base
@@ -191,12 +204,27 @@ class TerranUnit:
                 Terran.OrbitalCommand, Terran.PlanetaryFortress, Terran.Reactor, Terran.Refinery, Terran.SensorTower, Terran.Starport, Terran.StarportReactor, 
                 Terran.StarportTechLab, Terran.SupplyDepot, Terran.SupplyDepotLowered, Terran.TechLab]
 
-                
+          
     ARMY= [Terran.Banshee, Terran.Ghost, Terran.Battlecruiser, Terran.Hellion, Terran.Hellbat, Terran.Liberator, Terran.LiberatorAG, Terran.Marauder, 
             Terran.Marine, Terran.Medivac, Terran.Raven, Terran.Reaper, Terran.SCV, Terran.SiegeTank, Terran.SiegeTankSieged, Terran.Thor, Terran.ThorHighImpactMode, 
             Terran.VikingAssault, Terran.VikingFighter]
 
+        
     FLYING_BUILDINGS = [Terran.BarracksFlying, Terran.CommandCenterFlying, Terran.FactoryFlying, Terran.OrbitalCommandFlying, Terran.StarportFlying]
+    
+    ALL_RESOURCES = SC2_Params.NEUTRAL_MINERAL_FIELD + SC2_Params.VESPENE_GAS_FIELD + [Terran.Refinery]
+
+    BLOCKING_TYPE = {}
+    BLOCKING_TYPE[0] = False
+    for building in BUILDINGS:
+        BLOCKING_TYPE[building] = True
+    for resource in ALL_RESOURCES:
+        BLOCKING_TYPE[resource] = True  
+
+    for army in ARMY:
+        BLOCKING_TYPE[army] = False
+    for flying in FLYING_BUILDINGS:
+        BLOCKING_TYPE[flying] = False     
 
     # building specific:
     class BuildingDetails:
@@ -432,21 +460,8 @@ def GetScreenCorners(obs):
     return [ca_y.min(), ca_x.min()] , [ca_y.max(), ca_x.max()]
 
 def BlockingType(unit):
-    return unit > 0 and unit != Terran.SCV and unit not in TerranUnit.ARMY
+    return TerranUnit.BLOCKING_TYPE[unit]
 
-def HaveSpace(unitType, heightsMap, yStart, xStart, neededSize):
-    height = heightsMap[yStart][xStart]
-    if height == 0:
-        return False
-
-    yEnd = min(yStart + neededSize, SC2_Params.SCREEN_SIZE)
-    xEnd = min(xStart + neededSize, SC2_Params.SCREEN_SIZE)
-    for y in range (yStart, yEnd):
-        for x in range (xStart, xEnd):
-            if BlockingType(unitType[y][x]) or height != heightsMap[y][x]:
-                return False
-    
-    return True
 
 def HaveSpaceMiniMap(occupyMat, heightsMap, yStart, xStart, neededSize):
     height = heightsMap[yStart][xStart]
@@ -552,93 +567,79 @@ def GetLocationForBuildingMiniMap(obs, commandCenterLoc, buildingType):
 
     return location
 
-def BlockingResourceGather(unitType, y, x, neededSize):
-
-    cc_y, cc_x = (unitType == Terran.CommandCenter).nonzero()
-    if len (cc_y) == 0:
+def BlockingResourceGather(unitType, y, x, ccMat, nonAllowedDirections2CC, maxCC):
+    if x > maxCC[SC2_Params.X_IDX] or y > maxCC[SC2_Params.Y_IDX]:
         return False
 
-    for yB in range (y, y +neededSize):
-        for xB in range (x, x + neededSize):
-
-            minDist = 100000
-            minIdx = -1
-            for i in range(0, len(cc_y)):
-                dist = DistForCmp([cc_y[i], cc_x[i]], [yB, xB])
-                if dist < minDist:
-                    minDist = dist
-                    minIdx= i
-
-            xDiff = xB - cc_x[minIdx]
-            yDiff = yB - cc_y[minIdx]
-
-            if yDiff == 0:
-                changeY = 0
-                if xDiff > 0:
-                    changeX = 1
-                else:
-                    changeX = -1 
-            elif xDiff == 0:
-                changeX = 0
-                if yDiff > 0:
-                    changeY = 1
-                else:
-                    changeY = -1 
-            else:
-                slope = yDiff / xDiff   
-                if abs(slope) > 1:
-                    changeX = xDiff / yDiff
-                    if y > cc_y[minIdx]:
-                        changeY = 1
-                    else:
-                        changeY = -1
-                
-                else:
-                    changeY = slope
-                    if x > cc_x[minIdx]:
-                        changeX = 1
-                    else:
-                        changeX = -1
-
-            currX = x
-            currY = y
-            for i in range(0, 10):
-                currX += changeX
-                currY += changeY
-                intX = int(currX)
-                intY = int(currY)
-
-                if IsInScreen(intY, intX):
-                    uType = unitType[intY][intX]
-                    if uType in TerranUnit.UNIT_CHAR.keys():
-                        unit = TerranUnit.UNIT_CHAR[uType]
-                        if unit == 'm' or unit == 'g' or unit == 'G':
-                            return True
-                else:
-                    break
-     
+    jump = 5
+    for direction in nonAllowedDirections2CC:
+        x2Check = x + direction[SC2_Params.X_IDX] * jump
+        y2Check = y + direction[SC2_Params.Y_IDX] * jump
+        if ccMat[y2Check][x2Check]:
+            return True
+    
     return False
 
-def GetLocationForBuilding(obs, cameraCornerNorthWest, cameraCornerSouthEast, buildingType):
+def GetLocationForBuilding(obs, buildingType, additionType = None):
     unitType = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
     if buildingType == Terran.Refinery:
         return GetLocationForOilRefinery(unitType)
 
-    neededSize = TerranUnit.BUILDING_SPEC[buildingType].screenPixels1Axis
+    ccMat = unitType == Terran.CommandCenter
+    hasCC = ccMat.any()
+    if hasCC:
+        maxCC = np.max(ccMat.nonzero(), axis=1)
+
+    notAllowedDirections2CC = [[1, 0], [1, 1], [0, 1]]
+
+    neededSizeY = TerranUnit.BUILDING_SPEC[buildingType].screenPixels1Axis
+    neededSizeX = neededSizeY
+    if additionType != None:
+        neededSizeX = neededSizeX + TerranUnit.BUILDING_SPEC[additionType].screenPixels1Axis
+
     cameraHeightMap = obs.observation['feature_screen'][SC2_Params.HEIGHT_MAP]
 
     foundLoc = False
     location = [-1, -1]
-    for y in range(0, SC2_Params.SCREEN_SIZE - neededSize):
-        for x in range(0, SC2_Params.SCREEN_SIZE - neededSize):                
-            if HaveSpace(unitType, cameraHeightMap, y, x, neededSize) and not BlockingResourceGather(unitType, y, x, neededSize):
-                foundLoc = True
-                location = [y + int(neededSize / 2), x + int(neededSize / 2)]
-                break
+    freeMat = np.zeros((SC2_Params.SCREEN_SIZE, SC2_Params.SCREEN_SIZE), int)
+    for y in range(SC2_Params.SCREEN_SIZE):
+        for x in range(SC2_Params.SCREEN_SIZE): 
+            if TerranUnit.BLOCKING_TYPE[unitType[y][x]]:
+                freeMat[y,x] = -1
+            elif hasCC and BlockingResourceGather(unitType, y, x, ccMat, notAllowedDirections2CC, maxCC):
+                freeMat[y,x] = -1
+            else:
+                freeMat[y,x] = cameraHeightMap[y][x]
 
+            yStart = y - neededSizeY + 1
+            xStart = x - neededSizeX + 1
+            
+            if yStart >= 0 and xStart >= 0:
+                yEnd = yStart + neededSizeY
+                xEnd = xStart + neededSizeX
+                heightVal = cameraHeightMap[yStart][xStart]
+                if heightVal > 0:
+                    foundLoc = (freeMat[yStart:yEnd, xStart:xEnd] == heightVal).all()
+                    if foundLoc:
+                        location = [yStart + int(neededSizeY / 2), xStart + int(neededSizeX / 2)]
+                        break
+                        
         if foundLoc:
             break
 
+    # uH = [0, 73, 109, 146, 170, 182, 219, 243, 249, 255]
+    # print("\n\n")
+    # for y in range(84):
+    #     for x in range(10, 84):
+    #         if y == location[0] and x == location [1]:
+    #             print(end = '  ')
+    #         else:
+    #             h = freeMat[y,x] 
+    #             h = 0 if h <= 36 else h 
+    #             print(uH.index(h), end = ' ')
+
+    #     print("|")
+    # print("\n\n")
     return location
 
 def GetLocationForOilRefinery(unitType):
@@ -680,37 +681,6 @@ def GetLocationForOilRefinery(unitType):
             return midPnt
 
     return [-1, -1]
-
-def GetLocationForBuildingAddition(obs, buildingType, buildingAddition, camNorthWest, camSouthEast, defaultPnt = []):
-    neededSize = TerranUnit.BUILDING_SPEC[buildingType].screenPixels1Axis
-    additionSize = TerranUnit.BUILDING_SPEC[buildingType].screenPixels1Axis
-    unitType = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
-    
-    cameraHeightMap = obs.observation['feature_screen'][SC2_Params.HEIGHT_MAP]
-  
-    # find right edge of building
-    if len(defaultPnt) > 0:
-        y, x = FindBuildingRightEdge(unitType, buildingType, defaultPnt)
-        if y < SC2_Params.SCREEN_SIZE and x < SC2_Params.SCREEN_SIZE and HaveSpace(unitType, cameraHeightMap, y, x, additionSize):
-            return defaultPnt
-
-    foundLoc = False
-    location = [-1, -1]
-    for y in range(0, SC2_Params.SCREEN_SIZE - neededSize):
-        for x in range(0, SC2_Params.SCREEN_SIZE - neededSize - additionSize):
-            if HaveSpace(unitType, cameraHeightMap, y, x, neededSize):
-                additionY = y + int((neededSize / 2) - (additionSize / 2))
-                additionX = x + neededSize
-                foundLoc = HaveSpace(unitType, cameraHeightMap, additionY, additionX, additionSize)
-                
-            if foundLoc:
-                location = [y + int(neededSize / 2), x + int(neededSize / 2)]
-                break
-
-        if foundLoc:
-            break
-
-    return location
 
 def FindBuildingRightEdge(unitType, buildingType, point):
     buildingMat = unitType == buildingType
@@ -820,10 +790,9 @@ neighbors2CheckUnit.append([1, 0])
 neighbors2CheckUnit.append([0, 1])
 neighbors2CheckUnit.append([0, -1])
 
-def SelectBuildingValidPoint(unit_type, buildingType, y = None, x = None):
+def SelectBuildingValidPoint(unit_type, buildingType):
     buildingMap = unit_type == buildingType
-    if y == None:
-        y, x = buildingMap.nonzero()
+    y, x = buildingMap.nonzero()
 
     if len(y) == 0:
         return [-1,-1]
@@ -858,3 +827,26 @@ def IsValidPoint4Select(buildingMap, y, x, neighbor2Check = neighbors2CheckBuild
             return False
 
     return True 
+
+
+
+np.array([[0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,2, 2, 2, 0, 0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 0, 0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 0, 0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])

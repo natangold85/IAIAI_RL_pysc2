@@ -68,6 +68,8 @@ class PlotMngr:
             self.resultFileList.append(resultFile)
 
         if directory2Save != '':
+            if not os.path.isdir("./" + directory2Save):
+                os.makedirs("./" + directory2Save)
             self.plotFName = './' + directory2Save + '/' + self.scriptName + "_resultsPlot"
         else:
             self.plotFName = self.scriptName + "_resultsPlot"

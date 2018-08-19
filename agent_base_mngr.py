@@ -5,6 +5,7 @@ import sys
 import logging
 import traceback
 import datetime
+from multiprocessing import Lock
 
 import numpy as np
 import pandas as pd
@@ -23,6 +24,10 @@ from utils_decisionMaker import LearnWithReplayMngr
 from utils_decisionMaker import UserPlay
 from utils_decisionMaker import BaseDecisionMaker
 
+from utils_results import PlotResults
+from utils_results import ResultFile
+
+
 from utils_qtable import QTableParamsExplorationDecay
 from utils_dqn import DQN_PARAMS
 
@@ -36,7 +41,6 @@ from agent_train_army import SharedDataTrain
 from agent_resource_gather import SharedDataGather
 
 from utils import GetScreenCorners
-from utils import GetLocationForBuildingAddition
 from utils import SwapPnt
 from utils import FindMiddle
 from utils import Scale2MiniMap
@@ -44,17 +48,21 @@ from utils import Scale2MiniMap
 AGENT_DIR = "BaseMngr/"
 AGENT_NAME = "base_mngr"
 
+
 ACTION_DO_NOTHING = 0
 ACTION_BUILD_BASE = 1
 ACTION_TRAIN_ARMY = 2
 NUM_ACTIONS = 3
 
+SUB_AGENT_BUILDER = 1
+SUB_AGENT_TRAINER = 2
+ALL_SUB_AGENTS = [SUB_AGENT_BUILDER, SUB_AGENT_TRAINER]
+
 ACTION2STR = ["DoNothing", "BuildBase", "TrainArmy"]
 
 SUBAGENTS_NAMES = {}
-SUBAGENTS_NAMES[ACTION_DO_NOTHING] = "BaseAgent"
-SUBAGENTS_NAMES[ACTION_BUILD_BASE] = "BuildBaseSubAgent"
-SUBAGENTS_NAMES[ACTION_TRAIN_ARMY] = "TrainArmySubAgent"
+SUBAGENTS_NAMES[SUB_AGENT_BUILDER] = "BuildBaseSubAgent"
+SUBAGENTS_NAMES[SUB_AGENT_TRAINER] = "TrainArmySubAgent"
 
 class SharedDataBase(SharedDataBuild, SharedDataTrain, SharedDataGather):
     def __init__(self):
@@ -120,6 +128,7 @@ class BASE_STATE:
 QTABLE = 'q'
 DQN = 'dqn'
 USER_PLAY = 'play'
+NAIVE = 'naive'
 
 # data for run type
 TYPE = "type"
@@ -129,7 +138,7 @@ RESULTS = "results"
 PARAMS = 'params'
 DIRECTORY = 'directory'
 
-ALL_TYPES = set([USER_PLAY, QTABLE, DQN])
+ALL_TYPES = set([USER_PLAY, QTABLE, DQN, NAIVE])
 
 # table names
 RUN_TYPES = {}
@@ -150,18 +159,48 @@ RUN_TYPES[DQN][DIRECTORY] = "baseMngr_dqn"
 RUN_TYPES[DQN][HISTORY] = "baseMngr_replayHistory"
 RUN_TYPES[DQN][RESULTS] = "baseMngr_result"
 
-STEP_DURATION = 0
+RUN_TYPES[NAIVE] = {}
+RUN_TYPES[NAIVE][DIRECTORY] = "baseMngr_naive"
+RUN_TYPES[NAIVE][RESULTS] = "baseMngr_result"
+
+
 
 DO_NOTHING_SC2_ACTION = actions.FunctionCall(SC2_Actions.NO_OP, [])
 
-NORMALIZATION = 300
-
-NORMALIZATION_LOCAL_REWARD = 20
-NORMALIZATION_GAME_REWARD = 300
-
 class NaiveDecisionMakerBaseMngr(BaseDecisionMaker):
-    def __init__(self):
+    def __init__(self, resultFName = None, directory = None, numTrials2Learn = 20):
         super(NaiveDecisionMakerBaseMngr, self).__init__()
+        self.resultFName = resultFName
+        self.trialNum = 0
+        self.numTrials2Learn = numTrials2Learn
+
+        if resultFName != None:
+            self.lock = Lock()
+            if directory != None:
+                fullDirectoryName = "./" + directory +"/"
+            else:
+                fullDirectoryName = "./"
+
+            if "new" in sys.argv:
+                loadFiles = False
+            else:
+                loadFiles = True
+
+            self.resultFile = ResultFile(fullDirectoryName + resultFName, numTrials2Learn, loadFiles)
+
+    def end_run(self, r, score, steps):
+        saveFile = False
+        self.trialNum += 1
+        
+        if self.resultFName != None:
+            self.lock.acquire()
+            if self.trialNum % self.numTrials2Learn == 0:
+                saveFile = True
+
+            self.resultFile.end_run(r, score, steps, saveFile)
+            self.lock.release()
+       
+        return saveFile
 
     def choose_action(self, state):
         action = 0
@@ -186,6 +225,10 @@ class NaiveDecisionMakerBaseMngr(BaseDecisionMaker):
             action = ACTION_TRAIN_ARMY
         elif numTechAll < 2:
             action = ACTION_BUILD_BASE
+        elif power < 30:
+            action = ACTION_TRAIN_ARMY
+        elif numSDAll < 6:
+            action = ACTION_BUILD_BASE
         else:
             action = ACTION_TRAIN_ARMY
 
@@ -199,7 +242,7 @@ class NaiveDecisionMakerBaseMngr(BaseDecisionMaker):
 
 class BaseMngr(BaseAgent):
     def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList):
-        super(BaseMngr, self).__init__()
+        super(BaseMngr, self).__init__(BASE_STATE.SIZE)
         
         self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
         if self.playAgent:
@@ -234,24 +277,19 @@ class BaseMngr(BaseAgent):
 
 
         # model params 
-        self.move_number = 0
-        self.step_num = 0
-
         self.minPriceMinerals = 50
-        self.accumulatedReward = 0
 
     def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
         
+        runType = RUN_TYPES[dmTypes[AGENT_NAME]]
+        # create agent dir
+        directory = dmTypes["directory"] + "/" + AGENT_DIR
+        if not os.path.isdir("./" + directory):
+            os.makedirs("./" + directory)
 
         if dmTypes[AGENT_NAME] == "naive":
-            decisionMaker = NaiveDecisionMakerBaseMngr()
-        else:
-            runType = RUN_TYPES[dmTypes[AGENT_NAME]]
-            # create agent dir
-            directory = dmTypes["directory"] + "/" + AGENT_DIR
-            if not os.path.isdir("./" + directory):
-                os.makedirs("./" + directory)
-                
+            decisionMaker = NaiveDecisionMakerBaseMngr(resultFName=runType[RESULTS], directory=directory + runType[DIRECTORY])
+        else:        
             decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME],  
                                                 resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY], isMultiThreaded=isMultiThreaded)
 
@@ -270,66 +308,39 @@ class BaseMngr(BaseAgent):
         
         return -1
 
-    def step(self, obs, moveNum):
-        super(BaseMngr, self).step(obs)
-        self.step_num += 1
-        
-        try:
-            self.unit_type = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
-
-            if obs.first():
-                self.FirstStep(obs)
-            
-            for sa in range(NUM_ACTIONS):
-                self.subAgentsActions[sa] = self.subAgents[sa].step(obs, moveNum) 
-
-            if moveNum == 0:
-                self.CreateState(obs)             
-                self.Learn()
-                self.current_action = self.ChooseAction()
-                #self.PrintState()
-
-            return self.current_action
-
-        except Exception as e:
-            print(e)
-            print(traceback.format_exc())
-            logging.error(traceback.format_exc())
-
     def FirstStep(self, obs):
-        # action and state
-        self.current_action = None
-        
-        self.previous_state = np.zeros(BASE_STATE.SIZE, dtype=np.int32, order='C')
+        super(BaseMngr, self).FirstStep()
+
+        # state       
         self.current_state = np.zeros(BASE_STATE.SIZE, dtype=np.int32, order='C')
         self.previous_scaled_state = np.zeros(BASE_STATE.SIZE, dtype=np.int32, order='C')
         self.current_scaled_state = np.zeros(BASE_STATE.SIZE, dtype=np.int32, order='C')
 
-        self.step_num = 0 
-        self.move_number = 0
-        self.accumulatedReward = 0
-
         self.subAgentsActions = {}
-        for sa in range(NUM_ACTIONS):
+        
+        for sa in ALL_SUB_AGENTS:
             self.subAgentsActions[sa] = None
+            self.subAgents[sa].FirstStep(obs) 
 
-    def LastStep(self, obs, reward = 0):
-        r = self.accumulatedReward / NORMALIZATION_GAME_REWARD
-        if self.trainAgent and self.current_action is not None:
-            self.decisionMaker.learn(self.current_state.copy(), self.current_action, r, self.terminalState.copy(), True)
-            score = obs.observation["score_cumulative"][0]
-            self.decisionMaker.end_run(r, score, self.step_num)
 
-        for sa in range(NUM_ACTIONS):
-            self.subAgents[sa].LastStep(obs, r) 
-            
+    def EndRun(self, reward, score, stepNum):
+        if self.trainAgent:
+            self.decisionMaker.end_run(reward, score, stepNum)
+        
+        for sa in ALL_SUB_AGENTS:
+            self.subAgents[sa].EndRun(reward, score, stepNum)
+
     def Action2SC2Action(self, obs, a, moveNum):
         return self.subAgents[a].Action2SC2Action(obs, self.subAgentsActions[a], moveNum)
     
     def IsDoNothingAction(self, a):
-        return self.subAgents[a].IsDoNothingAction(self.subAgentsActions[a])
+        return a == ACTION_DO_NOTHING or self.subAgents[a].IsDoNothingAction(self.subAgentsActions[a])
         
     def CreateState(self, obs):
+
+        for sa in ALL_SUB_AGENTS:
+            self.subAgents[sa].CreateState(obs) 
+
         for key, value in BASE_STATE.BUILDING_2_STATE_TRANSITION.items():
             self.current_state[value[0]] = self.sharedData.buildingCount[key]
             if value[1] >= 0:
@@ -359,21 +370,26 @@ class BaseMngr(BaseAgent):
         self.current_scaled_state[BASE_STATE.GAS_IDX] = int(self.current_scaled_state[BASE_STATE.GAS_IDX] / BASE_STATE.GAS_BUCKETING) * BASE_STATE.GAS_BUCKETING
         self.current_scaled_state[BASE_STATE.GAS_IDX] = min(BASE_STATE.GAS_MAX, self.current_scaled_state[BASE_STATE.GAS_IDX])
 
-    def Learn(self, reward = 0):
-        r = self.sharedData.prevActionReward / NORMALIZATION_LOCAL_REWARD + reward
-        self.accumulatedReward += self.sharedData.prevActionReward
-        if self.trainAgent and self.current_action is not None:
-            self.decisionMaker.learn(self.previous_state.copy(), self.current_action, r, self.current_state.copy())
-        
-        for sa in range(NUM_ACTIONS):
-            self.subAgents[sa].Learn(r) 
+    def Learn(self, reward, terminal):            
+        if self.trainAgent:
+            if self.isActionCommitted:
+                self.decisionMaker.learn(self.previous_scaled_state, self.lastActionCommitted, reward, self.current_scaled_state, terminal)
+            elif terminal:
+                # if terminal reward entire state if action is not chosen for current step
+                for a in range(NUM_ACTIONS):
+                    self.decisionMaker.learn(self.previous_scaled_state, a, reward, self.terminalState, terminal)
+                    self.decisionMaker.learn(self.current_scaled_state, a, reward, self.terminalState, terminal)
 
+        for sa in ALL_SUB_AGENTS:
+            self.subAgents[sa].Learn(reward, terminal) 
 
-        self.previous_state[:] = self.current_state[:]
         self.previous_scaled_state[:] = self.current_scaled_state[:]
-        self.sharedData.prevActionReward = 0.0
+        self.isActionCommitted = False
 
     def ChooseAction(self):
+        for sa in ALL_SUB_AGENTS:
+            self.subAgentsActions[sa] = self.subAgents[sa].ChooseAction() 
+
         if self.playAgent:
             if self.illigalmoveSolveInModel:
                 validActions = self.ValidActions()
@@ -382,7 +398,7 @@ class BaseMngr(BaseAgent):
                     exploreProb = self.decisionMaker.ExploreProb()              
                 else:
                     targetValues = True
-                    exploreProb = self.decisionMaker.TargetExploreProb()   
+                    exploreProb = 1 #self.decisionMaker.TargetExploreProb()   
 
                 if np.random.uniform() > exploreProb:
                     valVec = self.decisionMaker.ActionValuesVec(self.current_state, targetValues)   
@@ -396,6 +412,8 @@ class BaseMngr(BaseAgent):
         else:
             action = self.subAgentPlay
 
+
+        self.current_action = action
         return action
 
     def ValidActions(self):
@@ -415,9 +433,17 @@ class BaseMngr(BaseAgent):
         return (self.current_scaled_state[BASE_STATE.TRAIN_BUILDING_RELATED_IDX] > 0).any()
 
     def Action2Str(self, a):
-        return ACTION2STR[a] + "-->" + self.subAgents[a].Action2Str(self.subAgentsActions[a])
+        if a == ACTION_DO_NOTHING:
+            return ACTION2STR[a]
+        else:
+            return ACTION2STR[a] + "-->" + self.subAgents[a].Action2Str(self.subAgentsActions[a])
 
     def PrintState(self):
         for i in range(BASE_STATE.SIZE):
             print(BASE_STATE.IDX2STR[i], self.current_scaled_state[i], end = ', ')
         print(']')
+
+
+if __name__ == "__main__":
+    if "results" in sys.argv:
+        PlotResults(AGENT_NAME, AGENT_DIR, RUN_TYPES)

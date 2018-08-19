@@ -1,0 +1,1 @@
+{'difficulty' : '1', 'directory' : 'CmpBuilder', 'super': 'dqn_2l', 'base_mngr': 'dqn_2l', 'battle_mngr': 'naive', 'do_nothing': 'naive', 'army_attack': 'naive', 'base_attack': 'naive', 'builder': 'naive', 'trainer': 'dqn_2l'}

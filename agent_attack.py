@@ -50,13 +50,8 @@ NUM_ACTIONS = ACTIONS_END_IDX_ATTACK
 class SharedDataAttack(SharedDataBattle):
     def __init__(self):
         super(SharedDataAttack, self).__init__()
-        self.attackStarted = False
+        self.enemyMat = np.zeros((SC2_Params.MINIMAP_SIZE, SC2_Params.MINIMAP_SIZE), int)
         self.armyInAttack = {}
-        
-        self.armyLocation = [0] * (GRID_SIZE * GRID_SIZE)
-
-        self.attackGroupIdx = CONTROL_GROUP_ID_ATTACK
-
 
 class AttackAgent(BaseAgent):
     def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList): 
@@ -92,18 +87,17 @@ class AttackAgent(BaseAgent):
 
     def GetDecisionMaker(self):
         return self.decisionMaker
-
-    def step(self, obs, moveNum):
-        super(AttackAgent, self).step(obs)
-        
-        if obs.first():
-            self.FirstStep()
-        
-        return -1
-    
-    def LastStep(self, obs, reward = 0):
+   
+    def EndRun(self, reward, score, stepNum):     
         for sa in self.activeSubAgents:
-            self.subAgents[sa].LastStep(obs, reward) 
+            self.subAgents[sa].EndRun(reward, score, stepNum) 
+
+    def UpdateEnemyMat(self, obs):
+        miniMapEnemy = obs.observation['feature_minimap'][SC2_Params.PLAYER_RELATIVE_MINIMAP] == SC2_Params.PLAYER_HOSTILE
+
+        for y in range(SC2_Params.MINIMAP_SIZE):
+            for x in range(SC2_Params.MINIMAP_SIZE):                
+                self.sharedData.enemyMat[y,x] = miniMapEnemy[y][x]
 
     def FindActingHeirarchi(self):
         if self.playAgent:
@@ -132,15 +126,17 @@ class AttackAgent(BaseAgent):
                 self.action2Start[ACTIONS_START_IDX_ATTACK + idx] = [int(p_y), int(p_x)]
                 self.action2End[ACTIONS_START_IDX_ATTACK + idx] = [int(pEnd_y), int(pEnd_x)]
 
-    def FirstStep(self):
+    def FirstStep(self, obs):
+        super(AttackAgent, self).FirstStep()
+
         if self.playAgent:
             self.destinationCoord = [-1,-1]
             self.attackPreformAction = False
         else:
             self.attackPreformAction = True
 
-        for sa in self.activeSubAgents:
-            self.subAgents[sa].FirstStep() 
+        for sa in SUBAGENTS_NAMES.keys():
+            self.subAgents[sa].FirstStep(obs) 
 
     def Action2Str(self, a):
         if self.attackPreformAction:
@@ -159,8 +155,6 @@ class AttackAgent(BaseAgent):
 
             elif moveNum == 1:
                 self.sharedData.armyInAttack = self.ArmySelected(obs)
-                self.sharedData.armyLocation = self.GetSelectedUnitsLocation(obs)
-
 
                 if len(self.sharedData.armyInAttack) > 0:
                     coordBattle = self.InBattle(obs)
@@ -191,12 +185,6 @@ class AttackAgent(BaseAgent):
                     
         
         return SC2_Actions.DO_NOTHING_SC2_ACTION, True
-
-    def AttackStarted(self):
-        if self.playAgent:
-            return self.sharedData.attackStarted
-        else:
-            return SUB_AGENT_ID_BATTLEMNGR in self.activeSubAgents
 
     def ArmySelected(self, obs):
         unitCount = {}

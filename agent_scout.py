@@ -41,6 +41,10 @@ NUM_ACTIONS = ACTIONS_END_IDX_SCOUT
 
 RANGE_TO_END_SCOUT = 7
 
+MAX_FOG_COUNTER_2_ZERO = 40
+FOG_GROUPING = 5
+NON_VALID_MINIMAP_HEIGHT = 0  
+
 ACTION2STR = {}
 for i in range(ACTIONS_START_IDX_SCOUT, ACTIONS_END_IDX_SCOUT):
     ACTION2STR[i] = "idx_" + str(i)
@@ -50,7 +54,11 @@ CONTROL_GROUP_ID_SCOUT = [6]
 class SharedDataScout(EmptySharedData):
     def __init__(self):
         super(SharedDataScout, self).__init__()
-        self.attackGroupIdx = CONTROL_GROUP_ID_SCOUT
+        self.fogRatioMat = np.zeros((GRID_SIZE, GRID_SIZE), float)
+        self.fogCounterMat = np.zeros((GRID_SIZE, GRID_SIZE), int)
+        self.enemyMatObservation = np.zeros((GRID_SIZE,GRID_SIZE), int)
+
+        self.scoutGroupIdx = CONTROL_GROUP_ID_SCOUT
 
 class ScoutAgent(BaseAgent):
     def __init__(self,  sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList): 
@@ -81,20 +89,20 @@ class ScoutAgent(BaseAgent):
                 p_x = (SC2_Params.MINIMAP_SIZE * x /  gridSize) + toMiddle
                 self.action2Coord[idx] = [int(p_y), int(p_x)]
 
-    def step(self, obs, moveNum):
-        super(ScoutAgent, self).step(obs)
-        if obs.first():
-            self.FirstStep(obs)
-        
-        if self.scoutInProgress:
-            self.scoutInProgress = not self.IsScoutEnd(obs)
-
-        return -1
-
     def FirstStep(self, obs):
+        super(ScoutAgent, self).FirstStep()  
+
         self.scoutChosen = False
         self.scoutInProgress = False
-        self.lastAction = None
+
+        self.fogMatFull = np.zeros((SC2_Params.MINIMAP_SIZE, SC2_Params.MINIMAP_SIZE), int)
+        self.fogCounterMatFull = np.zeros((SC2_Params.MINIMAP_SIZE, SC2_Params.MINIMAP_SIZE), int)
+        self.enemyMatObservationFull = np.zeros((SC2_Params.MINIMAP_SIZE,SC2_Params.MINIMAP_SIZE), bool)
+
+        nonVal_y, nonVal_x = (obs.observation['feature_minimap'][SC2_Params.HEIGHT_MAP] == NON_VALID_MINIMAP_HEIGHT).nonzero()
+        self.fogMatFull[nonVal_y,nonVal_x] = -1  
+        self.fogCounterMatFull[nonVal_y,nonVal_x] = -1  
+               
 
     def Action2SC2Action(self, obs, a, moveNum):     
         if moveNum == 0:
@@ -125,6 +133,67 @@ class ScoutAgent(BaseAgent):
                     return self.GoToLocationAction(a)
         
         return SC2_Actions.DO_NOTHING_SC2_ACTION, True
+
+    def MonitorObservation(self, obs):
+        miniMapVisi = obs.observation['feature_minimap'][SC2_Params.VISIBILITY_MINIMAP]
+        miniMapHeights = obs.observation['feature_minimap'][SC2_Params.HEIGHT_MAP] != NON_VALID_MINIMAP_HEIGHT
+        
+        # counter above threshold are treated as non-visibles
+        self.fogMatFull[(miniMapHeights) & (miniMapVisi == SC2_Params.SLIGHT_FOG) & (self.fogCounterMatFull >= MAX_FOG_COUNTER_2_ZERO)] = SC2_Params.FOG
+
+        # idx for slight fog = (valid & visi=slight & counter < threshold)
+        ySlightFog, xSlightFog = ((miniMapHeights) & (miniMapVisi == SC2_Params.SLIGHT_FOG) & (self.fogCounterMatFull < MAX_FOG_COUNTER_2_ZERO)).nonzero()
+        self.fogMatFull[ySlightFog, xSlightFog] = SC2_Params.SLIGHT_FOG
+        self.fogCounterMatFull[ySlightFog,xSlightFog] += 1
+
+        # treat absolute values (fog or in sight)
+        yInSight, xInSight = ((miniMapHeights) & (miniMapVisi == SC2_Params.IN_SIGHT)).nonzero()
+        self.fogMatFull[yInSight, xInSight] = SC2_Params.IN_SIGHT
+        self.fogCounterMatFull[yInSight, xInSight] = 0  
+
+        yFog, xFog = ((miniMapHeights) & (miniMapVisi == SC2_Params.FOG)).nonzero()
+        self.fogMatFull[yFog, xFog] = SC2_Params.FOG
+        self.fogCounterMatFull[yFog, xFog] = MAX_FOG_COUNTER_2_ZERO 
+
+        # calculate enemy mat
+        miniMapEnemy = obs.observation['feature_minimap'][SC2_Params.PLAYER_RELATIVE_MINIMAP] == SC2_Params.PLAYER_HOSTILE        
+        # if enemy and in sight insert enemy
+        self.enemyMatObservationFull[((miniMapEnemy) & (self.fogMatFull == SC2_Params.IN_SIGHT)).nonzero()] = True
+        # if fog treat as unknown
+        self.enemyMatObservationFull[(self.fogMatFull == SC2_Params.FOG).nonzero()] = False
+
+        if self.scoutInProgress:
+            self.scoutInProgress = not self.IsScoutEnd(obs)    
+
+    def CreateState(self, obs):
+        # bucket fog counter (treat fog values as max counter value)
+        bucketFogCounter = (self.fogCounterMatFull / FOG_GROUPING).astype(int)
+
+        # scale fogmat, counter and enemy observation to gridsize
+        for y in range(GRID_SIZE):
+            startY = int(y * (SC2_Params.MINIMAP_SIZE / GRID_SIZE))
+            endY = int((y + 1) * (SC2_Params.MINIMAP_SIZE / GRID_SIZE))
+            for x in range(GRID_SIZE):
+                startX = int(x * (SC2_Params.MINIMAP_SIZE / GRID_SIZE))
+                endX = int((x + 1) * (SC2_Params.MINIMAP_SIZE / GRID_SIZE))
+
+                # count enemy power
+                numEnemyPixels = np.sum(self.enemyMatObservationFull[startY:endY, startX:endX])
+                self.sharedData.enemyMatObservation[y, x] = numEnemyPixels
+                
+                # calc fog ratio
+                numInSight = np.sum(self.fogMatFull[startY:endY, startX:endX] > SC2_Params.FOG)
+                totNum = np.sum(self.fogMatFull[startY:endY, startX:endX] >= SC2_Params.FOG)
+                self.sharedData.fogRatioMat[y, x] = numInSight / totNum
+
+                # calc most frequent fog group count
+                values,counts = np.unique(bucketFogCounter[startY:endY, startX:endX],return_counts=True)
+                # pop non valid values if exist
+                if values[0] == -1:
+                    counts.pop(0)
+                    values.pop(0)
+                
+                self.sharedData.fogCounterMat[y, x] = values[np.argmax(counts)]
 
     def SelectScoutingUnit(self, obs):
         unit2Select = Terran.Marine
@@ -173,11 +242,7 @@ class ScoutAgent(BaseAgent):
         goTo = self.action2Coord[a - ACTIONS_START_IDX_SCOUT]
         self.scoutInProgress = True
         self.goToLast = goTo
-        self.lastAction = a
         return actions.FunctionCall(SC2_Actions.ATTACK_MINIMAP, [SC2_Params.NOT_QUEUED, SwapPnt(goTo)]), True
     
     def Action2Str(self, a):
-        if self.scoutInProgress:
-            return "prevAction=" + ACTION2STR[self.lastAction]
-        else:
-            return ACTION2STR[a]
+        return ACTION2STR[a]

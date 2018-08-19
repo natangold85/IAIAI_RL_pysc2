@@ -7,17 +7,6 @@ import time
 import datetime
 import sys
 
-import tensorflow as tf
-
-from utils_dqn import DQN
-from hallucination import HallucinationMngrPSFunc
-
-import matplotlib.pyplot as plt
-
-from multiprocessing import Process, Lock, Value, Array, Manager
-
-from utils import ParamsBase
-
 class TransitionTable:
     def __init__(self, numActions, tableName, newTable = False):
         self.tableName = tableName
