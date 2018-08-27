@@ -81,6 +81,8 @@ class LearnWithReplayMngr(BaseDecisionMaker):
 
         if directory != "":
             fullDirectoryName = "./" + directory +"/"
+            if not os.path.isdir(fullDirectoryName):
+                os.makedirs(fullDirectoryName)
         else:
             fullDirectoryName = "./"
         
@@ -111,7 +113,6 @@ class LearnWithReplayMngr(BaseDecisionMaker):
                 self.transitions = pd.read_pickle(self.histFileName, compression='gzip')
         else:
             self.histFileName = historyFileName
-
 
 
         if resultFileName != '':

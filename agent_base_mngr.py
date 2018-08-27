@@ -40,10 +40,16 @@ from agent_build_base import SharedDataBuild
 from agent_train_army import SharedDataTrain
 from agent_resource_gather import SharedDataGather
 
+# state data
+from agent_build_base import BUILD_STATE
+from agent_train_army import TRAIN_STATE
+
+
 from utils import GetScreenCorners
 from utils import SwapPnt
 from utils import FindMiddle
 from utils import Scale2MiniMap
+from utils import IsolateArea
 
 AGENT_DIR = "BaseMngr/"
 AGENT_NAME = "base_mngr"
@@ -92,36 +98,81 @@ class BASE_STATE:
     IN_PROGRESS_REFINERY_IDX = 10
     IN_PROGRESS_BARRACKS_IDX = 11
     IN_PROGRESS_FACTORY_IDX = 12
-    IN_PROGRESS_RECTORS_IDX = 13
+    IN_PROGRESS_REACTORS_IDX = 13
     IN_PROGRESS_TECHLAB_IDX = 14    
 
-    ARMY_POWER = 15
-    QUEUE_BARRACKS = 16
-    QUEUE_FACTORY = 17
-    QUEUE_TECHLAB = 18
+    QUEUE_BARRACKS = 15
+    QUEUE_FACTORY = 16
+    QUEUE_TECHLAB = 17
+
+    ARMY_POWER = 18
 
     SIZE = 19
 
-    BUILDING_RELATED_IDX = [COMMAND_CENTER_IDX] + list(range(SUPPLY_DEPOT_IDX, ARMY_POWER))
-    TRAIN_BUILDING_RELATED_IDX = [BARRACKS_IDX, FACTORY_IDX]
+    STATE_IDX_MNGR_2_BUILDER_TRANSITIONS = {}
+    STATE_IDX_MNGR_2_BUILDER_TRANSITIONS[COMMAND_CENTER_IDX] = BUILD_STATE.COMMAND_CENTER_IDX
+    STATE_IDX_MNGR_2_BUILDER_TRANSITIONS[SUPPLY_DEPOT_IDX] = BUILD_STATE.SUPPLY_DEPOT_IDX
+    STATE_IDX_MNGR_2_BUILDER_TRANSITIONS[REFINERY_IDX] = BUILD_STATE.REFINERY_IDX
+    STATE_IDX_MNGR_2_BUILDER_TRANSITIONS[BARRACKS_IDX] = BUILD_STATE.BARRACKS_IDX
+    STATE_IDX_MNGR_2_BUILDER_TRANSITIONS[FACTORY_IDX] = BUILD_STATE.FACTORY_IDX
+    STATE_IDX_MNGR_2_BUILDER_TRANSITIONS[REACTORS_IDX] = BUILD_STATE.REACTORS_IDX
+    STATE_IDX_MNGR_2_BUILDER_TRANSITIONS[TECHLAB_IDX] = BUILD_STATE.TECHLAB_IDX
+    STATE_IDX_MNGR_2_BUILDER_TRANSITIONS[IN_PROGRESS_SUPPLY_DEPOT_IDX] = BUILD_STATE.IN_PROGRESS_SUPPLY_DEPOT_IDX
+    STATE_IDX_MNGR_2_BUILDER_TRANSITIONS[IN_PROGRESS_REFINERY_IDX] = BUILD_STATE.IN_PROGRESS_REFINERY_IDX
+    STATE_IDX_MNGR_2_BUILDER_TRANSITIONS[IN_PROGRESS_BARRACKS_IDX] = BUILD_STATE.IN_PROGRESS_BARRACKS_IDX
+    STATE_IDX_MNGR_2_BUILDER_TRANSITIONS[IN_PROGRESS_FACTORY_IDX] = BUILD_STATE.IN_PROGRESS_FACTORY_IDX
+    STATE_IDX_MNGR_2_BUILDER_TRANSITIONS[IN_PROGRESS_REACTORS_IDX] = BUILD_STATE.IN_PROGRESS_REACTORS_IDX
+    STATE_IDX_MNGR_2_BUILDER_TRANSITIONS[IN_PROGRESS_TECHLAB_IDX] = BUILD_STATE.IN_PROGRESS_TECHLAB_IDX
 
+
+    STATE_IDX_MNGR_2_TRAINER_TRANSITIONS = {}
+    STATE_IDX_MNGR_2_TRAINER_TRANSITIONS[QUEUE_BARRACKS] = TRAIN_STATE.QUEUE_BARRACKS
+    STATE_IDX_MNGR_2_TRAINER_TRANSITIONS[QUEUE_FACTORY] = TRAIN_STATE.QUEUE_FACTORY
+    STATE_IDX_MNGR_2_TRAINER_TRANSITIONS[QUEUE_TECHLAB] = TRAIN_STATE.QUEUE_FACTORY_WITH_TECHLAB
+
+
+    BUILDING_RELATED_IDX = [COMMAND_CENTER_IDX] + list(range(SUPPLY_DEPOT_IDX, ARMY_POWER))
+    
+    TRAIN_BUILDING_RELATED_IDX = [BARRACKS_IDX, FACTORY_IDX]
     BUILDING_2_STATE_TRANSITION = {}
     BUILDING_2_STATE_TRANSITION[Terran.CommandCenter] = [COMMAND_CENTER_IDX, -1]
     BUILDING_2_STATE_TRANSITION[Terran.SupplyDepot] = [SUPPLY_DEPOT_IDX, IN_PROGRESS_SUPPLY_DEPOT_IDX]
     BUILDING_2_STATE_TRANSITION[Terran.Refinery] = [REFINERY_IDX, IN_PROGRESS_REFINERY_IDX]
     BUILDING_2_STATE_TRANSITION[Terran.Barracks] = [BARRACKS_IDX, IN_PROGRESS_BARRACKS_IDX]
     BUILDING_2_STATE_TRANSITION[Terran.Factory] = [FACTORY_IDX, IN_PROGRESS_FACTORY_IDX]
-    BUILDING_2_STATE_TRANSITION[Terran.Reactor] = [REACTORS_IDX, IN_PROGRESS_RECTORS_IDX]
-    BUILDING_2_STATE_TRANSITION[Terran.TechLab] = [TECHLAB_IDX, IN_PROGRESS_TECHLAB_IDX]
+    BUILDING_2_STATE_TRANSITION[Terran.BarracksReactor] = [REACTORS_IDX, IN_PROGRESS_REACTORS_IDX]
+    BUILDING_2_STATE_TRANSITION[Terran.FactoryTechLab] = [TECHLAB_IDX, IN_PROGRESS_TECHLAB_IDX]
 
     BUILDING_2_STATE_QUEUE_TRANSITION = {}
 
     BUILDING_2_STATE_QUEUE_TRANSITION[Terran.Barracks] = QUEUE_BARRACKS
     BUILDING_2_STATE_QUEUE_TRANSITION[Terran.Factory] = QUEUE_FACTORY
-    BUILDING_2_STATE_QUEUE_TRANSITION[Terran.TechLab] = QUEUE_TECHLAB
+    BUILDING_2_STATE_QUEUE_TRANSITION[Terran.FactoryTechLab] = QUEUE_TECHLAB
 
+    IDX2STR = {}
 
-    IDX2STR = ["CC", "MIN", "GAS", "SD", "REF", "BA", "FA", "REA", "TECH", "SD_B", "REF_B", "BA_B", "FA_B", "REA_B", "TECH_B", "POWER", "BA_Q", "FA_Q", "TE_Q"]
+    IDX2STR[COMMAND_CENTER_IDX] = "CC"
+    IDX2STR[MINERALS_IDX] = "MIN"
+    IDX2STR[GAS_IDX] = "GAS"
+    IDX2STR[SUPPLY_DEPOT_IDX] = "SD"
+    IDX2STR[REFINERY_IDX] = "REF"
+    IDX2STR[BARRACKS_IDX] = "BA"
+    IDX2STR[FACTORY_IDX] = "FA"
+    IDX2STR[REACTORS_IDX] =  "REA"
+    IDX2STR[TECHLAB_IDX] = "TECH"
+
+    IDX2STR[IN_PROGRESS_SUPPLY_DEPOT_IDX] = "SD_B"
+    IDX2STR[IN_PROGRESS_REFINERY_IDX] = "REF_B"
+    IDX2STR[IN_PROGRESS_BARRACKS_IDX] = "BA_B"
+    IDX2STR[IN_PROGRESS_FACTORY_IDX] = "FA_B"
+    IDX2STR[IN_PROGRESS_REACTORS_IDX] = "REA_B"
+    IDX2STR[IN_PROGRESS_TECHLAB_IDX] = "TECH_B"
+
+    IDX2STR[QUEUE_BARRACKS] = "BA_Q"
+    IDX2STR[QUEUE_FACTORY] = "FA_Q"
+    IDX2STR[QUEUE_TECHLAB] = "TE_Q"
+
+    IDX2STR[ARMY_POWER] = "POWER"
 
 # possible types of play
 
@@ -164,9 +215,6 @@ RUN_TYPES[NAIVE][DIRECTORY] = "baseMngr_naive"
 RUN_TYPES[NAIVE][RESULTS] = "baseMngr_result"
 
 
-
-DO_NOTHING_SC2_ACTION = actions.FunctionCall(SC2_Actions.NO_OP, [])
-
 class NaiveDecisionMakerBaseMngr(BaseDecisionMaker):
     def __init__(self, resultFName = None, directory = None, numTrials2Learn = 20):
         super(NaiveDecisionMakerBaseMngr, self).__init__()
@@ -178,6 +226,8 @@ class NaiveDecisionMakerBaseMngr(BaseDecisionMaker):
             self.lock = Lock()
             if directory != None:
                 fullDirectoryName = "./" + directory +"/"
+                if not os.path.isdir(fullDirectoryName):
+                    os.makedirs(fullDirectoryName)
             else:
                 fullDirectoryName = "./"
 
@@ -209,7 +259,7 @@ class NaiveDecisionMakerBaseMngr(BaseDecisionMaker):
         numRefAll = state[BASE_STATE.REFINERY_IDX] + state[BASE_STATE.IN_PROGRESS_REFINERY_IDX]
         numBaAll = state[BASE_STATE.BARRACKS_IDX] + state[BASE_STATE.IN_PROGRESS_BARRACKS_IDX]
         numFaAll = state[BASE_STATE.FACTORY_IDX] + state[BASE_STATE.IN_PROGRESS_FACTORY_IDX]
-        numReactorsAll = state[BASE_STATE.REACTORS_IDX] + state[BASE_STATE.IN_PROGRESS_RECTORS_IDX]
+        numReactorsAll = state[BASE_STATE.REACTORS_IDX] + state[BASE_STATE.IN_PROGRESS_REACTORS_IDX]
         numTechAll = state[BASE_STATE.TECHLAB_IDX] + state[BASE_STATE.IN_PROGRESS_TECHLAB_IDX]
         numBarracksQ = state[BASE_STATE.QUEUE_BARRACKS]
         
@@ -227,7 +277,7 @@ class NaiveDecisionMakerBaseMngr(BaseDecisionMaker):
             action = ACTION_BUILD_BASE
         elif power < 30:
             action = ACTION_TRAIN_ARMY
-        elif numSDAll < 6:
+        elif numSDAll < 9:
             action = ACTION_BUILD_BASE
         else:
             action = ACTION_TRAIN_ARMY
@@ -282,10 +332,7 @@ class BaseMngr(BaseAgent):
     def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
         
         runType = RUN_TYPES[dmTypes[AGENT_NAME]]
-        # create agent dir
         directory = dmTypes["directory"] + "/" + AGENT_DIR
-        if not os.path.isdir("./" + directory):
-            os.makedirs("./" + directory)
 
         if dmTypes[AGENT_NAME] == "naive":
             decisionMaker = NaiveDecisionMakerBaseMngr(resultFName=runType[RESULTS], directory=directory + runType[DIRECTORY])
@@ -327,30 +374,33 @@ class BaseMngr(BaseAgent):
         if self.trainAgent:
             self.decisionMaker.end_run(reward, score, stepNum)
         
-        for sa in ALL_SUB_AGENTS:
-            self.subAgents[sa].EndRun(reward, score, stepNum)
+        for subAgent in self.subAgents.values():
+            subAgent.EndRun(reward, score, stepNum)
+
+    def MonitorObservation(self, obs):
+        for subAgent in self.subAgents.values():
+            subAgent.MonitorObservation(obs)
 
     def Action2SC2Action(self, obs, a, moveNum):
         return self.subAgents[a].Action2SC2Action(obs, self.subAgentsActions[a], moveNum)
     
     def IsDoNothingAction(self, a):
         return a == ACTION_DO_NOTHING or self.subAgents[a].IsDoNothingAction(self.subAgentsActions[a])
-        
-    def CreateState(self, obs):
 
+    def CreateState(self, obs):
         for sa in ALL_SUB_AGENTS:
             self.subAgents[sa].CreateState(obs) 
 
-        for key, value in BASE_STATE.BUILDING_2_STATE_TRANSITION.items():
-            self.current_state[value[0]] = self.sharedData.buildingCount[key]
-            if value[1] >= 0:
-                self.current_state[value[1]] = len(self.sharedData.buildCommands[key])
+        # retrieve state information from sub agents
+        for key, value in BASE_STATE.STATE_IDX_MNGR_2_BUILDER_TRANSITIONS.items():
+            self.current_state[key] = self.subAgents[SUB_AGENT_BUILDER].GetStateVal(value)
+
+        for key, value in BASE_STATE.STATE_IDX_MNGR_2_TRAINER_TRANSITIONS.items():
+            self.current_state[key] = self.subAgents[SUB_AGENT_TRAINER].GetStateVal(value)
+
 
         self.current_state[BASE_STATE.MINERALS_IDX] = obs.observation['player'][SC2_Params.MINERALS]
         self.current_state[BASE_STATE.GAS_IDX] = obs.observation['player'][SC2_Params.VESPENE]
-
-        for key, value in BASE_STATE.BUILDING_2_STATE_QUEUE_TRANSITION.items():
-            self.current_state[value] = len(self.sharedData.trainingQueue[key])
         
         power = 0
         for unit, num in self.sharedData.armySize.items():
@@ -425,9 +475,6 @@ class BaseMngr(BaseAgent):
                 valid.append(ACTION_TRAIN_ARMY)
         
         return valid
-
-    def NewBuildings(self):
-        return (self.previous_scaled_state[BASE_STATE.BUILDING_RELATED_IDX] != self.current_scaled_state[BASE_STATE.BUILDING_RELATED_IDX]).any()
     
     def ArmyBuildingExist(self):
         return (self.current_scaled_state[BASE_STATE.TRAIN_BUILDING_RELATED_IDX] > 0).any()
@@ -442,7 +489,6 @@ class BaseMngr(BaseAgent):
         for i in range(BASE_STATE.SIZE):
             print(BASE_STATE.IDX2STR[i], self.current_scaled_state[i], end = ', ')
         print(']')
-
 
 if __name__ == "__main__":
     if "results" in sys.argv:

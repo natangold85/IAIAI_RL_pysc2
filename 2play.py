@@ -17,7 +17,7 @@ from utils import PrintScreen
 STEP_DURATION = 0.1
 DO_NOTHING_SC2_ACTION = actions.FunctionCall(SC2_Actions.NO_OP, [])
 
-#python -m pysc2.bin.agent --agent 2play.Play --map mapName --max_agent_steps=0 
+# $ python -m pysc2.bin.agent --agent 2play.Play --map mapName --max_agent_steps=0 
 
 class Play(base_agent.BaseAgent):
     def __init__(self):        

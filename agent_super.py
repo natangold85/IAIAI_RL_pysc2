@@ -37,8 +37,10 @@ from agent_attack import AttackAgent
 from agent_base_mngr import SharedDataBase
 from agent_attack import SharedDataAttack
 from agent_scout import SharedDataScout
+from agent_do_nothing import SharedDataResourceMngr
 
 from agent_base_mngr import BASE_STATE
+from agent_build_base import Building
 
 from utils import SwapPnt
 from utils import FindMiddle
@@ -191,15 +193,16 @@ RUN_TYPES[USER_PLAY][TYPE] = "play"
 
 UNIT_VALUE_TABLE_NAME = 'unit_value_table.gz'
 
-class SharedDataSuper(SharedDataBase, SharedDataAttack, SharedDataScout):
+class SharedDataSuper(SharedDataBase, SharedDataAttack, SharedDataScout, SharedDataResourceMngr):
     def __init__(self):
         super(SharedDataSuper, self).__init__()
         self.numStep = 0
         self.numAgentStep = 0
 
 
-NORMALIZATION_TRAIN_LOCAL_REWARD = 20
-NORMALIZATION_TRAIN_GAME_REWARD = 100
+REWARD_MAX_SUPPLY = -0.005
+NORMALIZATION_TRAIN_LOCAL_REWARD = 1
+NORMALIZATION_TRAIN_GAME_REWARD = 2
 
     
 class SuperAgent(BaseAgent):
@@ -251,12 +254,11 @@ class SuperAgent(BaseAgent):
 
         self.move_number = 0
 
+        self.emptyAgent = False
+
     def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
         
         runType = RUN_TYPES[dmTypes[AGENT_NAME]]
-        # create proj directory
-        if not os.path.isdir("./" + dmTypes["directory"]):
-            os.makedirs("./" + dmTypes["directory"])
 
         # create agent dir
         directory = dmTypes["directory"] + "/" + AGENT_DIR
@@ -310,11 +312,11 @@ class SuperAgent(BaseAgent):
             self.Learn()
             self.ChooseAction()
             # if self.playAgent:
-            #     print("\nactionChosen =", self.Action2Str(False), "\nactionActed =", self.Action2Str(True))
-            #     self.PrintState()
+            # print("\nactionChosen =", self.Action2Str(False), "\nactionActed =", self.Action2Str(True))
+            # self.PrintState()
+
         
         sc2Action = self.ActAction(obs)
-
         return self.SendAction(sc2Action)
 
     def FirstStep(self, obs):
@@ -330,9 +332,7 @@ class SuperAgent(BaseAgent):
             cameraCornerNorthWest , cameraCornerSouthEast = GetScreenCorners(obs)
             miniMapLoc = Scale2MiniMap(middleCC, cameraCornerNorthWest, cameraCornerSouthEast)
             self.sharedData.commandCenterLoc = [miniMapLoc]
-            self.sharedData.buildingCount[Terran.CommandCenter] += 1   
-            print("first step North East =", cameraCornerNorthWest)
-
+            self.sharedData.buildingCompleted[Terran.CommandCenter].append(Building(middleCC))
 
         self.sharedData.unitTrainValue = self.unitPower
         self.sharedData.currBaseState = np.zeros(STATE.BASE_END - STATE.BASE_START, dtype=np.int32, order='C')
@@ -347,7 +347,7 @@ class SuperAgent(BaseAgent):
 
         if SUB_AGENT_ID_BASE in self.activeSubAgents and not self.trainAgent:
             self.accumulatedTrainReward = 0.0
-            self.discountForLocalReward = 0.99
+            self.discountForLocalReward = 0.995
 
         self.subAgentsActions = {}
         for sa in range(NUM_SUB_AGENTS):
@@ -358,13 +358,15 @@ class SuperAgent(BaseAgent):
 
         self.go2BaseAction = actions.FunctionCall(SC2_Actions.MOVE_CAMERA, [SwapPnt(coord)])
 
+        self.maxSupply = False
+
     def LastStep(self, obs):
         if self.useMapRewards:
             reward = obs.reward
         else:
             reward = 0
 
-        baseReward =reward
+        baseReward = reward
         if SUB_AGENT_ID_BASE in self.activeSubAgents and not self.trainAgent:
             reward += self.accumulatedTrainReward / NORMALIZATION_TRAIN_GAME_REWARD
         
@@ -460,6 +462,8 @@ class SuperAgent(BaseAgent):
     def MonitorObservation(self, obs):
         for sa in self.activeSubAgents:
             self.subAgents[sa].MonitorObservation(obs)
+
+        self.maxSupply = obs.observation['player'][SC2_Params.SUPPLY_USED] == obs.observation['player'][SC2_Params.SUPPLY_CAP]
                      
     def CreateState(self, obs):
         for subAgent in self.subAgents.values():
@@ -477,6 +481,7 @@ class SuperAgent(BaseAgent):
                 self.current_state[idx + STATE.FOG_COUNTER_MAT_START] = self.sharedData.fogCounterMat[y, x]
 
         self.current_state[STATE.TIME_LINE_IDX] = self.sharedData.numStep    
+    
         self.ScaleCurrState()
 
     def AdjustAction2SubAgents(self):
@@ -500,7 +505,10 @@ class SuperAgent(BaseAgent):
         
         if SUB_AGENT_ID_BASE in self.activeSubAgents and not self.trainAgent:
             localReward = self.sharedData.prevTrainActionReward * pow(self.discountForLocalReward, self.sharedData.numAgentStep)
-            reward = localReward / NORMALIZATION_TRAIN_LOCAL_REWARD + reward
+            maxSupplyReward = self.maxSupply * REWARD_MAX_SUPPLY
+            reward = localReward / NORMALIZATION_TRAIN_LOCAL_REWARD + maxSupplyReward + reward
+            # if reward != 0 :
+            #     print("local reward =", localReward, "normalization = ", reward)
             self.accumulatedTrainReward += localReward
             self.sharedData.prevTrainActionReward = 0
 
@@ -518,26 +526,70 @@ class SuperAgent(BaseAgent):
         self.current_scaled_state[STATE.TIME_LINE_IDX] = int(self.current_state[STATE.TIME_LINE_IDX] / STATE.TIME_LINE_BUCKETING)
 
     def PrintState(self):
-        self.subAgents[SUB_AGENT_ID_BASE].PrintState()
+        print("barracks: min =",  self.current_state[STATE.BASE.QUEUE_BARRACKS], end = '')
+        barList = self.sharedData.buildingCompleted[Terran.Barracks] 
+        idx = 0
+        numInQ = 0
 
-        print("self mat     fog mat     enemy mat")
-        for y in range(STATE.GRID_SIZE):
-            for x in range(STATE.GRID_SIZE):
-                idx = x + y * STATE.GRID_SIZE
-                print(self.current_scaled_state[STATE.SELF_POWER_START + idx], end = ' ')
+        for b in barList:
+            idx += 1
+            print("\nbarracks", idx, end = ": ")
+            for u in b.qForProduction:
+                numInQ += 1
+                print(TerranUnit.ARMY_SPEC[u.unit].name, u.step, end = ', ')
 
-            print(end = "   |   ")
-            for x in range(STATE.GRID_SIZE):
-                idx = x + y * STATE.GRID_SIZE
-                print(self.current_scaled_state[STATE.FOG_MAT_START + idx], end = ',')
-                print(self.current_scaled_state[STATE.FOG_COUNTER_MAT_START + idx], end = ' ')
+        idx = 0
+        for b in self.sharedData.buildingCompleted[Terran.BarracksReactor]:
+            idx += 1
+            print("\nreactor", idx, end = ": ")
+            for u in b.qForProduction:
+                numInQ += 1
+                print(TerranUnit.ARMY_SPEC[u.unit].name, u.step, end = ', ')
 
-            print(end = "   |   ")
-            for x in range(STATE.GRID_SIZE):
-                idx = x + y * STATE.GRID_SIZE
-                print(self.current_scaled_state[STATE.ENEMY_ARMY_MAT_START + idx], end = ' ')
 
-            print("||")
+        print("\nfactory: fq:", self.current_state[STATE.BASE.QUEUE_FACTORY], "tlq:", self.current_state[STATE.BASE.QUEUE_TECHLAB], end = '')
+        faList = self.sharedData.buildingCompleted[Terran.Factory] 
+        idx = 0
+        for f in faList:
+            idx += 1
+            print("\nfactory:", idx, end = ": ")
+            for u in f.qForProduction:
+                numInQ += 1
+                print(TerranUnit.ARMY_SPEC[u.unit].name, u.step, end = ', ')
+
+        idx = 0
+        for f in self.sharedData.buildingCompleted[Terran.FactoryTechLab]:
+            idx += 1
+            print("\ntechlab", idx, end = ": ")
+            for u in f.qForProduction:
+                numInQ += 1
+                print(TerranUnit.ARMY_SPEC[u.unit].name, u.step, end = ', ')
+
+
+        if numInQ > 5:
+            self.emptyAgent = True
+        print("\n\n")
+
+        # self.subAgents[SUB_AGENT_ID_BASE].PrintState()
+
+        # print("self mat     fog mat     enemy mat")
+        # for y in range(STATE.GRID_SIZE):
+        #     for x in range(STATE.GRID_SIZE):
+        #         idx = x + y * STATE.GRID_SIZE
+        #         print(self.current_scaled_state[STATE.SELF_POWER_START + idx], end = ' ')
+
+        #     print(end = "   |   ")
+        #     for x in range(STATE.GRID_SIZE):
+        #         idx = x + y * STATE.GRID_SIZE
+        #         print(self.current_scaled_state[STATE.FOG_MAT_START + idx], end = ',')
+        #         print(self.current_scaled_state[STATE.FOG_COUNTER_MAT_START + idx], end = ' ')
+
+        #     print(end = "   |   ")
+        #     for x in range(STATE.GRID_SIZE):
+        #         idx = x + y * STATE.GRID_SIZE
+        #         print(self.current_scaled_state[STATE.ENEMY_ARMY_MAT_START + idx], end = ' ')
+
+        #     print("||")
   
 
 if __name__ == "__main__":

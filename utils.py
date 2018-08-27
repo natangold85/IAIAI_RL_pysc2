@@ -64,6 +64,8 @@ class BaseAgent(base_agent.BaseAgent):
         self.isActionCommitted = True
         self.lastActionCommitted = action
 
+    def GetStateVal(self, idx):
+        return None
 
 # params base
 class ParamsBase:
@@ -109,7 +111,7 @@ class SC2_Params:
     #player general info
     MINERALS = 1
     VESPENE = 2
-    SUPPLY_USED = 4
+    SUPPLY_USED = 3
     SUPPLY_CAP = 4
     ARMY_SUPPLY_OCCUPATION = 5
     WORKERS_SUPPLY_OCCUPATION = 6
@@ -119,9 +121,11 @@ class SC2_Params:
     UNIT_TYPE_IDX = 0
     BUILDING_COMPLETION_IDX = 6
 
-    # multi and single select information
+    # params for queued argument
     NOT_QUEUED = [0]
     QUEUED = [1]
+
+    # params for select 
     SELECT_SINGLE = [0]
     SELECT_ALL = [2]
 
@@ -131,6 +135,10 @@ class SC2_Params:
     CONTROL_GROUP_APPEND = [2]
     CONTROL_GROUP_SET_AND_STEAL = [3]
     CONTROL_GROUP_APPEND_AND_STEAL = [4]
+
+    # control groups info
+    LEADING_UNIT_CONTROL_GROUP = 0
+    NUM_UNITS_CONTROL_GROUP = 1
 
     NEUTRAL_MINERAL_FIELD = [341, 483]
     VESPENE_GAS_FIELD = [342]
@@ -164,15 +172,15 @@ class SC2_Actions:
     BUILD_OIL_REFINERY = actions.FUNCTIONS.Build_Refinery_screen.id
 
     # building additions
-    # BUILD_REACTOR_QUICK = actions.FUNCTIONS.Build_Reactor_Barracks_quick.id 
-    # BUILD_TECHLAB_QUICK = actions.FUNCTIONS.Build_TechLab_quick.id 
+    BUILD_REACTOR_QUICK = actions.FUNCTIONS.Build_Reactor_Barracks_quick.id 
+    BUILD_TECHLAB_QUICK = actions.FUNCTIONS.Build_TechLab_quick.id 
 
     BUILD_REACTOR = actions.FUNCTIONS.Build_Reactor_screen.id
     BUILD_TECHLAB = actions.FUNCTIONS.Build_TechLab_screen.id
 
     # train actions
     TRAIN_SCV = actions.FUNCTIONS.Train_SCV_quick.id
-    
+    RALLY_SCV = actions.FUNCTIONS.Rally_Workers_screen.id
     TRAIN_REAPER = actions.FUNCTIONS.Train_Reaper_quick.id
     TRAIN_MARINE = actions.FUNCTIONS.Train_Marine_quick.id
 
@@ -255,8 +263,8 @@ class TerranUnit:
     BUILDING_SPEC[Terran.Barracks] = BuildingDetails("Barracks", 144, 12, 'B', 4, SC2_Actions.BUILD_BARRACKS)
     BUILDING_SPEC[Terran.Factory] = BuildingDetails("Factory", 144, 12, 'F', 4, SC2_Actions.BUILD_FACTORY)
     BUILDING_SPEC[Terran.Refinery] = BuildingDetails("OilRefinery", 144, 12, 'G', 4, SC2_Actions.BUILD_OIL_REFINERY)
-    BUILDING_SPEC[Terran.Reactor] = BuildingDetails("Reactor", 9, 3, 'R', 2, SC2_Actions.BUILD_REACTOR)
-    BUILDING_SPEC[Terran.TechLab] = BuildingDetails("TechLab", 9, 3, 'T', 2, SC2_Actions.BUILD_TECHLAB)
+    BUILDING_SPEC[Terran.BarracksReactor] = BuildingDetails("Reactor", 9, 3, 'R', 2, SC2_Actions.BUILD_REACTOR)
+    BUILDING_SPEC[Terran.FactoryTechLab] = BuildingDetails("TechLab", 9, 3, 'T', 2, SC2_Actions.BUILD_TECHLAB)
 
     ARMY_SPEC = {}
     # army
@@ -580,7 +588,7 @@ def BlockingResourceGather(unitType, y, x, ccMat, nonAllowedDirections2CC, maxCC
     
     return False
 
-def GetLocationForBuilding(obs, buildingType, additionType = None):
+def GetLocationForBuilding(obs, buildingType, notAllowedDirections2CC = [], nonValidCoord = [], additionType = None):
     unitType = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
     if buildingType == Terran.Refinery:
         return GetLocationForOilRefinery(unitType)
@@ -589,8 +597,6 @@ def GetLocationForBuilding(obs, buildingType, additionType = None):
     hasCC = ccMat.any()
     if hasCC:
         maxCC = np.max(ccMat.nonzero(), axis=1)
-
-    notAllowedDirections2CC = [[1, 0], [1, 1], [0, 1]]
 
     neededSizeY = TerranUnit.BUILDING_SPEC[buildingType].screenPixels1Axis
     neededSizeX = neededSizeY
@@ -604,11 +610,12 @@ def GetLocationForBuilding(obs, buildingType, additionType = None):
     freeMat = np.zeros((SC2_Params.SCREEN_SIZE, SC2_Params.SCREEN_SIZE), int)
     for y in range(SC2_Params.SCREEN_SIZE):
         for x in range(SC2_Params.SCREEN_SIZE): 
-            if TerranUnit.BLOCKING_TYPE[unitType[y][x]]:
+            if TerranUnit.BLOCKING_TYPE[unitType[y][x]] or InNonValidCoord(y, x, nonValidCoord):
                 freeMat[y,x] = -1
             elif hasCC and BlockingResourceGather(unitType, y, x, ccMat, notAllowedDirections2CC, maxCC):
                 freeMat[y,x] = -1
             else:
+
                 freeMat[y,x] = cameraHeightMap[y][x]
 
             yStart = y - neededSizeY + 1
@@ -627,20 +634,14 @@ def GetLocationForBuilding(obs, buildingType, additionType = None):
         if foundLoc:
             break
 
-    # uH = [0, 73, 109, 146, 170, 182, 219, 243, 249, 255]
-    # print("\n\n")
-    # for y in range(84):
-    #     for x in range(10, 84):
-    #         if y == location[0] and x == location [1]:
-    #             print(end = '  ')
-    #         else:
-    #             h = freeMat[y,x] 
-    #             h = 0 if h <= 36 else h 
-    #             print(uH.index(h), end = ' ')
-
-    #     print("|")
-    # print("\n\n")
     return location
+
+def InNonValidCoord(y, x, nonValidCoord):
+    for c in nonValidCoord:
+        if c[SC2_Params.X_IDX] == x and c[SC2_Params.Y_IDX] == y:
+            return True
+
+    return False
 
 def GetLocationForOilRefinery(unitType):
     refMat = unitType == Terran.Refinery
@@ -828,25 +829,11 @@ def IsValidPoint4Select(buildingMap, y, x, neighbor2Check = neighbors2CheckBuild
 
     return True 
 
-
-
-np.array([[0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-       [0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-       [0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,2, 2, 2, 0, 0, 0, 0, 0, 0],
-       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 0, 0, 0, 0, 0, 0],
-       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 0, 0, 0, 0, 0, 0],
-       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
+def GatherResource(unitType, resourceList):
+    allResMat = np.in1d(unitType, resourceList).reshape(unitType.shape)
+    unit_y, unit_x = SelectUnitValidPoints(allResMat)
+    if len(unit_y) > 0:
+        i = random.randint(0, len(unit_y) - 1)
+        return [unit_y[i], unit_x[i]]
+    
+    return [-1,-1]

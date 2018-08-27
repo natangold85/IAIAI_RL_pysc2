@@ -144,6 +144,8 @@ class ResultFile:
         self.result_table = pd.DataFrame(columns=self.rewardCol, dtype=np.float)
         if os.path.isfile(self.saveFileName) and loadFile:
             self.result_table = pd.read_pickle(self.saveFileName, compression='gzip')
+        else:
+            self.result_table.to_pickle(self.saveFileName, 'gzip') 
 
         self.countCompleteKey = 'countComplete'
         self.check_state_exist(self.countCompleteKey)
