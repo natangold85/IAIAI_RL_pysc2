@@ -37,7 +37,7 @@ from agent_attack import AttackAgent
 from agent_base_mngr import SharedDataBase
 from agent_attack import SharedDataAttack
 from agent_scout import SharedDataScout
-from agent_do_nothing import SharedDataResourceMngr
+from agent_do_nothing import SharedDataDoNothing
 
 from agent_base_mngr import BASE_STATE
 from agent_build_base import Building
@@ -50,9 +50,6 @@ from utils import GetScreenCorners
 AGENT_DIR = "SuperAgent/"
 
 AGENT_NAME = "super"
-
-basic_DM_Types = {'super': 'dqn', 'base_mngr': 'dqn_Embedding', 'battle_mngr': 'naive', 'do_nothing': 'naive', 'army_attack': 'dqn_Embedding', 'base_attack': 'naive', 'builder': 'dqn_Embedding', 'trainer': 'dqn_Embedding'}
-
 
 STEP_DURATION = 0
 
@@ -93,7 +90,6 @@ class STATE:
 
     GRID_SIZE = 2
 
-    
     BASE_START = 0
     BASE_END = BASE.SIZE
 
@@ -193,18 +189,19 @@ RUN_TYPES[USER_PLAY][TYPE] = "play"
 
 UNIT_VALUE_TABLE_NAME = 'unit_value_table.gz'
 
-class SharedDataSuper(SharedDataBase, SharedDataAttack, SharedDataScout, SharedDataResourceMngr):
+class SharedDataSuper(SharedDataBase, SharedDataAttack, SharedDataScout, SharedDataDoNothing):
     def __init__(self):
         super(SharedDataSuper, self).__init__()
         self.numStep = 0
         self.numAgentStep = 0
 
 
-REWARD_MAX_SUPPLY = -0.005
-NORMALIZATION_TRAIN_LOCAL_REWARD = 1
-NORMALIZATION_TRAIN_GAME_REWARD = 2
+REWARD_MAX_SUPPLY = 0
+NORMALIZATION_TRAIN_LOCAL_REWARD = 3
+NORMALIZATION_TRAIN_GAME_REWARD = 5
 
-    
+BATTLE_TYPES = set(["battle_mngr", "attack_army", "attack_base"])
+
 class SuperAgent(BaseAgent):
     def __init__(self, dmTypes, useMapRewards, decisionMaker = None, isMultiThreaded = False, playList = None, trainList = None):
         super(SuperAgent, self).__init__(STATE.SIZE)
@@ -217,6 +214,8 @@ class SuperAgent(BaseAgent):
             saPlayList = ["inherit"]
         else:
             saPlayList = playList
+            if len(BATTLE_TYPES.intersection(playList)) == 0:
+                saPlayList.append("do_nothing")
             
         self.illigalmoveSolveInModel = True
 
@@ -254,8 +253,6 @@ class SuperAgent(BaseAgent):
 
         self.move_number = 0
 
-        self.emptyAgent = False
-
     def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
         
         runType = RUN_TYPES[dmTypes[AGENT_NAME]]
@@ -264,7 +261,7 @@ class SuperAgent(BaseAgent):
         directory = dmTypes["directory"] + "/" + AGENT_DIR
         if not os.path.isdir("./" + directory):
             os.makedirs("./" + directory)
-        decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], numTrials2Learn=50, 
+        decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], numTrials2Learn=20, 
                                             resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY], isMultiThreaded=isMultiThreaded)
 
         return decisionMaker
@@ -276,9 +273,13 @@ class SuperAgent(BaseAgent):
         if self.playAgent:
             return 1
 
+        saPlay = []
         for key, sa in self.subAgents.items():
             if sa.FindActingHeirarchi() >= 0:
-                return key
+                saPlay.append(key)
+
+        if len(saPlay) > 0:
+            return max(saPlay)
         
         return -1
 
@@ -304,7 +305,6 @@ class SuperAgent(BaseAgent):
             cameraCornerNorthWest , cameraCornerSouthEast = GetScreenCorners(obs)
             
             if cameraCornerNorthWest != self.baseNorthWestScreenCorner:
-                print("\nnot in base location:", cameraCornerNorthWest, "!=", self.baseNorthWestScreenCorner)
                 return self.SendAction(self.go2BaseAction)
 
             self.sharedData.numAgentStep += 1
@@ -366,17 +366,15 @@ class SuperAgent(BaseAgent):
         else:
             reward = 0
 
-        baseReward = reward
+        sumReward = reward
         if SUB_AGENT_ID_BASE in self.activeSubAgents and not self.trainAgent:
-            reward += self.accumulatedTrainReward / NORMALIZATION_TRAIN_GAME_REWARD
+            sumReward += self.accumulatedTrainReward / NORMALIZATION_TRAIN_GAME_REWARD
         
-        print("\nbase reward =", baseReward, "real reward =", reward, "accumulatedReward =", self.accumulatedTrainReward)
-
         score = obs.observation["score_cumulative"][0]
 
         self.CreateState(obs)
-        self.Learn(reward, True)  
-        self.EndRun(reward, score, self.sharedData.numStep)
+        self.Learn(sumReward, True)  
+        self.EndRun(sumReward, score, self.sharedData.numStep)
 
     def SendAction(self, sc2Action):
         self.sharedData.numStep += 1
@@ -462,10 +460,10 @@ class SuperAgent(BaseAgent):
     def MonitorObservation(self, obs):
         for sa in self.activeSubAgents:
             self.subAgents[sa].MonitorObservation(obs)
-
-        self.maxSupply = obs.observation['player'][SC2_Params.SUPPLY_USED] == obs.observation['player'][SC2_Params.SUPPLY_CAP]
                      
     def CreateState(self, obs):
+        self.maxSupply = (obs.observation['player'][SC2_Params.SUPPLY_USED] == obs.observation['player'][SC2_Params.SUPPLY_CAP])
+
         for subAgent in self.subAgents.values():
             subAgent.CreateState(obs)
 
@@ -505,11 +503,10 @@ class SuperAgent(BaseAgent):
         
         if SUB_AGENT_ID_BASE in self.activeSubAgents and not self.trainAgent:
             localReward = self.sharedData.prevTrainActionReward * pow(self.discountForLocalReward, self.sharedData.numAgentStep)
-            maxSupplyReward = self.maxSupply * REWARD_MAX_SUPPLY
-            reward = localReward / NORMALIZATION_TRAIN_LOCAL_REWARD + maxSupplyReward + reward
-            # if reward != 0 :
-            #     print("local reward =", localReward, "normalization = ", reward)
-            self.accumulatedTrainReward += localReward
+            maxSupplyReward = REWARD_MAX_SUPPLY if self.maxSupply else 0.0 
+            reward += localReward / NORMALIZATION_TRAIN_LOCAL_REWARD + maxSupplyReward
+
+            self.accumulatedTrainReward += reward
             self.sharedData.prevTrainActionReward = 0
 
         if self.trainAgent and self.current_action is not None:
@@ -565,9 +562,6 @@ class SuperAgent(BaseAgent):
                 numInQ += 1
                 print(TerranUnit.ARMY_SPEC[u.unit].name, u.step, end = ', ')
 
-
-        if numInQ > 5:
-            self.emptyAgent = True
         print("\n\n")
 
         # self.subAgents[SUB_AGENT_ID_BASE].PrintState()

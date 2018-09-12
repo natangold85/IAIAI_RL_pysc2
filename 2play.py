@@ -14,20 +14,19 @@ from utils import SC2_Actions
 
 from utils import PrintScreen
 
-STEP_DURATION = 0.1
+STEP_DURATION = 0.05
 DO_NOTHING_SC2_ACTION = actions.FunctionCall(SC2_Actions.NO_OP, [])
 
-# $ python -m pysc2.bin.agent --agent 2play.Play --map mapName --max_agent_steps=0 
+# $ python -m pysc2.bin.agent --agent 2play.Play --map BaseMngr --max_agent_steps=0 --agent_race=terran
 
 class Play(base_agent.BaseAgent):
     def __init__(self):        
         super(Play, self).__init__()
-
+        self.maxSteps = 0
         self.prevTime = None
 
     def step(self, obs):
         super(Play, self).step(obs)
-
         sc2Action = DO_NOTHING_SC2_ACTION
         
         if obs.first():
@@ -37,10 +36,13 @@ class Play(base_agent.BaseAgent):
             sc2Action = actions.FunctionCall(SC2_Actions.SELECT_CONTROL_GROUP, [SC2_Params.CONTROL_GROUP_SET, [4]])
 
         elif self.numStep % 10 == 0:
-            sc2Action = actions.FunctionCall(SC2_Actions.SELECT_CONTROL_GROUP, [SC2_Params.CONTROL_GROUP_RECALL, [4]])
+            supplyUsed = obs.observation['player'][SC2_Params.SUPPLY_USED]
+            supplyCap = obs.observation['player'][SC2_Params.SUPPLY_CAP]
+            print("suppply left =", supplyCap - supplyUsed)
 
         time.sleep(STEP_DURATION)
 
+        
         self.numStep += 1
         return DO_NOTHING_SC2_ACTION
 

@@ -1,0 +1,1 @@
+{'difficulty' : '1', 'directory' : 'BaseMngrSubAgentTest', 'super': 'dqn_2l', 'base_mngr': 'naive', 'battle_mngr': 'naive', 'do_nothing': 'naive', 'army_attack': 'naive', 'base_attack': 'naive', 'builder': 'dqn_2l', 'trainer': 'dqn_2l', 'numTrial2Train': 60}

@@ -21,10 +21,10 @@ from utils import SC2_Actions
 #decision makers
 from utils_decisionMaker import LearnWithReplayMngr
 from utils_decisionMaker import UserPlay
-from utils_decisionMaker import BaseDecisionMaker
+from utils_decisionMaker import BaseNaiveDecisionMaker
 
 from utils_results import ResultFile
-
+from utils_results import PlotResults
 # params
 from utils_dqn import DQN_PARAMS
 from utils_dqn import DQN_EMBEDDING_PARAMS
@@ -32,6 +32,7 @@ from utils_qtable import QTableParams
 from utils_qtable import QTableParamsExplorationDecay
 
 from utils import EmptySharedData
+from utils import SupplyCap
 from utils import SwapPnt
 from utils import FindMiddle
 from utils import GetScreenCorners
@@ -43,17 +44,17 @@ from utils import SelectBuildingValidPoint
 from agent_build_base import ActionRequirement
 
 AGENT_DIR = "TrainArmy/"
-AGENT_NAME = "trainer"
+AGENT_NAME = "train_army"
 
 # possible types of decision maker
 
 QTABLE = 'q'
 DQN = 'dqn'
-DQN_EMBEDDING_LOCATIONS = 'dqn_Embedding' 
+DQN2L = 'dqn_2l' 
 NAIVE = "naive"
 USER_PLAY = 'play'
 
-ALL_TYPES = set([USER_PLAY, QTABLE, DQN, DQN_EMBEDDING_LOCATIONS, NAIVE])
+ALL_TYPES = set([USER_PLAY, QTABLE, DQN, DQN2L, NAIVE])
 
 # data for run type
 TYPE = "type"
@@ -98,25 +99,42 @@ class TRAIN_STATE:
     GAS_MAX = 300
     MINERALS_BUCKETING = 50
     GAS_BUCKETING = 50
+    
+    SUPPLY_LEFT_MAX = 10
+    SUPPLY_LEFT_BUCKETING = 2
 
     MINERALS_IDX = 0
     GAS_IDX = 1
-    SUPPLY_DEPOT_IDX = 2
-    BARRACKS_IDX = 3
-    FACTORY_IDX = 4
-    REACTORS_IDX = 5
-    TECHLAB_IDX = 6
+    BARRACKS_IDX = 2
+    FACTORY_IDX = 3
+    REACTORS_IDX = 4
+    TECHLAB_IDX = 5
 
-    QUEUE_BARRACKS = 8
-    QUEUE_FACTORY = 9
-    QUEUE_FACTORY_WITH_TECHLAB = 10
- 
+    SUPPLY_LEFT = 6
+
+    QUEUE_BARRACKS = 7
+    QUEUE_FACTORY = 8
+    QUEUE_FACTORY_WITH_TECHLAB = 9
+    
+    ARMY_POWER = 10
+
     SIZE = 11
 
-    IDX2STR = ["min", "gas", "sd", "ba", "fa", "re", "te", "power", "ba_q", "fa_q", "te_q"]
+    IDX2STR = {}
+    IDX2STR[MINERALS_IDX] = "min"
+    IDX2STR[GAS_IDX] = "gas"
+    IDX2STR[BARRACKS_IDX] = "ba"
+    IDX2STR[FACTORY_IDX] = "fa"
+    IDX2STR[REACTORS_IDX] = "re"
+    IDX2STR[TECHLAB_IDX] = "tl"
+    IDX2STR[SUPPLY_LEFT] = "supp_left"
+    IDX2STR[QUEUE_BARRACKS] = "ba_q"
+    IDX2STR[QUEUE_FACTORY] = "fa_q"
+    IDX2STR[QUEUE_FACTORY_WITH_TECHLAB] = "tl_q"
+
+    IDX2STR[ARMY_POWER] = "power"
 
     BUILDING_2_STATE_TRANSITION = {}
-    BUILDING_2_STATE_TRANSITION[Terran.SupplyDepot] = SUPPLY_DEPOT_IDX
     BUILDING_2_STATE_TRANSITION[Terran.Barracks] = BARRACKS_IDX
     BUILDING_2_STATE_TRANSITION[Terran.Factory] = FACTORY_IDX
     BUILDING_2_STATE_TRANSITION[Terran.BarracksReactor] = REACTORS_IDX
@@ -174,68 +192,42 @@ RUN_TYPES[DQN][DIRECTORY] = "trainArmy_dqn"
 RUN_TYPES[DQN][HISTORY] = "replayHistory"
 RUN_TYPES[DQN][RESULTS] = "result"
 
+RUN_TYPES[DQN2L] = {}
+RUN_TYPES[DQN2L][TYPE] = "DQN_WithTarget"
+RUN_TYPES[DQN2L][PARAMS] = DQN_PARAMS(TRAIN_STATE.SIZE, NUM_ACTIONS, layersNum=2, numTrials2CmpResults=200)
+RUN_TYPES[DQN2L][DECISION_MAKER_NAME] = "train_dqn2l"
+RUN_TYPES[DQN2L][DIRECTORY] = "trainArmy_dqn2l"
+RUN_TYPES[DQN2L][HISTORY] = "replayHistory"
+RUN_TYPES[DQN2L][RESULTS] = "result"
+
+
 RUN_TYPES[NAIVE] = {}
 RUN_TYPES[NAIVE][DIRECTORY] = "trainArmy_naive"
 RUN_TYPES[NAIVE][RESULTS] = "trainArmy_result"
 
-class NaiveDecisionMakerTrain(BaseDecisionMaker):
+class NaiveDecisionMakerTrain(BaseNaiveDecisionMaker):
     def __init__(self, resultFName = None, directory = None, numTrials2Learn = 20):
-        super(NaiveDecisionMakerTrain, self).__init__()
-        self.resultFName = resultFName
-        self.trialNum = 0
-        self.numTrials2Learn = numTrials2Learn
-
-        if resultFName != None:
-            self.lock = Lock()
-            if directory != None:
-                fullDirectoryName = "./" + directory +"/"
-                if not os.path.isdir(fullDirectoryName):
-                    os.makedirs(fullDirectoryName)
-            else:
-                fullDirectoryName = "./"
-
-            if "new" in sys.argv:
-                loadFiles = False
-            else:
-                loadFiles = True
-
-            self.resultFile = ResultFile(fullDirectoryName + resultFName, numTrials2Learn, loadFiles)
-
-    def end_run(self, r, score, steps):
-        saveFile = False
-        self.trialNum += 1
-        
-        if self.resultFName != None:
-            self.lock.acquire()
-            if self.trialNum % self.numTrials2Learn == 0:
-                saveFile = True
-
-            self.resultFile.end_run(r, score, steps, saveFile)
-            self.lock.release()
-       
-        return saveFile 
+        super(NaiveDecisionMakerTrain, self).__init__(numTrials2Learn, resultFName, directory)
 
     def ActionValuesVec(self, state, target = True):    
         vals = np.zeros(NUM_ACTIONS,dtype = float)
         
-        if state[TRAIN_STATE.QUEUE_BARRACKS] < state[TRAIN_STATE.QUEUE_FACTORY] and state[TRAIN_STATE.QUEUE_BARRACKS] < state[TRAIN_STATE.QUEUE_FACTORY_WITH_TECHLAB]:
-            vals[ID_ACTION_TRAIN_MARINE] = 0.5
+        if state[TRAIN_STATE.ARMY_POWER] < 20:
+            vals[ID_ACTION_TRAIN_MARINE] = 0.4
             vals[ID_ACTION_TRAIN_REAPER] = 0.4
-            vals[ID_ACTION_TRAIN_SIEGETANK] = 0.3
-            vals[ID_ACTION_TRAIN_HELLION] = 0.25                    
-        else:
-            vals[ID_ACTION_TRAIN_MARINE] = 0.25
+            vals[ID_ACTION_TRAIN_SIEGETANK] = 0.5
+            vals[ID_ACTION_TRAIN_HELLION] = 0.5                    
+        elif state[TRAIN_STATE.ARMY_POWER] < 30:
+            vals[ID_ACTION_TRAIN_MARINE] = 0.1
             vals[ID_ACTION_TRAIN_REAPER] = 0.1
-            r = np.random.uniform()
-            if r > 0.25 and state[TRAIN_STATE.QUEUE_FACTORY] > state[TRAIN_STATE.QUEUE_FACTORY_WITH_TECHLAB]:
-                vals[ID_ACTION_TRAIN_SIEGETANK] = 0.5
-                vals[ID_ACTION_TRAIN_HELLION] = 0.4  
-            else:
-                vals[ID_ACTION_TRAIN_SIEGETANK] = 0.4 
-                vals[ID_ACTION_TRAIN_HELLION] = 0.5  
+            vals[ID_ACTION_TRAIN_SIEGETANK] = 0.5
+            vals[ID_ACTION_TRAIN_HELLION] = 0.4 
+        else: 
+            vals[ID_ACTION_TRAIN_SIEGETANK] = 0.5
+            vals[ID_ACTION_TRAIN_HELLION] = 0.4 
 
 
-        vals[self.choose_action(state)] = 1.0
+        vals[ID_ACTION_DO_NOTHING] = 0.1
 
         return vals
 
@@ -246,6 +238,7 @@ class TrainArmySubAgent(BaseAgent):
 
         self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
         self.trainAgent = AGENT_NAME in trainList
+        self.inTraining = self.trainAgent
         
         self.illigalmoveSolveInModel = True
 
@@ -275,7 +268,7 @@ class TrainArmySubAgent(BaseAgent):
         if dmTypes[AGENT_NAME] == "naive":
             decisionMaker = NaiveDecisionMakerTrain(resultFName=runType[RESULTS], directory=directory + runType[DIRECTORY])
         else:        
-            decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME],  
+            decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], numTrials2Learn=20,  
                                                 resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY], isMultiThreaded=isMultiThreaded)
 
         return decisionMaker
@@ -297,8 +290,10 @@ class TrainArmySubAgent(BaseAgent):
         self.current_state = np.zeros(TRAIN_STATE.SIZE, dtype=np.int32, order='C')
         self.previous_scaled_state = np.zeros(TRAIN_STATE.SIZE, dtype=np.int32, order='C')
         self.current_scaled_state = np.zeros(TRAIN_STATE.SIZE, dtype=np.int32, order='C')
-
-        self.numSteps = 0
+        
+        self.lastActionCommittedStep = 0
+        self.lastActionCommittedState = None
+        self.lastActionCommittedNextState = None
 
         self.countBuildingsQueue = {}
         for key in TRAIN_STATE.BUILDING_2_STATE_QUEUE_TRANSITION.keys():
@@ -320,6 +315,9 @@ class TrainArmySubAgent(BaseAgent):
                 return actions.FunctionCall(SC2_Actions.SELECT_POINT, [SC2_Params.SELECT_SINGLE, SwapPnt(target)]), finishedAction
         
         elif moveNum == 1:
+            if 'build_queue' in obs.observation:
+                self.CorrectQueue(obs.observation['build_queue'])
+
             finishedAction = True
             unit2Train = ACTION_2_UNIT[a]
             sc2Action = TerranUnit.ARMY_SPEC[unit2Train].sc2Action
@@ -331,14 +329,15 @@ class TrainArmySubAgent(BaseAgent):
         return DO_NOTHING_SC2_ACTION, True
 
     def Learn(self, reward, terminal):            
-        if self.trainAgent:
+        if self.inTraining:
             if self.isActionCommitted:
                 self.decisionMaker.learn(self.previous_scaled_state, self.lastActionCommitted, reward, self.current_scaled_state, terminal)
-            elif terminal:
-                # if terminal reward entire state if action is not chosen for current step
-                for a in range(NUM_ACTIONS):
-                    self.decisionMaker.learn(self.previous_scaled_state, a, reward, self.terminalState, terminal)
-                    self.decisionMaker.learn(self.current_scaled_state, a, reward, self.terminalState, terminal)
+            
+            elif reward > 0:
+                if self.lastActionCommitted != None:
+                    numSteps = self.lastActionCommittedStep - self.sharedData.numAgentStep
+                    discountedReward = reward * pow(self.decisionMaker.DiscountFactor(), numSteps)
+                    self.decisionMaker.learn(self.lastActionCommittedState, self.lastActionCommitted, discountedReward, self.lastActionCommittedNextState, terminal)  
 
         self.previous_scaled_state[:] = self.current_scaled_state[:]
         self.isActionCommitted = False
@@ -347,8 +346,19 @@ class TrainArmySubAgent(BaseAgent):
 
         self.current_state[TRAIN_STATE.MINERALS_IDX] = obs.observation['player'][SC2_Params.MINERALS]
         self.current_state[TRAIN_STATE.GAS_IDX] = obs.observation['player'][SC2_Params.VESPENE]
+        
         for key, value in TRAIN_STATE.BUILDING_2_STATE_TRANSITION.items():
             self.current_state[value] = self.NumBuildings(key)
+
+        supplyUsed = obs.observation['player'][SC2_Params.SUPPLY_USED]
+        supplyCap = obs.observation['player'][SC2_Params.SUPPLY_CAP]
+        self.current_state[TRAIN_STATE.SUPPLY_LEFT] = supplyCap - supplyUsed
+
+        power = 0.0
+        for unit, num in self.sharedData.armySize.items():
+            power += num * self.sharedData.unitTrainValue[unit]
+
+        self.current_state[TRAIN_STATE.ARMY_POWER] = int(power)
 
         self.sharedData.qMinSizes = self.CalculateQueues()
         for key, value in TRAIN_STATE.BUILDING_2_STATE_QUEUE_TRANSITION.items():
@@ -356,16 +366,21 @@ class TrainArmySubAgent(BaseAgent):
                 self.current_state[value] = self.sharedData.qMinSizes[key]
             else:
                 self.current_state[value] = TRAIN_STATE.NON_EXIST_Q_VAL
-        
+     
         self.ScaleState()
+
+        if self.isActionCommitted:
+            self.lastActionCommittedStep = self.sharedData.numAgentStep
+            self.lastActionCommittedState = self.previous_scaled_state
+            self.lastActionCommittedNextState = self.current_scaled_state
 
     def ScaleState(self):
         self.current_scaled_state[:] = self.current_state[:]
 
-        self.current_scaled_state[TRAIN_STATE.MINERALS_IDX] = int(self.current_scaled_state[TRAIN_STATE.MINERALS_IDX] / TRAIN_STATE.MINERALS_BUCKETING) * TRAIN_STATE.MINERALS_BUCKETING
         self.current_scaled_state[TRAIN_STATE.MINERALS_IDX] = min(TRAIN_STATE.MINERALS_MAX, self.current_scaled_state[TRAIN_STATE.MINERALS_IDX])
-        self.current_scaled_state[TRAIN_STATE.GAS_IDX] = int(self.current_scaled_state[TRAIN_STATE.GAS_IDX] / TRAIN_STATE.GAS_BUCKETING) * TRAIN_STATE.GAS_BUCKETING
         self.current_scaled_state[TRAIN_STATE.GAS_IDX] = min(TRAIN_STATE.GAS_MAX, self.current_scaled_state[TRAIN_STATE.GAS_IDX])
+
+        self.current_scaled_state[TRAIN_STATE.SUPPLY_LEFT] = min(TRAIN_STATE.SUPPLY_LEFT_MAX, self.current_scaled_state[TRAIN_STATE.SUPPLY_LEFT])
 
     def NumBuildings(self, buildingType):
         num = len(self.sharedData.buildingCompleted[buildingType])
@@ -380,7 +395,7 @@ class TrainArmySubAgent(BaseAgent):
             if self.illigalmoveSolveInModel:
                 validActions = self.ValidActions()
             
-                if self.trainAgent:
+                if self.inTraining:
                     targetValues = False
                     exploreProb = self.decisionMaker.ExploreProb()              
                 else:
@@ -463,6 +478,20 @@ class TrainArmySubAgent(BaseAgent):
         return buildingChosen, shortestQ
 
 
+    def CorrectQueue(self, buildingQueue):
+        stepCompleted = -1000
+        self.buildingSelected.qForProduction = []
+        for bq in buildingQueue:
+            unit = TrainCmd(bq[SC2_Params.UNIT_TYPE_IDX])
+            
+            if bq[SC2_Params.COMPLETION_RATIO_IDX] > 0:
+                unit.step = bq[SC2_Params.COMPLETION_RATIO_IDX]
+            else:
+                unit.step = stepCompleted
+                stepCompleted -= 1
+
+            self.buildingSelected.qForProduction.append(unit)
+
     def Add2Q(self, action):
         unit = TrainCmd(ACTION_2_UNIT[action])
         self.buildingSelected.AddUnit2Q(unit)
@@ -501,3 +530,8 @@ class TrainArmySubAgent(BaseAgent):
                 valid = True
       
         return minQ, valid 
+
+
+if __name__ == "__main__":
+    if "results" in sys.argv:
+        PlotResults(AGENT_NAME, AGENT_DIR, RUN_TYPES)

@@ -11,7 +11,7 @@ from utils import ParamsBase
 
 # dqn params
 class DQN_PARAMS(ParamsBase):
-    def __init__(self, stateSize, numActions, numTrials2CmpResults = 1000, historyProportion4Learn = 1, nn_Func = None, propogateReward = False, outputGraph = False, discountFactor = 0.95, batchSize = 32, maxReplaySize = 500000, minReplaySize = 1000, copyEvalToTarget = 5, explorationProb = 0.1, descendingExploration = True, exploreChangeRate = 0.001, states2Monitor = [], scopeVarName = ''):
+    def __init__(self, stateSize, numActions, layersNum = 1, neuronsInLayerNum = 256, numTrials2CmpResults = 1000, historyProportion4Learn = 1, nn_Func = None, propogateReward = False, outputGraph = False, discountFactor = 0.95, batchSize = 32, maxReplaySize = 500000, minReplaySize = 1000, copyEvalToTarget = 5, explorationProb = 0.1, descendingExploration = True, exploreChangeRate = 0.001, states2Monitor = [], scopeVarName = ''):
         super(DQN_PARAMS, self).__init__(stateSize, numActions, historyProportion4Learn, propogateReward, discountFactor, maxReplaySize, minReplaySize)
         
         self.nn_Func = nn_Func
@@ -30,6 +30,9 @@ class DQN_PARAMS(ParamsBase):
         self.tfSession = None
 
         self.numTrials2CmpResults = numTrials2CmpResults
+
+        self.layersNum = layersNum
+        self.neuronsInLayerNum = neuronsInLayerNum
 
     def ExploreProb(self, numRuns, resultRatio = 1):
         if self.descendingExploration:
@@ -104,8 +107,8 @@ class DQN:
         
         
         # Initializing session and variables
-        init = tf.global_variables_initializer()
-        self.sess.run(init)  
+        self.init_op = tf.global_variables_initializer()
+        self.sess.run(self.init_op)  
 
         if createSaver:
             self.saver = tf.train.Saver()
@@ -125,8 +128,12 @@ class DQN:
             return NN_Func(self.inputLayer, self.numActions, scope)   
 
         with tf.variable_scope(scope):
-            fc1 = tf.contrib.layers.fully_connected(self.inputLayer, 512)
-            output = tf.contrib.layers.fully_connected(fc1, self.numActions, activation_fn = tf.nn.sigmoid) * 2 - 1
+            currInput = self.inputLayer
+            for i in range(self.params.layersNum):
+                fc = tf.contrib.layers.fully_connected(currInput, self.params.neuronsInLayerNum)
+                currInput = fc
+
+            output = tf.contrib.layers.fully_connected(currInput, self.numActions, activation_fn = tf.nn.sigmoid) * 2 - 1
             
         return output
 
@@ -146,9 +153,13 @@ class DQN:
 
         with tf.variable_scope(scope):
             embeddingOut = tf.contrib.layers.fully_connected(embeddingInput, 256)
-            hiddenLayerInput = tf.concat([embeddingOut, otherInput], axis = 1)
-            hiddenLayerOutput = tf.contrib.layers.fully_connected(hiddenLayerInput, 256)
-            output = tf.contrib.layers.fully_connected(hiddenLayerOutput, self.numActions, activation_fn = tf.nn.sigmoid) * 2 - 1
+            currInput = tf.concat([embeddingOut, otherInput], axis = 1)
+
+            for i in range(self.params.layersNum):
+                fc = tf.contrib.layers.fully_connected(currInput, self.params.neuronsInLayerNum)
+                currInput = fc        
+
+            output = tf.contrib.layers.fully_connected(currInput, self.numActions, activation_fn = tf.nn.sigmoid) * 2 - 1
 
         return output
 
@@ -176,8 +187,8 @@ class DQN:
     def ActionValuesVec(self, state, targetValues = False):
         allVals = self.outputLayer.eval({self.inputLayer: state.reshape(1,self.num_input)}, session=self.sess)
         return allVals[0]
-        
-    def learn(self, s, a, r, s_, terminal):             
+
+    def learn(self, s, a, r, s_, terminal):          
         size = len(a)
         
         # calculate (R = r + d * Q(s_))
@@ -199,9 +210,23 @@ class DQN:
     def Close(self):
         self.sess.close()
         
-    def SaveDQN(self):
-        self.saver.save(self.sess, self.directoryName)
-        print("save nn with", self.numRuns.eval(session = self.sess))
+    def SaveDQN(self, numRuns2Save = None):
+        
+        if numRuns2Save == None:
+            self.saver.save(self.sess, self.directoryName)
+            numRuns2Save = self.NumRuns()
+        else:
+            currNumRuns = self.NumRuns()
+            assign4Save = self.numRuns.assign(numRuns2Save)
+            self.sess.run(assign4Save)
+
+            self.saver.save(self.sess, self.directoryName)
+
+            assign4Repeat2Train = self.numRuns.assign(currNumRuns)
+            self.sess.run(assign4Repeat2Train)
+
+
+        print("\n\t\tsave nn with", numRuns2Save)
 
     def NumRuns(self):
         return int(self.numRuns.eval(session = self.sess))
@@ -209,8 +234,12 @@ class DQN:
     def end_run(self, reward, toSave = False):
         assign = self.numRuns.assign_add(1)
         self.sess.run(assign)
-        if toSave:
-            self.SaveDQN()
+        
+    def DiscountFactor(self):
+        return self.params.discountFactor
+
+    def Reset(self):
+        self.sess.run(self.init_op) 
 
 
 class DQN_WithTarget(DQN):
@@ -230,8 +259,8 @@ class DQN_WithTarget(DQN):
         else:
             self.targetOutput = self.build_dqn(modelParams.nn_Func, self.targetScope)
 
-        init = tf.global_variables_initializer()
-        self.sess.run(init)  
+        self.init_op = tf.global_variables_initializer()
+        self.sess.run(self.init_op)  
 
         self.saver = tf.train.Saver()
         fnameNNMeta = self.directoryName + ".meta"
@@ -248,17 +277,41 @@ class DQN_WithTarget(DQN):
         self.bestReward = -1000
 
     def CopyDqn2Target(self):
-        sourceParams = [t for t in tf.trainable_variables() if t.name.startswith(self.scope)]
-        sourceParams = sorted(sourceParams, key=lambda v: v.name)
+        
+
+        dqnParams = [t for t in tf.trainable_variables() if t.name.startswith(self.scope)]
+        dqnParams = sorted(dqnParams, key=lambda v: v.name)
+
         targetParams = [t for t in tf.trainable_variables() if t.name.startswith(self.targetScope)]
         targetParams = sorted(targetParams, key=lambda v: v.name)
 
         update_ops = []
-        for sourceVar, targetVar in zip(sourceParams, targetParams):
-            op = targetVar.assign(sourceVar)
+        for dqnVar, targetVar in zip(dqnParams, targetParams):
+            op = targetVar.assign(dqnVar)
             update_ops.append(op)
 
         self.sess.run(update_ops)
+        self.SaveDQN()
+
+    def CopyTarget2DQN(self):
+        numRuns = self.NumRuns()
+        
+        dqnParams = [t for t in tf.trainable_variables() if t.name.startswith(self.scope)]
+        dqnParams = sorted(dqnParams, key=lambda v: v.name)
+ 
+        targetParams = [t for t in tf.trainable_variables() if t.name.startswith(self.targetScope)]
+        targetParams = sorted(targetParams, key=lambda v: v.name)
+
+        update_ops = []
+        for dqnVar, targetVar in zip(dqnParams, targetParams):
+            op = dqnVar.assign(targetVar)
+            update_ops.append(op)
+
+        self.sess.run(update_ops)
+        assign = self.numRuns.assign(numRuns)
+        self.sess.run(assign)
+        self.SaveDQN()
+
 
     def ActionValuesVec(self, state, targetValues = False):
         if targetValues:
@@ -274,22 +327,17 @@ class DQN_WithTarget(DQN):
     def NumRunsTarget(self):
         return int(self.numRunsTarget.eval(session = self.sess))
 
-    def learn(self, s, a, r, s_, terminal):
-        super(DQN_WithTarget, self).learn(s, a, r, s_, terminal)
+    def end_run(self, r, toSave = False):
+        super(DQN_WithTarget, self).end_run(r, toSave)
 
+        # insert reward to reward history and pop first from histor if necessary
+        self.rewardHist.append(r)
+        if len(self.rewardHist) > self.numTrials2CmpResults:
+            self.rewardHist.pop(0)
+        
+        # calculate results and compare to target
         if len(self.rewardHist) == self.numTrials2CmpResults:
             avgReward = np.average(np.array(self.rewardHist))
             if avgReward > self.bestReward:
                 self.bestReward = avgReward
                 self.CopyDqn2Target()
-                # add for run that end now
-                assign = self.numRunsTarget.assign_add(1)
-                self.sess.run(assign)
-
-    def end_run(self, r, toSave = False):
-        super(DQN_WithTarget, self).end_run(r, toSave)
-
-        self.rewardHist.append(r)
-        if len(self.rewardHist) > self.numTrials2CmpResults:
-            self.rewardHist.pop(0)
-

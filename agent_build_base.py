@@ -22,10 +22,10 @@ from utils import BaseAgent
 #decision makers
 from utils_decisionMaker import LearnWithReplayMngr
 from utils_decisionMaker import UserPlay
-from utils_decisionMaker import BaseDecisionMaker
+from utils_decisionMaker import BaseNaiveDecisionMaker
 
 from utils_results import ResultFile
-from utils_results import PlotMngr
+from utils_results import PlotResults
 
 # params
 from utils_dqn import DQN_PARAMS
@@ -46,12 +46,13 @@ from utils import SelectUnitValidPoints
 from utils import GatherResource
 
 AGENT_DIR = "BuildBase/"
-AGENT_NAME = "builder"
+AGENT_NAME = "build_base"
 
 # possible types of decision maker
 
 QTABLE = 'q'
 DQN = 'dqn'
+DQN2L = 'dqn_2l'
 DQN_EMBEDDING_LOCATIONS = 'dqn_Embedding' 
 NAIVE = "naive"
 USER_PLAY = 'play'
@@ -115,6 +116,9 @@ class BUILD_STATE:
     MINERALS_BUCKETING = 50
     GAS_BUCKETING = 50
 
+    SUPPLY_BUCKETING = 8
+    SUPPLY_LEFT_MAX = 10
+
     COMMAND_CENTER_IDX = 0
     MINERALS_IDX = 1
     GAS_IDX = 2
@@ -132,7 +136,9 @@ class BUILD_STATE:
     IN_PROGRESS_REACTORS_IDX = 13
     IN_PROGRESS_TECHLAB_IDX = 14    
     
-    SIZE = 15
+    SUPPLY_LEFT_IDX = 15
+
+    SIZE = 16
 
     BUILDING_2_STATE_TRANSITION = {}
     BUILDING_2_STATE_TRANSITION[Terran.CommandCenter] = [COMMAND_CENTER_IDX, -1]
@@ -165,6 +171,7 @@ class BUILD_STATE:
     IDX2STR[IN_PROGRESS_FACTORY_IDX] = "FA_B"
     IDX2STR[IN_PROGRESS_REACTORS_IDX] = "REA_B"
     IDX2STR[IN_PROGRESS_TECHLAB_IDX] = "TECH_B"
+    IDX2STR[SUPPLY_LEFT_IDX] = "SupplyLeft"
 
 class ActionRequirement:
     def __init__(self, mineralsPrice = 0, gasPrice = 0, buildingDependency = BUILD_STATE.MINERALS_IDX):
@@ -192,6 +199,14 @@ RUN_TYPES[DQN][DECISION_MAKER_NAME] = "build_dqn"
 RUN_TYPES[DQN][DIRECTORY] = "buildBase_dqn"
 RUN_TYPES[DQN][HISTORY] = "replayHistory"
 RUN_TYPES[DQN][RESULTS] = "result"
+
+RUN_TYPES[DQN2L] = {}
+RUN_TYPES[DQN2L][TYPE] = "DQN_WithTarget"
+RUN_TYPES[DQN2L][PARAMS] = DQN_PARAMS(BUILD_STATE.SIZE, ACTIONS.NUM_ACTIONS, layersNum = 2, numTrials2CmpResults=200)
+RUN_TYPES[DQN2L][DECISION_MAKER_NAME] = "build_dqn2l"
+RUN_TYPES[DQN2L][DIRECTORY] = "buildBase_dqn2l"
+RUN_TYPES[DQN2L][HISTORY] = "replayHistory"
+RUN_TYPES[DQN2L][RESULTS] = "result"
 
 RUN_TYPES[NAIVE] = {}
 RUN_TYPES[NAIVE][DIRECTORY] = "buildBase_naive"
@@ -251,29 +266,11 @@ class BuildingCmdAddition(BuildingCmd):
         self.m_additionCoord = None
 
 
-class NaiveDecisionMakerBuilder(BaseDecisionMaker):
+class NaiveDecisionMakerBuilder(BaseNaiveDecisionMaker):
     def __init__(self, resultFName = None, directory = None, numTrials2Learn = 20):
-        super(NaiveDecisionMakerBuilder, self).__init__()
-        self.resultFName = resultFName
-        self.trialNum = 0
-        self.numTrials2Learn = numTrials2Learn
-
-        if resultFName != None:
-            self.lock = Lock()
-
-            if directory != None:
-                fullDirectoryName = "./" + directory +"/"
-                if not os.path.isdir(fullDirectoryName):
-                    os.makedirs(fullDirectoryName)
-            else:
-                fullDirectoryName = "./"
-
-            if "new" in sys.argv:
-                loadFiles = False
-            else:
-                loadFiles = True
-
-            self.resultFile = ResultFile(fullDirectoryName + resultFName, numTrials2Learn, loadFiles)
+        super(NaiveDecisionMakerBuilder, self).__init__(numTrials2Learn, resultFName, directory)
+        self.SDSupply = 8
+        self.CCSupply = 15
 
 
     def choose_action(self, state):
@@ -286,7 +283,11 @@ class NaiveDecisionMakerBuilder(BaseDecisionMaker):
         numReactorsAll = state[BUILD_STATE.REACTORS_IDX] + state[BUILD_STATE.IN_PROGRESS_REACTORS_IDX]
         numTechAll = state[BUILD_STATE.TECHLAB_IDX] + state[BUILD_STATE.IN_PROGRESS_TECHLAB_IDX]
         
-        if numSDAll < 2:
+        supplyLeft = state[BUILD_STATE.SUPPLY_LEFT_IDX]
+        
+        if supplyLeft <= 2:
+            action = ACTIONS.ID_BUILD_SUPPLY_DEPOT
+        elif numSDAll < 2:
             action = ACTIONS.ID_BUILD_SUPPLY_DEPOT
         elif numRefAll < 2:
             action = ACTIONS.ID_BUILD_REFINERY
@@ -304,13 +305,7 @@ class NaiveDecisionMakerBuilder(BaseDecisionMaker):
             action = ACTIONS.ID_BUILD_FACTORY_TECHLAB
         elif numBaAll < 4:
             action = ACTIONS.ID_BUILD_BARRACKS
-        elif numSDAll < 10:
-            action = ACTIONS.ID_BUILD_SUPPLY_DEPOT
-        elif numFaAll < 3:
-            action = ACTIONS.ID_BUILD_FACTORY
-        elif numTechAll < 3:
-            action = ACTIONS.ID_BUILD_FACTORY_TECHLAB
-        else:
+        elif supplyLeft < 6:
             action = ACTIONS.ID_BUILD_SUPPLY_DEPOT
 
         return action
@@ -321,19 +316,6 @@ class NaiveDecisionMakerBuilder(BaseDecisionMaker):
         vals[ACTIONS.ID_DO_NOTHING] = 0.1
         return vals
 
-    def end_run(self, r, score, steps):
-        saveFile = False
-        self.trialNum += 1
-        
-        if self.resultFName != None:
-            self.lock.acquire()
-            if self.trialNum % self.numTrials2Learn == 0:
-                saveFile = True
-
-            self.resultFile.end_run(r, score, steps, saveFile)
-            self.lock.release()
-       
-        return saveFile 
 
 class BuildBaseSubAgent(BaseAgent):
     def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList):        
@@ -342,6 +324,8 @@ class BuildBaseSubAgent(BaseAgent):
         
         self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
         self.trainAgent =AGENT_NAME in trainList
+        self.inTraining = self.trainAgent
+
         self.illigalmoveSolveInModel = True
 
         if decisionMaker != None:
@@ -374,7 +358,7 @@ class BuildBaseSubAgent(BaseAgent):
         if dmTypes[AGENT_NAME] == "naive":
             decisionMaker = NaiveDecisionMakerBuilder(resultFName=runType[RESULTS], directory=directory + runType[DIRECTORY])
         else:        
-            decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME],  
+            decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], numTrials2Learn=20,
                                                 resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY], isMultiThreaded=isMultiThreaded)
 
         return decisionMaker
@@ -408,7 +392,7 @@ class BuildBaseSubAgent(BaseAgent):
         self.previous_scaled_state = np.zeros(BUILD_STATE.SIZE, dtype=np.int32, order='C')
         self.current_scaled_state = np.zeros(BUILD_STATE.SIZE, dtype=np.int32, order='C')
 
-        self.stepActionCommmitted = 0
+        self.lastActionCommittedStep = 0
         self.lastActionCommittedState = None
         self.lastActionCommittedNextState = None
 
@@ -419,17 +403,25 @@ class BuildBaseSubAgent(BaseAgent):
             self.decisionMaker.end_run(reward, score, stepNum)
 
     def Learn(self, reward, terminal):
-        if self.trainAgent:
+        if self.inTraining:
             if self.isActionCommitted:
                 self.decisionMaker.learn(self.previous_scaled_state, self.lastActionCommitted, reward, self.current_scaled_state, terminal)
-            elif terminal:
-                # if terminal reward entire state if action is not chosen for current step
-                for a in range(ACTIONS.NUM_ACTIONS):
-                    self.decisionMaker.learn(self.previous_scaled_state, a, reward, self.terminalState, terminal)
-                    self.decisionMaker.learn(self.current_scaled_state, a, reward, self.terminalState, terminal)
-        
+
+            # elif terminal:
+            #     # if terminal reward entire state if action is not chosen for current step
+            #     for a in range(ACTIONS.NUM_ACTIONS):
+            #         self.decisionMaker.learn(self.previous_scaled_state, a, reward, self.terminalState, terminal)
+            #         self.decisionMaker.learn(self.current_scaled_state, a, reward, self.terminalState, terminal)
+            
+            elif reward > 0:
+                if self.lastActionCommitted != None:
+                    numSteps = self.sharedData.numAgentStep - self.lastActionCommittedStep
+                    discountedReward = reward * pow(self.decisionMaker.DiscountFactor(), numSteps)
+                    self.decisionMaker.learn(self.lastActionCommittedState, self.lastActionCommitted, discountedReward, self.lastActionCommittedNextState, terminal)        
+ 
         self.previous_scaled_state[:] = self.current_scaled_state[:]
         self.isActionCommitted = False
+
 
     def IsDoNothingAction(self, a):
         return a == ACTIONS.ID_DO_NOTHING
@@ -439,15 +431,19 @@ class BuildBaseSubAgent(BaseAgent):
 
         if moveNum == 0:
             if buildingType == Terran.Refinery:
-                numRefinery = self.current_scaled_state[BUILD_STATE.REFINERY_IDX] + self.current_scaled_state[BUILD_STATE.IN_PROGRESS_REFINERY_IDX]
-                if numRefinery == 0:
-                    group2Select = self.sharedData.scvGasGroup1
-                else:
-                    group2Select = self.sharedData.scvGasGroup2
+                numRefinery = self.current_scaled_state[BUILD_STATE.REFINERY_IDX] + self.current_scaled_state[BUILD_STATE.IN_PROGRESS_REFINERY_IDX]               
+                group2Select = self.sharedData.scvGasGroups[numRefinery]
             else:
                 group2Select = self.sharedData.scvMineralGroup
             
-            return actions.FunctionCall(SC2_Actions.SELECT_CONTROL_GROUP, [SC2_Params.CONTROL_GROUP_RECALL, [group2Select]]), False
+            if group2Select != None:
+                return actions.FunctionCall(SC2_Actions.SELECT_CONTROL_GROUP, [SC2_Params.CONTROL_GROUP_RECALL, [group2Select]]), False
+            
+            unitType = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
+            scv_y, scv_x = SelectUnitValidPoints(unitType == Terran.SCV)
+            if len(scv_y) > 0:
+                target = [scv_y[0], scv_x[0]]
+                return actions.FunctionCall(SC2_Actions.SELECT_POINT, [SC2_Params.SELECT_ALL, SwapPnt(target)]), False
 
         elif moveNum == 1:
             unitSelected = obs.observation['feature_screen'][SC2_Params.SELECTED_IN_SCREEN]
@@ -527,26 +523,30 @@ class BuildBaseSubAgent(BaseAgent):
         self.current_state[BUILD_STATE.MINERALS_IDX] = obs.observation['player'][SC2_Params.MINERALS]
         self.current_state[BUILD_STATE.GAS_IDX] = obs.observation['player'][SC2_Params.VESPENE]
 
+        supplyUsed = obs.observation['player'][SC2_Params.SUPPLY_USED]
+        supplyCap = obs.observation['player'][SC2_Params.SUPPLY_CAP]
+        self.current_state[BUILD_STATE.SUPPLY_LEFT_IDX] = supplyCap - supplyUsed
+
         self.ScaleState()
 
-        # if self.isActionCommitted:
-        #     self.stepActionCommmitted = self.numSteps
-        #     self.lastActionCommittedState = self.previous_scaled_state
-        #     self.lastActionCommittedNextState = self.current_scaled_state
+        if self.isActionCommitted:
+            self.lastActionCommittedStep = self.sharedData.numAgentStep
+            self.lastActionCommittedState = self.previous_scaled_state
+            self.lastActionCommittedNextState = self.current_scaled_state
    
     def ScaleState(self):
         self.current_scaled_state[:] = self.current_state[:]
         
-        self.current_scaled_state[BUILD_STATE.MINERALS_IDX] = int(self.current_scaled_state[BUILD_STATE.MINERALS_IDX] / BUILD_STATE.MINERALS_BUCKETING) * BUILD_STATE.MINERALS_BUCKETING
         self.current_scaled_state[BUILD_STATE.MINERALS_IDX] = min(BUILD_STATE.MINERALS_MAX, self.current_scaled_state[BUILD_STATE.MINERALS_IDX])
-        self.current_scaled_state[BUILD_STATE.GAS_IDX] = int(self.current_scaled_state[BUILD_STATE.GAS_IDX] / BUILD_STATE.GAS_BUCKETING) * BUILD_STATE.GAS_BUCKETING
         self.current_scaled_state[BUILD_STATE.GAS_IDX] = min(BUILD_STATE.GAS_MAX, self.current_scaled_state[BUILD_STATE.GAS_IDX])
+
+        self.current_scaled_state[BUILD_STATE.SUPPLY_LEFT_IDX] = min(BUILD_STATE.SUPPLY_LEFT_MAX, self.current_scaled_state[BUILD_STATE.SUPPLY_LEFT_IDX])
 
     def ChooseAction(self):
         if self.playAgent:
             if self.illigalmoveSolveInModel:
                 validActions = self.ValidActions()
-                if self.trainAgent:
+                if self.inTraining:
                     targetValues = False
                     exploreProb = self.decisionMaker.ExploreProb()              
                 else:
@@ -713,3 +713,7 @@ class BuildBaseSubAgent(BaseAgent):
         coordAddition = [coord[0], int(coord[1] + sizeBuilding / 2 + sizeAddition)]
         
         return [coordNorthWest, coordSouthWest, coordSouthEast, coordAddition]
+
+if __name__ == "__main__":
+    if "results" in sys.argv:
+        PlotResults(AGENT_NAME, AGENT_DIR, RUN_TYPES)

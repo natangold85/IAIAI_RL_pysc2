@@ -1,116 +1,150 @@
 import numpy as np 
+import pandas as pd
+import matplotlib.pyplot as plt
+
+from utils_dqn import DQN_PARAMS
+from utils_dqn import DQN
+
 import random
 
-from utils_tables import LearnWithReplayMngr
-from utils_tables import DQN_EMBEDDING_PARAMS
 
-TYPE = "type"
-NN = "nn"
-Q_TABLE = "q"
-T_TABLE = "t"
-HISTORY = "hist"
-R_TABLE = "r"
-RESULTS = "results"
-PARAMS = 'params'
-GRIDSIZE_key = 'gridsize'
+def CreateDqn(useGpu = True):
+    if not useGpu:
+        import os
+        os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+        os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
-RUN_TYPES = {}
+    dqnParams = DQN_PARAMS(16, 7, layersNum = 2)
+    dqn = DQN(dqnParams, "test3", "./test3/", loadNN=False, isMultiThreaded=False)
+    return dqn
 
-RUN_TYPES['master'] = {}
-RUN_TYPES['master'][TYPE] = "NN"
-RUN_TYPES['master'][GRIDSIZE_key] = 5
-RUN_TYPES['master'][PARAMS] = DQN_EMBEDDING_PARAMS(76, 75, 3)
-RUN_TYPES['master'][NN] = "battleMngr_dqnGS5_Embedding_DQN"
-RUN_TYPES['master'][Q_TABLE] = ""
-RUN_TYPES['master'][HISTORY] = "battleMngr_dqnGS5_Embedding_replayHistory"
-RUN_TYPES['master'][RESULTS] = "battleMngr_dqnGS5_Embedding_result"
+def getHist():
+    histFile = "replayHistory_buildOnly.gz"
+    histDict = pd.read_pickle(histFile, compression='gzip')
 
-RUN_TYPES['sub1'] = {}
-RUN_TYPES['sub1'][TYPE] = "NN"
-RUN_TYPES['sub1'][GRIDSIZE_key] = 5
-RUN_TYPES['sub1'][PARAMS] = DQN_EMBEDDING_PARAMS(51, 50, 26)
-RUN_TYPES['sub1'][NN] = "armyBattle_dqnGS5_Embedding_DQN"
-RUN_TYPES['sub1'][Q_TABLE] = ""
-RUN_TYPES['sub1'][HISTORY] = "armyBattle_dqnGS5_Embedding_replayHistory"
-RUN_TYPES['sub1'][RESULTS] = "armyBattle_dqnGS5_Embedding_result"
+    s = np.array(histDict["s"], dtype = float)
+    a = np.array(histDict["a"], dtype = int)
+    s_ = np.array(histDict["s_"], dtype = float)
+    r = np.array(histDict["r"], dtype = float)
+    terminal = np.array(histDict["terminal"], dtype = bool)
 
-RUN_TYPES['sub2'] = {}
-RUN_TYPES['sub2'][TYPE] = "NN"
-RUN_TYPES['sub2'][GRIDSIZE_key] = 5
-RUN_TYPES['sub2'][PARAMS] = DQN_EMBEDDING_PARAMS(51, 50, 26)
-RUN_TYPES['sub2'][NN] = "baseBattle_dqnGS5_Embedding_DQN"
-RUN_TYPES['sub2'][Q_TABLE] = ""
-RUN_TYPES['sub2'][HISTORY] = "baseBattle_dqnGS5_Embedding_replayHistory"
-RUN_TYPES['sub2'][RESULTS] = "baseBattle_dqnGS5_Embedding_result"
+    s = NormalizeStateVals(histDict, s)
+    s_ = NormalizeStateVals(histDict, s_)
 
-class Sub:
-    def __init__(self, runType):
-        
-        self.dqn = LearnWithReplayMngr(runType[TYPE], runType[PARAMS], runType[NN], runType[Q_TABLE], runType[RESULTS], runType[HISTORY])
-        self.stateSize = runType[PARAMS].stateSize
-        self.numActions = runType[PARAMS].numActions
+    return s, a, r, s_, terminal
 
-    def Learn(self):
-        for i in range(500):
-            t = False
-            steps = 0
-            while not t:
-                s,a,r,s_,t = self.CreateSample()
-                self.dqn.learn(s,a,r,s_,t)
-                steps += 1
-            self.dqn.end_run(0,0,steps)
+
+def train(dqn, histSize):
+    s, a, r, s_, terminal = getHist()
+    if len(a) < histSize:
+        histSize = len(terminal)
+
+    idxArray = list(range(len(a)))
+    idxChosen = random.sample(idxArray, histSize)
+
+    shuffS = s[idxChosen,:].reshape(histSize, s.shape[1])
+    shuffA = a[idxChosen].reshape(histSize)
+    shuffS_ = s_[idxChosen,:].reshape(histSize, s_.shape[1])
+    shuffR = r[idxChosen].reshape(histSize)
+    shuffT = terminal[idxChosen].reshape(histSize)
+
+    dqn.learn(shuffS, shuffA, shuffR, shuffS_, shuffT)
+
+def insertMax2Dict(histDict):
+    histDict["maxStateVals"] = np.ones(16, int)
+
+def NormalizeStateVals(histDict, s):
+    return s / histDict["maxStateVals"]
+
+
+def PrintValues(dqn, allStates):
+    for i in range(allStates.shape[0]):
+        values = dqn.ActionValuesVec(allStates[i, :])
+        print("s =", allStates[i, :], "values =", end = ' [')
+        for v in values:
+            print(v, end = ', ')
+        print("]")
+
+# actions
+    # ID_DO_NOTHING = 0
+    # ID_BUILD_SUPPLY_DEPOT = 1
+    # ID_BUILD_REFINERY = 2
+    # ID_BUILD_BARRACKS = 3
+    # ID_BUILD_FACTORY = 4
+    # ID_BUILD_BARRACKS_REACTOR = 5
+    # ID_BUILD_FACTORY_TECHLAB = 6
+    # NUM_ACTIONS = 7
+
+# check States
+    # COMMAND_CENTER_IDX = 0
+    # MINERALS_IDX = 1
+    # GAS_IDX = 2
+    # SUPPLY_DEPOT_IDX = 3
+    # REFINERY_IDX = 4
+    # BARRACKS_IDX = 5
+    # FACTORY_IDX = 6
+    # REACTORS_IDX = 7
+    # TECHLAB_IDX = 8
+
+    # IN_PROGRESS_SUPPLY_DEPOT_IDX = 9
+    # IN_PROGRESS_REFINERY_IDX = 10
+    # IN_PROGRESS_BARRACKS_IDX = 11
+    # IN_PROGRESS_FACTORY_IDX = 12
+    # IN_PROGRESS_REACTORS_IDX = 13
+    # IN_PROGRESS_TECHLAB_IDX = 14    
     
-    def CreateSample(self):
-        sBase = np.random.rand(self.stateSize)
-        s_Base = np.random.rand(self.stateSize)
-        
-        s = np.zeros(self.stateSize, dtype = int)
-        s_ = np.zeros(self.stateSize, dtype = int)
-        for i in range(self.stateSize):
-            s[i] = int(sBase[i] * 10)
-            s_[i] = int(s_Base[i] * 10)        
-
-        a = random.randint(0, self.numActions - 1)
-
-        r = np.random.uniform()
-
-        if s_[0] == 0:
-            t = True
-        else:
-            t = False
+    # SUPPLY_USED = 15
+def getCheckStates():
     
-        return s, a, r, s_, t
+    states =  np.array([[ 1, 0.5,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0.2],  # no sd (sd affect check)
+       [ 1, 0.5,  0,  0.1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0.2],  # 1 sd (sd affect check)
+       [ 1, 0.5,  0, 0.1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0.2],  # 7 sd (sd affect check)
+       [ 1, 0.5,  0,  0.2,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0.2],  # no barracks (barracks affect check)
+       [ 1, 0.5,  0,  0.2,  0,  0.33,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0.2],  # 1 barrack (barracks affect check)
+       [ 1, 0.5,  0,  0.2,  0,  0.66,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0.2],  # 2 barracks (barracks affect check)
+       [ 1, 0.5,  0,  0.2,  0,  0,  0,  0,  0,  0,  0,  0.5,  0,  0,  0,  0.2]]) # 1 barrack in progress (barracks affect check)
 
-    def saveNN(self):
-        self.dqn.dqn.save_network()
-        
+    return states
 
 
 
-class Master(Sub):
-    def __init__(self):
-        super(Master, self).__init__(RUN_TYPES['master'])
 
-        self.s1 = Sub(RUN_TYPES["sub1"])
-        self.s2 = Sub(RUN_TYPES["sub2"])
+# from test3 import *
+# dqn = CreateDqn()
+# states = getCheckStates()
+# PrintValues(dqn, states)
+
+def MinMaxValues(dqn, states, size):
+    sumMax = 0.0
+    sumMin = 0.0
+    for i in range(size):
+        values = dqn.ActionValuesVec(states[i, :])
+        sumMax += max(values)
+        sumMin += min(values)    
+
+    return [sumMax / size, sumMin / size]
+
+def checkExploding(startSize = 32, endSize = 500000, numEpochs = 100, jumps = 32):
+    results = {}
+
+    checkStates = getCheckStates()
+    checkSize = checkStates.shape[0]
+    dqn = CreateDqn()
     
-    def Learn(self, n = 0):
-        if n == 0:
-            super(Master, self).Learn()
-        elif n == 1:
-            self.s1.Learn()
-        elif n == 2:
-            self.s2.Learn()         
+    for size in range(startSize, endSize, jumps):
+        singleResults = []
+        singleResults.append(MinMaxValues(dqn, checkStates, checkSize))
+        
+        for epoch in range(numEpochs):
+            train(dqn, size)
+        
+        singleResults.append(MinMaxValues(dqn, checkStates, checkSize))
+        results[size] = singleResults
+        dqn.Reset()
+        print("finished training size =", size)
 
-    def saveNN(self, n = 0):
-        if n == 0:
-            super(Master, self).saveNN()
-        elif n == 1:
-            self.s1.saveNN()
-        elif n == 2:
-            self.s2.saveNN() 
+    return results
 
-t = Master()
-t.Learn(0)
 
+        
 

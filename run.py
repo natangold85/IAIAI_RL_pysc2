@@ -22,6 +22,10 @@ from agent_super import SuperAgent
 
 from utils import SC2_Params
 
+# run from cpu
+import os
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 PARALLEL_THREADS = 16
 RENDER = False
@@ -29,10 +33,11 @@ SCREEN_SIZE = SC2_Params.SCREEN_SIZE
 MINIMAP_SIZE = SC2_Params.MINIMAP_SIZE
 
 flags.DEFINE_string("trainAgent", "none", "Which agent to train.")
-flags.DEFINE_string("play", "none", "Which agent to play.")
+flags.DEFINE_string("playAgent", "none", "Which agent to play.")
 flags.DEFINE_string("typeFile", "none", "config file that builds heirarchi for decision maker (should contain a dict name dm_Types)")
 flags.DEFINE_string("train", "True", "open multiple threads for train.")
 flags.DEFINE_string("map", "none", "Which map to run.")
+flags.DEFINE_string("numSteps", "0", "Which map to run.")
 
 nonRelevantRewardMap = ["BaseMngr"]
 singlePlayerMaps = ["ArmyAttack5x5", "AttackBase", "AttackMngr"]
@@ -43,8 +48,8 @@ singlePlayerMaps = ["ArmyAttack5x5", "AttackBase", "AttackMngr"]
 This scripts is the starter for all agents, it has one command line parameter (--agent), that denotes which agent to run.
 By default it runs the A3C agent.
 """
-
-def run_thread(agent, display, players):
+        
+def run_thread(agent, display, players, numSteps):
     """Runs an agent thread."""
 
     try:
@@ -53,7 +58,7 @@ def run_thread(agent, display, players):
 
         with sc2_env.SC2Env(map_name=flags.FLAGS.map,
                             players=players,
-                            game_steps_per_episode=0,
+                            game_steps_per_episode=numSteps,
                             agent_interface_format=agent_interface_format,
                             visualize=display) as env:
             run_loop.run_loop([agent], env)
@@ -85,10 +90,10 @@ def start_agent():
         trainList = flags.FLAGS.trainAgent
         trainList = trainList.split(",")
 
-    if flags.FLAGS.play == "none":
+    if flags.FLAGS.playAgent == "none":
         playList = trainList
     else:
-        playList = flags.FLAGS.play
+        playList = flags.FLAGS.playAgent
         playList = playList.split(",")
 
     print("\n\n\nplay list =", playList)        
@@ -117,17 +122,34 @@ def start_agent():
     if flags.FLAGS.map not in singlePlayerMaps:
         players.append(sc2_env.Bot(race=sc2_env.Race.terran, difficulty=difficulty))
 
+    
+    numSteps = int(flags.FLAGS.numSteps)
+
+
     for agent in agents:
-        thread_args = (agent, show, players)
+        thread_args = (agent, show, players, numSteps)
         t = threading.Thread(target=run_thread, args=thread_args)
         threads.append(t)
         t.start()
         time.sleep(5)
         show = False
 
-    for t in threads:
-        t.join()
 
+    runThreadAlive = True
+    while runThreadAlive:
+        # train  when flag of training is on
+        decisionMaker.TrainAll()
+        time.sleep(1)
+        
+        # if at least one thread is alive continue running
+        runThreadAlive = False
+        for t in threads:
+            
+            isAlive = t.isAlive()
+            if isAlive:
+                runThreadAlive = True
+            else:
+                t.join() 
 
 def main(argv):
     """Main function.

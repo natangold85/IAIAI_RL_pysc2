@@ -22,7 +22,7 @@ from utils import SC2_Actions
 
 from utils_decisionMaker import LearnWithReplayMngr
 from utils_decisionMaker import UserPlay
-from utils_decisionMaker import BaseDecisionMaker
+from utils_decisionMaker import BaseNaiveDecisionMaker
 
 from utils_results import PlotResults
 from utils_results import ResultFile
@@ -38,7 +38,7 @@ from agent_do_nothing import DoNothingSubAgent
 # shared data
 from agent_build_base import SharedDataBuild
 from agent_train_army import SharedDataTrain
-from agent_resource_gather import SharedDataGather
+# from agent_resource_mngr import SharedDataGather
 
 # state data
 from agent_build_base import BUILD_STATE
@@ -52,8 +52,9 @@ from utils import Scale2MiniMap
 from utils import IsolateArea
 
 AGENT_DIR = "BaseMngr/"
-AGENT_NAME = "base_mngr"
 
+AGENT_NAME = "base_mngr"
+TRAIN_SUB_AGENTS = "base_mngr_subAgents"
 
 ACTION_DO_NOTHING = 0
 ACTION_BUILD_BASE = 1
@@ -70,7 +71,7 @@ SUBAGENTS_NAMES = {}
 SUBAGENTS_NAMES[SUB_AGENT_BUILDER] = "BuildBaseSubAgent"
 SUBAGENTS_NAMES[SUB_AGENT_TRAINER] = "TrainArmySubAgent"
 
-class SharedDataBase(SharedDataBuild, SharedDataTrain, SharedDataGather):
+class SharedDataBase(SharedDataBuild, SharedDataTrain):
     def __init__(self):
         super(SharedDataBase, self).__init__()
         self.currBaseState = None
@@ -83,6 +84,11 @@ class BASE_STATE:
     GAS_MAX = 300
     MINERALS_BUCKETING = 50
     GAS_BUCKETING = 50
+
+    SUPPLY_LEFT_MAX = 10
+    SUPPLY_LEFT_BUCKETING = 2
+
+    TIME_LINE_BUCKETING = 1500
 
     COMMAND_CENTER_IDX = 0
     MINERALS_IDX = 1
@@ -101,13 +107,15 @@ class BASE_STATE:
     IN_PROGRESS_REACTORS_IDX = 13
     IN_PROGRESS_TECHLAB_IDX = 14    
 
-    QUEUE_BARRACKS = 15
-    QUEUE_FACTORY = 16
-    QUEUE_TECHLAB = 17
+    SUPPLY_LEFT = 15
 
-    ARMY_POWER = 18
+    QUEUE_BARRACKS = 16
+    QUEUE_FACTORY = 17
+    QUEUE_TECHLAB = 18
 
-    SIZE = 19
+    ARMY_POWER = 19
+    TIME_LINE = 20
+    SIZE = 21
 
     STATE_IDX_MNGR_2_BUILDER_TRANSITIONS = {}
     STATE_IDX_MNGR_2_BUILDER_TRANSITIONS[COMMAND_CENTER_IDX] = BUILD_STATE.COMMAND_CENTER_IDX
@@ -123,15 +131,15 @@ class BASE_STATE:
     STATE_IDX_MNGR_2_BUILDER_TRANSITIONS[IN_PROGRESS_FACTORY_IDX] = BUILD_STATE.IN_PROGRESS_FACTORY_IDX
     STATE_IDX_MNGR_2_BUILDER_TRANSITIONS[IN_PROGRESS_REACTORS_IDX] = BUILD_STATE.IN_PROGRESS_REACTORS_IDX
     STATE_IDX_MNGR_2_BUILDER_TRANSITIONS[IN_PROGRESS_TECHLAB_IDX] = BUILD_STATE.IN_PROGRESS_TECHLAB_IDX
+    STATE_IDX_MNGR_2_BUILDER_TRANSITIONS[SUPPLY_LEFT] = BUILD_STATE.SUPPLY_LEFT_IDX
 
 
     STATE_IDX_MNGR_2_TRAINER_TRANSITIONS = {}
     STATE_IDX_MNGR_2_TRAINER_TRANSITIONS[QUEUE_BARRACKS] = TRAIN_STATE.QUEUE_BARRACKS
     STATE_IDX_MNGR_2_TRAINER_TRANSITIONS[QUEUE_FACTORY] = TRAIN_STATE.QUEUE_FACTORY
     STATE_IDX_MNGR_2_TRAINER_TRANSITIONS[QUEUE_TECHLAB] = TRAIN_STATE.QUEUE_FACTORY_WITH_TECHLAB
+    STATE_IDX_MNGR_2_TRAINER_TRANSITIONS[ARMY_POWER] = TRAIN_STATE.ARMY_POWER
 
-
-    BUILDING_RELATED_IDX = [COMMAND_CENTER_IDX] + list(range(SUPPLY_DEPOT_IDX, ARMY_POWER))
     
     TRAIN_BUILDING_RELATED_IDX = [BARRACKS_IDX, FACTORY_IDX]
     BUILDING_2_STATE_TRANSITION = {}
@@ -172,7 +180,8 @@ class BASE_STATE:
     IDX2STR[QUEUE_FACTORY] = "FA_Q"
     IDX2STR[QUEUE_TECHLAB] = "TE_Q"
 
-    IDX2STR[ARMY_POWER] = "POWER"
+    IDX2STR[SUPPLY_LEFT] = "Supply_left"
+    IDX2STR[ARMY_POWER] = "ArmyPower"
 
 # possible types of play
 
@@ -215,42 +224,9 @@ RUN_TYPES[NAIVE][DIRECTORY] = "baseMngr_naive"
 RUN_TYPES[NAIVE][RESULTS] = "baseMngr_result"
 
 
-class NaiveDecisionMakerBaseMngr(BaseDecisionMaker):
+class NaiveDecisionMakerBaseMngr(BaseNaiveDecisionMaker):
     def __init__(self, resultFName = None, directory = None, numTrials2Learn = 20):
-        super(NaiveDecisionMakerBaseMngr, self).__init__()
-        self.resultFName = resultFName
-        self.trialNum = 0
-        self.numTrials2Learn = numTrials2Learn
-
-        if resultFName != None:
-            self.lock = Lock()
-            if directory != None:
-                fullDirectoryName = "./" + directory +"/"
-                if not os.path.isdir(fullDirectoryName):
-                    os.makedirs(fullDirectoryName)
-            else:
-                fullDirectoryName = "./"
-
-            if "new" in sys.argv:
-                loadFiles = False
-            else:
-                loadFiles = True
-
-            self.resultFile = ResultFile(fullDirectoryName + resultFName, numTrials2Learn, loadFiles)
-
-    def end_run(self, r, score, steps):
-        saveFile = False
-        self.trialNum += 1
-        
-        if self.resultFName != None:
-            self.lock.acquire()
-            if self.trialNum % self.numTrials2Learn == 0:
-                saveFile = True
-
-            self.resultFile.end_run(r, score, steps, saveFile)
-            self.lock.release()
-       
-        return saveFile
+        super(NaiveDecisionMakerBaseMngr, self).__init__(numTrials2Learn, resultFName, directory)
 
     def choose_action(self, state):
         action = 0
@@ -263,21 +239,24 @@ class NaiveDecisionMakerBaseMngr(BaseDecisionMaker):
         numTechAll = state[BASE_STATE.TECHLAB_IDX] + state[BASE_STATE.IN_PROGRESS_TECHLAB_IDX]
         numBarracksQ = state[BASE_STATE.QUEUE_BARRACKS]
         
+        supplyLeft = state[BASE_STATE.SUPPLY_LEFT]
         power = state[BASE_STATE.ARMY_POWER]
 
-        if numSDAll < 3 or numRefAll < 2 or numBaAll < 2 or numReactorsAll < 2:
+        if supplyLeft <= 2:
             action = ACTION_BUILD_BASE
-        elif numBarracksQ < 6 and power < 6:
-            action = ACTION_TRAIN_ARMY
-        elif numFaAll < 2: 
+        elif numSDAll < 3 or numRefAll < 2 or numBaAll < 1 or numReactorsAll < 1:
             action = ACTION_BUILD_BASE
-        elif power < 10:
+        elif numBarracksQ < 6 and power < 8:
             action = ACTION_TRAIN_ARMY
-        elif numTechAll < 2:
+        elif numFaAll < 1 and numTechAll < 1: 
             action = ACTION_BUILD_BASE
-        elif power < 30:
+        elif supplyLeft > 5:
             action = ACTION_TRAIN_ARMY
-        elif numSDAll < 9:
+        elif numReactorsAll < 2:
+            action = ACTION_BUILD_BASE
+        elif supplyLeft > 5:
+            action = ACTION_TRAIN_ARMY
+        elif supplyLeft < 5:
             action = ACTION_BUILD_BASE
         else:
             action = ACTION_TRAIN_ARMY
@@ -301,7 +280,8 @@ class BaseMngr(BaseAgent):
             saPlayList = playList
         
         self.trainAgent = AGENT_NAME in trainList
-        
+        self.trainSubAgentsSimultaneously = TRAIN_SUB_AGENTS in trainList
+  
         self.illigalmoveSolveInModel = True
 
         if decisionMaker != None:
@@ -321,6 +301,9 @@ class BaseMngr(BaseAgent):
 
         if not self.playAgent:
             self.subAgentPlay = self.FindActingHeirarchi()
+
+        if self.trainSubAgentsSimultaneously:
+            self.SetSubAgentTrainSwitch(dmTypes["numTrial2Train"], [SUB_AGENT_BUILDER, SUB_AGENT_TRAINER])
 
         self.sharedData = sharedData
         self.terminalState = np.zeros(BASE_STATE.SIZE, dtype=np.int, order='C')
@@ -345,6 +328,51 @@ class BaseMngr(BaseAgent):
     def GetDecisionMaker(self):
         return self.decisionMaker
 
+    def SetSubAgentTrainSwitch(self, numTrial2Switch, trainOrder):
+        self.numTrial2Switch = numTrial2Switch
+        self.trainOrder = trainOrder
+        self.switchCounter = {}
+        
+        startAgent = 0
+        minCounter = 1000
+        for idx in range(len(trainOrder)):
+            saIdx = trainOrder[idx]
+            subAgent = self.subAgents[saIdx]
+            subAgent.inTraining = True
+            subAgent.trainAgent = False
+            numRuns = subAgent.decisionMaker.NumRuns()
+
+            self.switchCounter[saIdx] = int(numRuns / self.numTrial2Switch)
+            if self.switchCounter[saIdx] < minCounter:
+                startAgent = idx
+                minCounter = self.switchCounter[saIdx]
+
+        self.currTrainSubAgentIdx = startAgent 
+
+        self.SwitchTrainSubAgent()
+
+
+    def SwitchTrainSubAgent(self, prevSaIdx = None):
+        if prevSaIdx != None:
+            prevSubAgent = self.subAgents[self.trainOrder[prevSaIdx]]
+            prevSubAgent.trainAgent = False
+
+            prevSubAgent.decisionMaker.decisionMaker.CopyTarget2DQN()
+
+            self.currTrainSubAgentIdx = (self.currTrainSubAgentIdx + 1) % len(self.trainOrder)
+         
+        subAgentIdx = self.trainOrder[self.currTrainSubAgentIdx]
+        currSubAgent = self.subAgents[subAgentIdx]
+        numRuns = currSubAgent.decisionMaker.NumRuns()
+        self.currCounterThreshold = int(numRuns / self.numTrial2Switch) * self.numTrial2Switch + self.numTrial2Switch
+        currSubAgent.trainAgent = True
+
+        self.decisionMaker.AddSwitch(subAgentIdx, self.switchCounter[subAgentIdx], SUBAGENTS_NAMES[self.trainOrder[self.currTrainSubAgentIdx]])
+        self.switchCounter[subAgentIdx] += 1
+
+        print("\n\nstart train sub agent:", SUBAGENTS_NAMES[self.trainOrder[self.currTrainSubAgentIdx]])
+        print("counter threshold = ", self.currCounterThreshold)
+        
     def FindActingHeirarchi(self):
         if self.playAgent:
             return 1
@@ -369,13 +397,21 @@ class BaseMngr(BaseAgent):
             self.subAgentsActions[sa] = None
             self.subAgents[sa].FirstStep(obs) 
 
-
     def EndRun(self, reward, score, stepNum):
-        if self.trainAgent:
-            self.decisionMaker.end_run(reward, score, stepNum)
-        
+        if self.trainAgent or self.trainSubAgentsSimultaneously:
+            self.decisionMaker.end_run(reward, score, stepNum)            
+
         for subAgent in self.subAgents.values():
             subAgent.EndRun(reward, score, stepNum)
+        
+
+        if self.trainSubAgentsSimultaneously:
+            currSubAgent = self.subAgents[self.trainOrder[self.currTrainSubAgentIdx]]
+            numRuns = currSubAgent.decisionMaker.NumRuns()
+
+            if numRuns >= self.currCounterThreshold:
+                self.SwitchTrainSubAgent(self.currTrainSubAgentIdx)
+
 
     def MonitorObservation(self, obs):
         for subAgent in self.subAgents.values():
@@ -401,12 +437,7 @@ class BaseMngr(BaseAgent):
 
         self.current_state[BASE_STATE.MINERALS_IDX] = obs.observation['player'][SC2_Params.MINERALS]
         self.current_state[BASE_STATE.GAS_IDX] = obs.observation['player'][SC2_Params.VESPENE]
-        
-        power = 0
-        for unit, num in self.sharedData.armySize.items():
-            power += num * self.sharedData.unitTrainValue[unit]
-
-        self.current_state[BASE_STATE.ARMY_POWER] = power
+        self.current_state[BASE_STATE.TIME_LINE] = self.sharedData.numStep
 
         self.ScaleState()
 
@@ -415,10 +446,10 @@ class BaseMngr(BaseAgent):
     def ScaleState(self):
         self.current_scaled_state[:] = self.current_state[:]
         
-        self.current_scaled_state[BASE_STATE.MINERALS_IDX] = int(self.current_scaled_state[BASE_STATE.MINERALS_IDX] / BASE_STATE.MINERALS_BUCKETING) * BASE_STATE.MINERALS_BUCKETING
         self.current_scaled_state[BASE_STATE.MINERALS_IDX] = min(BASE_STATE.MINERALS_MAX, self.current_scaled_state[BASE_STATE.MINERALS_IDX])
-        self.current_scaled_state[BASE_STATE.GAS_IDX] = int(self.current_scaled_state[BASE_STATE.GAS_IDX] / BASE_STATE.GAS_BUCKETING) * BASE_STATE.GAS_BUCKETING
         self.current_scaled_state[BASE_STATE.GAS_IDX] = min(BASE_STATE.GAS_MAX, self.current_scaled_state[BASE_STATE.GAS_IDX])
+
+        self.current_scaled_state[BASE_STATE.SUPPLY_LEFT] = min(BASE_STATE.SUPPLY_LEFT_MAX, self.current_scaled_state[BASE_STATE.SUPPLY_LEFT])
 
     def Learn(self, reward, terminal):            
         if self.trainAgent:
@@ -435,6 +466,13 @@ class BaseMngr(BaseAgent):
 
         self.previous_scaled_state[:] = self.current_scaled_state[:]
         self.isActionCommitted = False
+
+    def SubAgentActionChosen(self, action):
+        self.isActionCommitted = True
+        self.lastActionCommitted = action
+
+        if action in ALL_SUB_AGENTS:
+            self.subAgents[action].SubAgentActionChosen(self.subAgentsActions[action])
 
     def ChooseAction(self):
         for sa in ALL_SUB_AGENTS:
@@ -493,3 +531,6 @@ class BaseMngr(BaseAgent):
 if __name__ == "__main__":
     if "results" in sys.argv:
         PlotResults(AGENT_NAME, AGENT_DIR, RUN_TYPES)
+    
+    if "resultsSwitchingTrain" in sys.argv:
+        PlotResults(AGENT_NAME, AGENT_DIR, RUN_TYPES, subAgentsGroups = list(SUBAGENTS_NAMES.values()))

@@ -26,11 +26,16 @@ from utils_results import ResultFile
 
 class BaseDecisionMaker:
     def __init__(self):
+        self.trainFlag = False
+        self.switchFlag = False
 
         self.subAgentsDecisionMakers = {}
+        self.switchCount = {}
+        self.resultFile = None
 
     def SetSubAgentDecisionMaker(self, key, decisionMaker):
         self.subAgentsDecisionMakers[key] = decisionMaker
+        self.switchCount[key] = 0
 
     def GetSubAgentDecisionMaker(self, key):
         if key in self.subAgentsDecisionMakers.keys():
@@ -38,6 +43,26 @@ class BaseDecisionMaker:
         else:
             return None
 
+    def TrainAll(self):
+        if self.trainFlag:
+            self.Train()
+            self.trainFlag = False
+        
+        for subDM in self.subAgentsDecisionMakers.values():
+            if subDM != None:
+                subDM.TrainAll()
+
+    def AddSwitch(self, idx, numSwitch, name):
+        if self.resultFile != None and idx in self.switchCount:
+            if self.switchCount[idx] <= numSwitch:
+                self.switchCount[idx] = numSwitch + 1
+                slotName = name + "_" + str(numSwitch)
+                self.resultFile.AddSwitchSlot(slotName)
+
+    def Train(self):
+        pass      
+    def NumRuns(self):
+        pass
     def choose_action(self, observation):
         pass
     def learn(self, s, a, r, s_, terminal = False):
@@ -51,6 +76,43 @@ class BaseDecisionMaker:
     def TargetExploreProb(self):
         return 0
         
+class BaseNaiveDecisionMaker(BaseDecisionMaker):
+    def __init__(self, numTrials2Save, resultFName = None, directory = None):
+        super(BaseNaiveDecisionMaker, self).__init__()
+        self.resultFName = resultFName
+        self.trialNum = 0
+        self.numTrials2Save = numTrials2Save
+
+        if resultFName != None:
+            self.lock = Lock()
+            if directory != None:
+                fullDirectoryName = "./" + directory +"/"
+                if not os.path.isdir(fullDirectoryName):
+                    os.makedirs(fullDirectoryName)
+            else:
+                fullDirectoryName = "./"
+
+            if "new" in sys.argv:
+                loadFiles = False
+            else:
+                loadFiles = True
+
+            self.resultFile = ResultFile(fullDirectoryName + resultFName, numTrials2Save, loadFiles)
+
+    def end_run(self, r, score, steps):
+        saveFile = False
+        self.trialNum += 1
+        
+        if self.resultFName != None:
+            self.lock.acquire()
+            if self.trialNum % self.numTrials2Save == 0:
+                saveFile = True
+
+            self.resultFile.end_run(r, score, steps, saveFile)
+            self.lock.release()
+       
+        return saveFile 
+
 
 class UserPlay(BaseDecisionMaker):
     def __init__(self, playWithInput = True, numActions = 1, actionDoNothing = 0):
@@ -68,12 +130,16 @@ class UserPlay(BaseDecisionMaker):
 
     def learn(self, s, a, r, s_, terminal = False):
         return None
+
     def ActionValuesVec(self,state, targetValues = False):
         return np.zeros(self.numActions,dtype = float)
+
     def end_run(self, r, score = 0 ,steps = 0):
         return False
+
     def ExploreProb(self):
         return 0
+
 
 class LearnWithReplayMngr(BaseDecisionMaker):
     def __init__(self, modelType, modelParams, decisionMakerName = '', resultFileName = '', historyFileName = '', directory = '', numTrials2Learn = 100, isMultiThreaded = False):
@@ -88,14 +154,19 @@ class LearnWithReplayMngr(BaseDecisionMaker):
         
         self.numTrials2Learn = numTrials2Learn
         self.trialNum = 0
+        self.trial2LearnDQN = -1
+
         self.params = modelParams
 
+        self.nextExperienceIdx2Add = 0
         self.transitions = {}
         self.transitions["s"] = []
         self.transitions["a"] = []
         self.transitions["r"] = []
         self.transitions["s_"] = []
         self.transitions["terminal"] = []
+
+        self.transitions["maxStateVals"] = np.ones(modelParams.stateSize, int)
 
         if "new" in sys.argv:
             loadFiles = False
@@ -121,45 +192,68 @@ class LearnWithReplayMngr(BaseDecisionMaker):
             self.resultFile = None
 
         if isMultiThreaded:
+            self.learnLock = Lock()
             self.endRunLock = Lock()
         else:
             self.endRunLock = EmptyLock()
+            self.learnLock = EmptyLock()
 
     def ExploreProb(self):
         return self.decisionMaker.ExploreProb()
 
+    def normalizeState(self, state):
+        return state / self.transitions["maxStateVals"]
+
     def choose_action(self, observation):
+        observation = self.normalizeState(observation)
         return self.decisionMaker.choose_action(observation)     
 
     def NumRuns(self):
         return self.decisionMaker.NumRuns()
 
     def learn(self, s, a, r, s_, terminal = False):
-        self.transitions["s"].append(s.copy())
-        self.transitions["a"].append(a)
-        self.transitions["r"].append(r)
-        self.transitions["s_"].append(s_.copy())
-        self.transitions["terminal"].append(terminal)
 
-    def ExperienceReplay(self):            
-        while len(self.transitions["r"]) > self.params.maxReplaySize:
-            self.transitions["s"].pop(0)
-            self.transitions["a"].pop(0)
-            self.transitions["r"].pop(0)
-            self.transitions["s_"].pop(0)
-            self.transitions["terminal"].pop(0)
+        if len(self.transitions["a"]) < self.params.maxReplaySize:
+            self.transitions["s"].append(s.copy())
+            self.transitions["a"].append(a)
+            self.transitions["r"].append(r)
+            self.transitions["s_"].append(s_.copy())
+            self.transitions["terminal"].append(terminal)
+        else:
+            self.learnLock.acquire()
+            idx = self.nextExperienceIdx2Add
+            self.nextExperienceIdx2Add = (idx + 1) % self.params.maxReplaySize
+            self.learnLock.release()
 
+            self.transitions["s"][idx] = s.copy()
+            self.transitions["a"][idx] = a
+            self.transitions["r"][idx] = r
+            self.transitions["s_"][idx] = s_.copy()
+            self.transitions["terminal"][idx] = terminal
+        
 
+    def NormalizeStateVals(self, s, s_):
+        maxAll = np.column_stack((self.transitions["maxStateVals"], np.max(s, axis = 0), np.max(s_, axis = 0)))
+        self.transitions["maxStateVals"] = np.max(maxAll, axis = 1)
+
+        s /= self.transitions["maxStateVals"]
+        s_ /= self.transitions["maxStateVals"]
+
+        return s , s_
+
+    def ExperienceReplay(self):   
         idx4Shuffle = np.arange(len(self.transitions["r"]))
         np.random.shuffle(idx4Shuffle)
         size = int(len(idx4Shuffle) * self.params.historyProportion4Learn)
         chosenIdx = idx4Shuffle[0:size]
                 
-        s = np.array(self.transitions["s"])[chosenIdx]
-        a = np.array(self.transitions["a"])[chosenIdx]
-        r = np.array(self.transitions["r"])[chosenIdx]
-        s_ = np.array(self.transitions["s_"])[chosenIdx]
-        terminal = np.array(self.transitions["terminal"])[chosenIdx]
+        s = np.array(self.transitions["s"], dtype = float)[chosenIdx]
+        a = np.array(self.transitions["a"], dtype = int)[chosenIdx]
+        r = np.array(self.transitions["r"], dtype = float)[chosenIdx]
+        s_ = np.array(self.transitions["s_"], dtype = float)[chosenIdx]
+        terminal = np.array(self.transitions["terminal"], dtype = bool)[chosenIdx]
+
+        s, s_ = self.NormalizeStateVals(s, s_)
 
         if self.histFileName != '':
             pd.to_pickle(self.transitions, self.histFileName, 'gzip') 
@@ -169,7 +263,8 @@ class LearnWithReplayMngr(BaseDecisionMaker):
     def end_run(self, r, score, steps):
         self.endRunLock.acquire()
 
-        print("for trial#", int(self.NumRuns()), ": reward =", r, "score =", score, "steps =", steps)
+        numRun = int(self.NumRuns())
+        print("\t\tfor trial#", numRun, ": reward =", r, "score =", score, "steps =", steps)
 
         learnAndSave = False
         self.trialNum += 1
@@ -184,20 +279,31 @@ class LearnWithReplayMngr(BaseDecisionMaker):
             self.tTable.end_run(learnAndSave)
 
         if learnAndSave:
-            s,a,rVec,s_, terminal = self.ExperienceReplay()
-            if len(a) > self.params.minReplaySize:
-                print("ExperienceReplay - training with hist size = ", len(rVec), end = ', ')
-                start = datetime.datetime.now()
-                self.decisionMaker.learn(s,a,rVec,s_, terminal)
-                diff = datetime.datetime.now() - start
-                msDiff = diff.seconds * 1000 + diff.microseconds / 1000
-                print("training last", msDiff, "milliseconds")
+            self.trial2LearnDQN = numRun + 1
+            self.trainFlag = True 
                 
         self.decisionMaker.end_run(r, learnAndSave)
 
         self.endRunLock.release()
         
         return learnAndSave 
+
+    def Train(self):
+        s,a,rVec,s_, terminal = self.ExperienceReplay()
+        
+        if len(a) > self.params.minReplaySize:
+            start = datetime.datetime.now()
+            
+            self.decisionMaker.learn(s,a,rVec,s_, terminal)
+            self.endRunLock.acquire()
+            self.decisionMaker.SaveDQN(self.trial2LearnDQN)
+            self.endRunLock.release()
+
+            diff = datetime.datetime.now() - start
+            msDiff = diff.seconds * 1000 + diff.microseconds / 1000
+            
+            print("ExperienceReplay - training with hist size = ", len(rVec), ", training last", msDiff, "milliseconds")
+
 
     def ResetAllData(self):
         self.transitions = {}
@@ -207,133 +313,14 @@ class LearnWithReplayMngr(BaseDecisionMaker):
         self.transitions["s_"] = []
         self.transitions["terminal"] = []
 
-
         self.decisionMaker.Reset()
 
         if self.resultFile != None:
             self.resultFile.Reset()
 
     def ActionValuesVec(self, s, targetValues = False):
+        s = self.normalizeState(s)
         return self.decisionMaker.ActionValuesVec(s, targetValues)
 
-
-    def PropogateReward(self):
-        lastIdx = len(self.transitions["r"]) - 1
-        prevReward = self.transitions["r"][lastIdx]
-
-        for i in range(lastIdx - 1, -1, -1):
-            if self.transitions["terminal"][i]:
-                break
-            
-            prevReward *= self.params.discountFactor
-            self.transitions["r"][i] += prevReward
-            prevReward = self.transitions["r"][i]
-
-
-# prev decision makers:
-
-# class TestTableMngr:        
-#     def __init__(self, numActions, qTableName, resultFileName, numToWriteResult = 100):
-        
-#         self.qTable = QLearningTable(numActions, qTableName)
-#         self.resultFile = ResultFile(resultFileName, numToWriteResult)
-
-#     def choose_action(self, observation):
-#         return self.qTable.choose_action(observation)
-
-#     def learn(self, s, a, r, s_, sToInitValues = None, s_ToInitValues = None):
-#         return 
-
-#     def end_run(self, r, score, steps):
-#         self.resultFile.end_run(r, score, steps, True)
-
-#         return True 
-
-# class TableMngr:
-#     def __init__(self, modelParams, qTableName, resultFileName = '', transitionTableName = '', onlineHallucination = False, rewardTableName = '', numTrials2SaveTable = 20, numToWriteResult = 100):
-#         self.qTable = QLearningTable(modelParams, qTableName)
-
-#         self.numTrials2Save = numTrials2SaveTable
-#         self.numTrials = 0
-
-#         self.onlineHallucination = onlineHallucination
-#         if transitionTableName != '':
-#             self.createTransitionTable = True
-#             if modelParams.PropogtionUsingTTable():
-#                 self.tTable = BothWaysTransitionTable(modelParams.numActions, transitionTableName)
-#                 self.qTable.InitTTable(self.tTable)
-#             else:
-#                 self.tTable = TransitionTable(modelParams.numActions, transitionTableName)
-#         else:
-#             self.createTransitionTable = False
-
-#         if resultFileName != '':
-#             self.createResultFile = True
-#             self.resultFile = ResultFile(resultFileName, numToWriteResult)
-#         else:
-#             self.createResultFile = False
-
-
-#         if onlineHallucination:
-#             manager = Manager()
-#             self.sharedMemoryPS = manager.dict()
-#             self.sharedMemoryPS["q_table"] = qTableName
-#             self.sharedMemoryPS["t_table"] = transitionTableName
-#             self.sharedMemoryPS["num_actions"] = modelParams.numActions
-#             self.sharedMemoryPS["updateStateFlag"] = False
-#             self.sharedMemoryPS["updateTableFlag"] = False
-#             self.sharedMemoryPS["nextState"] = None
-#             self.process = Process(target=HallucinationMngrPSFunc, args=(self.sharedMemoryPS,))
-#             self.process.daemon = True
-#             self.process.start()
-
-#     def choose_action(self, observation):
-#         return self.qTable.choose_action(observation)
-
-#     def learn(self, s, a, r, s_, sToInitValues = None, s_ToInitValues = None):
-#         self.qTable.learn(s, a, r, s_, sToInitValues, s_ToInitValues)
-
-#         if self.createTransitionTable:
-#             self.tTable.learn(s, a, s_)
-
-#         if self.createRewardTable:
-#             self.rTable.learn(s_, r)
-        
-#         if self.onlineHallucination:
-#             self.sharedMemoryPS["updateStateFlag"] = True
-#             self.sharedMemoryPS["nextState"] = s_
-
-#     def end_run(self, r, score, steps):
-#         saveTable = False
-#         self.numTrials += 1
-#         if self.numTrials == self.numTrials2Save:
-#             saveTable = True
-#             self.numTrials = 0
-
-#         self.qTable.end_run(r, saveTable)
-
-#         if self.createTransitionTable:
-#             self.tTable.end_run(saveTable)
-
-#         if self.createRewardTable:
-#             self.rTable.end_run(saveTable)
-
-#         if self.createResultFile:
-#             self.resultFile.end_run(r, score, steps, saveTable)
-
-#         if self.onlineHallucination and saveTable:
-#             self.sharedMemoryPS["updateTableFlag"] = True
-#             notFinished = True
-#             start = datetime.datetime.now()
-#             timeout = False
-#             while notFinished and not timeout:
-#                 notFinished = self.sharedMemoryPS["updateTableFlag"]
-#                 # end = datetime.datetime.now()
-#                 # if (end - start).total_seconds() > 100:
-#                 #     timeout = True
-#                 #     print("\n\n\ntimed out", start, end)
-
-            
-#             self.qTable.ReadTable()
-
-#         return saveTable
+    def DiscountFactor(self):
+        return self.decisionMaker.DiscountFactor()

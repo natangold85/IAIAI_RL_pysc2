@@ -117,9 +117,9 @@ class SC2_Params:
     WORKERS_SUPPLY_OCCUPATION = 6
     IDLE_WORKER_COUNT = 7
 
-    # single and multi select table idx
+    # single, multi and building queue select table idx
     UNIT_TYPE_IDX = 0
-    BUILDING_COMPLETION_IDX = 6
+    COMPLETION_RATIO_IDX = 6
 
     # params for queued argument
     NOT_QUEUED = [0]
@@ -837,3 +837,13 @@ def GatherResource(unitType, resourceList):
         return [unit_y[i], unit_x[i]]
     
     return [-1,-1]
+
+def GetSelectedUnits(obs):
+    scvStatus = list(obs.observation['multi_select'])
+    if len(scvStatus) ==  0:
+        scvStatus = list(obs.observation['single_select'])
+    return scvStatus
+
+
+def SupplyCap(buildingCompleted):
+    return 15 * len(buildingCompleted[Terran.CommandCenter]) + 8 * len(buildingCompleted[Terran.SupplyDepot])

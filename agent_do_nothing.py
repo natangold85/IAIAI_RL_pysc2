@@ -13,18 +13,21 @@ import numpy as np
 import pandas as pd
 import time
 
+from agent_resource_mngr import ResourceMngrSubAgent
+from agent_resource_mngr import SharedDataResourceMngr
+
 from pysc2.lib import actions
 from pysc2.lib.units import Terran
 
 from utils import BaseAgent
-from utils import EmptySharedData
 
-from utils_decisionMaker import BaseDecisionMaker
+from utils_decisionMaker import BaseNaiveDecisionMaker
+
+from agent_train_army import TrainCmd
 
 from utils import TerranUnit
 from utils import SC2_Params
 from utils import SC2_Actions
-
 
 from utils import GetScreenCorners
 from utils import GetLocationForBuilding
@@ -35,139 +38,68 @@ from utils import SelectBuildingValidPoint
 from utils import SelectUnitValidPoints
 from utils import PrintScreen
 from utils import GatherResource
-
-ACTION_BUILDING_COUNT = 0
-ACTION_LAND_BARRACKS = 1
-ACTION_LAND_FACTORY = 2
-ACTION_GROUP_SCV = 3
-ACTION_IDLEWORKER_EMPLOYMENT = 4
-ACTION_ARMY_COUNT = 5
-HARVEST_GAS = 6
-
-NUM_ACTIONS = 7
+from utils import GetSelectedUnits
 
 AGENT_NAME = "do_nothing"
 
-CLOSE_TO_ENEMY_RANGE_SQUARE = 10 * 10
+SUB_AGENT_RESOURCE_MNGR = 0
+
+ACTION_DO_NOTHING = 0
+ACTION_BUILDING_COUNT = 1
+ACTION_RESOURCE_SUBAGENT = 2
+ACTION_LAND_BUILDING = 3
+ACTION_IDLEWORKER_EMPLOYMENT = 4
+ACTION_ARMY_COUNT = 5
+ACTION_HARVEST_GAS = 6
+ACTION_INITIAL_SCV_GROUPING = 7
+ACTION_CHECK_QUEUE = 8
+
+NUM_ACTIONS = 9
+
+STATE_INITIAL_GROUPING = 0
+STATE_RESOURCE_SUBAGENT_ACTION = 1
+STATE_NEW_REFINERY = 2
+STATE_FLYING_BUILDING = 3
+STATE_NUM_IDLE_SCV = 4
+STATE_HAS_RESOURCES = 5
+STATE_ARMY_LVL = 6
+
+STATE_SIZE = 7
 
 PRODUCTION_BUILDINGS = [Terran.Barracks, Terran.BarracksReactor, Terran.Factory, Terran.FactoryTechLab]
 
-SCV_GROUP_MINERALS = 0
-SCV_GROUP_GAS1 = 1
-SCV_GROUP_GAS2 = 2
-GAS_GROUPS = [SCV_GROUP_GAS1, SCV_GROUP_GAS2]
-ALL_SCV_GROUPS = [SCV_GROUP_MINERALS] + GAS_GROUPS
-
-class SharedDataResourceMngr(EmptySharedData):
+class SharedDataDoNothing(SharedDataResourceMngr):
     def __init__(self):
-        self.scvBuildingQ = []
-        self.scvMineralGroup = SCV_GROUP_MINERALS
-        self.scvGasGroup1 = SCV_GROUP_GAS1
-        self.scvGasGroup2 = SCV_GROUP_GAS2
-        
-class ScvCmd:
-    def __init__(self):
-        self.m_stepsCounter = 0
+        super(SharedDataDoNothing, self).__init__()
 
-class DoNothingSubAgent(BaseAgent):
-    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList):
-        super(DoNothingSubAgent, self).__init__()
 
-        self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
 
-        self.isActionFailed = False
-        self.current_action = None
-
-        self.action2Str = ["BuildingCount", "LandBarracks", "LandFactory", "ResourceMngr", "IdleWorkerEmployment", "Return2Base", "QueueCheck", "HarvestGas"]
-                       
-        self.building2Check = [Terran.CommandCenter, Terran.SupplyDepot, Terran.Refinery, Terran.Barracks, Terran.Factory, Terran.BarracksReactor, Terran.FactoryTechLab] 
-
-        self.sharedData = sharedData
-
-        self.checkCounter2RemoveCmd = 5
-
-        self.unitInQueue = {}
-        self.unitInQueue[Terran.Marine] = [Terran.Barracks, Terran.BarracksReactor]
-        self.unitInQueue[Terran.Reaper] = [Terran.Barracks, Terran.BarracksReactor]
-        self.unitInQueue[Terran.Hellion] = [Terran.Factory, Terran.FactoryTechLab]
-        self.unitInQueue[Terran.SiegeTank] = [Terran.Factory, Terran.FactoryTechLab]
+class NaiveDecisionMakerDoNothing(BaseNaiveDecisionMaker):
+    def __init__(self, resultFName = None, directory = None, numTrials2Learn = 20):
+        super(NaiveDecisionMakerDoNothing, self).__init__(numTrials2Learn, resultFName, directory)
 
         self.defaultActionProb = {}
-        self.defaultActionProb[ACTION_BUILDING_COUNT] = 0.75
+        self.defaultActionProb[ACTION_BUILDING_COUNT] = 0.65
         self.defaultActionProb[ACTION_ARMY_COUNT] = 0.25
+        self.defaultActionProb[ACTION_CHECK_QUEUE] = 0.1
 
-        self.rallyCoordScv = [50,50]
-        self.maxQSize = 5
+        self.counterIdleEmployment = 0
+        self.outOfResources = False
 
-        # required num scv
-        self.numScvReq4Group = {}
-        self.numScvReq4Group[SCV_GROUP_MINERALS] = 8
-        self.numScvReq4Group[SCV_GROUP_GAS1] = 3
-        self.numScvReq4Group[SCV_GROUP_GAS2] = 3
-
-        self.numScvRequired = 0
-        for req in self.numScvReq4Group.values():
-            self.numScvRequired += req
-
-    def GetDecisionMaker(self):
-        return None
-
-    def FindActingHeirarchi(self):
-        if self.playAgent:
-            return 1
-        
-        return -1
-        
-    def FirstStep(self, obs):    
-        super(DoNothingSubAgent, self).FirstStep()  
-        self.currBuilding2Check = 0
-        self.realBuilding2Check = None
-        
-        self.numScvAll = obs.observation['player'][SC2_Params.WORKERS_SUPPLY_OCCUPATION]
-
-        self.initialGrouping = False
-        self.rallyPointSet = False
-        self.sharedData.scvBuildingQ = []
-        self.scvGroups = {}
-
-        self.sent2HarvestGasLast = 0
-        self.prevAction = 0
-        self.numIdleWorkers = 0
-
-    def IsDoNothingAction(self, a):
-        return True
-
-    def CreateState(self, obs):
-        self.numIdleWorkers = obs.observation['player'][SC2_Params.IDLE_WORKER_COUNT]
-        self.unitType = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
-        
-        numScvInGroups = 0
-        for group in ALL_SCV_GROUPS:
-            self.scvGroups[group] = obs.observation['control_groups'][group][SC2_Params.NUM_UNITS_CONTROL_GROUP]
-            numScvInGroups += self.scvGroups[group]
-
-        numScv = obs.observation['player'][SC2_Params.WORKERS_SUPPLY_OCCUPATION]        
-        for i in range(self.numScvAll, numScv):
-            self.sharedData.scvBuildingQ.pop(0)
-        
-        self.numScvAll = numScv
-
-        self.numCompletedRefineries = len(self.sharedData.buildingCompleted[Terran.Refinery])
-
-    def ChooseAction(self):
-        # if (self.unit_type == Terran.FLYING_BARRACKS).any():
-        #     return ACTION_LAND_BARRACKS
-        # elif (self.unit_type == Terran.FLYING_FACTORY).any():
-        #     return ACTION_LAND_FACTORY
-        if not self.initialGrouping:
-            action = ACTION_GROUP_SCV
-        elif self.ScvGroupsNotBalanced():
-            action = ACTION_GROUP_SCV
-        elif self.Need2HarvestGas():
-            action = HARVEST_GAS
-        elif self.numIdleWorkers > 0 and self.HasResources():
+    def choose_action(self, state):
+        if state[STATE_INITIAL_GROUPING] == 0:
+            action = ACTION_INITIAL_SCV_GROUPING
+        elif state[STATE_NUM_IDLE_SCV] > 0 and not self.outOfResources: 
             action = ACTION_IDLEWORKER_EMPLOYMENT
-        else:
+        elif state[STATE_RESOURCE_SUBAGENT_ACTION] > 0:
+            action = ACTION_RESOURCE_SUBAGENT
+        elif state[STATE_NEW_REFINERY] > 0:
+            action = ACTION_HARVEST_GAS
+        elif state[STATE_FLYING_BUILDING]:
+            action = ACTION_LAND_BUILDING
+        elif state[STATE_ARMY_LVL] == 0:
+            action = ACTION_BUILDING_COUNT
+        else: 
             randNum = np.random.uniform()
 
             for key, prob in self.defaultActionProb.items():
@@ -177,44 +109,173 @@ class DoNothingSubAgent(BaseAgent):
                 else:
                     randNum -= prob
 
-            if action == ACTION_ARMY_COUNT and self.HasArmyProductionBuildings() > 0:
-                action = action
-            else:
-                action = ACTION_BUILDING_COUNT
-
+        if action == ACTION_IDLEWORKER_EMPLOYMENT:
+            self.counterIdleEmployment += 1
+            if self.counterIdleEmployment == 10:
+                self.outOfResources = True
+        else:
+            self.counterIdleEmployment = 0
         return action
 
+    def ActionValuesVec(self, state, target = True):    
+        vals = np.zeros(NUM_ACTIONS, dtype = float)
+        vals[self.choose_action(state)] = 1.0
+
+        return vals
+
+    def end_run(self, r, score = 0 ,steps = 0):
+        super(NaiveDecisionMakerDoNothing, self).end_run(r, score ,steps)
+        self.outOfResources = False
+
+
+
+class DoNothingSubAgent(BaseAgent):
+    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList):
+        super(DoNothingSubAgent, self).__init__()
+
+        self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
+        if self.playAgent:
+            saPlayList = ["inherit"]
+        else:
+            saPlayList = playList
+
+        self.trainAgent = AGENT_NAME in trainList
+
+        if decisionMaker != None:
+            self.decisionMaker = decisionMaker
+        else:
+            self.decisionMaker = self.CreateDecisionMaker(dmTypes, isMultiThreaded)
+
+        # create sub agents and get decision makers
+        resMngrDM = self.decisionMaker.GetSubAgentDecisionMaker(SUB_AGENT_RESOURCE_MNGR)  
+        self.resourceMngrSubAgent = ResourceMngrSubAgent(sharedData, dmTypes, resMngrDM, isMultiThreaded, saPlayList, trainList)
+        self.decisionMaker.SetSubAgentDecisionMaker(SUB_AGENT_RESOURCE_MNGR, self.resourceMngrSubAgent.GetDecisionMaker())
+
+        if not self.playAgent:
+            self.subAgentPlay = self.FindActingHeirarchi()
+
+        self.isActionFailed = False
+        self.current_action = None
+     
+        self.action2Str = ["DoNothing", "BuildingCount", "ResourceMngr", "LandBuilding", "IdleWorkerEmployment", "ArmyCount", "HarvestGas", "MineralGrouping", "CheckQueue"]
+
+        self.queue2Check = [Terran.Barracks, Terran.Factory] 
+        self.addition2QueueCheck = [Terran.BarracksReactor, Terran.FactoryTechLab]      
+
+        self.building2Check = [Terran.CommandCenter, Terran.SupplyDepot, Terran.Refinery, Terran.Barracks, Terran.Factory, Terran.BarracksReactor, Terran.FactoryTechLab] 
+
+        self.sharedData = sharedData
+
+        self.unitInQueue = {}
+        self.unitInQueue[Terran.Marine] = [Terran.Barracks, Terran.BarracksReactor]
+        self.unitInQueue[Terran.Reaper] = [Terran.Barracks, Terran.BarracksReactor]
+        self.unitInQueue[Terran.Hellion] = [Terran.Factory, Terran.FactoryTechLab]
+        self.unitInQueue[Terran.SiegeTank] = [Terran.Factory, Terran.FactoryTechLab]
+
+    def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
+        decisionMaker = NaiveDecisionMakerDoNothing()
+        return decisionMaker
+
+    def GetDecisionMaker(self):
+        return self.decisionMaker
+
+    def FindActingHeirarchi(self):
+        if self.playAgent:
+            return 1
+        if self.resourceMngrSubAgent.FindActingHeirarchi() >= 0:
+            return SUB_AGENT_RESOURCE_MNGR
+
+        return -1
+        
+    def FirstStep(self, obs):    
+        super(DoNothingSubAgent, self).FirstStep()  
+
+        self.resourceMngrSubAgent.FirstStep(obs)
+
+        self.currQueue2Check = 0
+        self.idxBuildingQueue2Check = 0
+        self.buildingSelected = None
+
+        self.currBuilding2Check = 0
+        self.realBuilding2Check = None
+        
+        self.current_state = np.zeros(STATE_SIZE, int)
+        self.previous_state = np.zeros(STATE_SIZE, int)
+
+        self.gasGroup2SentScv = 0
+        self.numIdleWorkers = 0
+
+    def EndRun(self, reward, score, stepNum):
+        if self.trainAgent:
+            self.decisionMaker.end_run(reward, score, stepNum)
+        
+        self.resourceMngrSubAgent.EndRun(reward, score, stepNum)
+
+    def MonitorObservation(self, obs):
+        self.resourceMngrSubAgent.MonitorObservation(obs)
+
+    def IsDoNothingAction(self, a):
+        return True
+
+    def CreateState(self, obs):
+        self.resourceMngrSubAgent.CreateState(obs)
+
+        self.numIdleWorkers = obs.observation['player'][SC2_Params.IDLE_WORKER_COUNT]
+        unitType = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
+        
+        numCompletedRefineries = len(self.sharedData.buildingCompleted[Terran.Refinery])
+
+        self.resourceMngrSubAgentAction = self.resourceMngrSubAgent.ChooseAction()
+
+        self.current_state[STATE_INITIAL_GROUPING] = self.sharedData.scvMineralGroup != None
+        self.current_state[STATE_RESOURCE_SUBAGENT_ACTION] = self.resourceMngrSubAgentAction
+        self.current_state[STATE_NEW_REFINERY] = self.gasGroup2SentScv < numCompletedRefineries
+        self.current_state[STATE_FLYING_BUILDING] = False
+        self.current_state[STATE_NUM_IDLE_SCV] = self.numIdleWorkers
+        self.current_state[STATE_HAS_RESOURCES] = self.HasResources(unitType)
+        self.current_state[STATE_ARMY_LVL] = self.HasArmyProductionBuildings()
+
+    def SubAgentActionChosen(self, action):
+        self.isActionCommitted = True
+        self.lastActionCommitted = action
+
+        if action == ACTION_RESOURCE_SUBAGENT:
+            self.resourceMngrSubAgent.SubAgentActionChosen(self.resourceMngrSubAgentAction)
+
+    def ChooseAction(self):
+        if self.playAgent:
+            return self.decisionMaker.choose_action(self.current_state)
+        elif self.subAgentPlay == SUB_AGENT_RESOURCE_MNGR:
+            return ACTION_RESOURCE_SUBAGENT
+        else:
+            return ACTION_DO_NOTHING
+
+    def Learn(self, reward, terminal):            
+        if self.trainAgent:
+            if self.isActionCommitted:
+                self.decisionMaker.learn(self.previous_state, self.lastActionCommitted, reward, self.current_state, terminal)
+
+        self.resourceMngrSubAgent.Learn(reward, terminal)
+        self.previous_state[:] = self.current_state[:]
+        self.isActionCommitted = False
+
     def Action2SC2Action(self, obs, action, moveNum):
-        self.prevAction = action
         if action == ACTION_BUILDING_COUNT:
             return self.ActionBuildingCount(obs, moveNum)
-        elif action == ACTION_ARMY_COUNT:
-            return self.ActionArmyCount(obs, moveNum)
-        elif action == ACTION_GROUP_SCV:
-            return self.ActionGrouping(obs, moveNum)
+        elif action == ACTION_RESOURCE_SUBAGENT:
+            return self.resourceMngrSubAgent.Action2SC2Action(obs, self.resourceMngrSubAgentAction, moveNum)
+        elif action == ACTION_LAND_BUILDING:
+            return self.ActionLandBuilding(obs, moveNum)
         elif action == ACTION_IDLEWORKER_EMPLOYMENT:
             return self.ActionIdleWorkerImployment(obs, moveNum)
-        elif action == ACTION_BUILDING_COUNT:
-            return self.ActionBuildingCount(obs, moveNum)
-        elif action == HARVEST_GAS:
+        elif action == ACTION_ARMY_COUNT:
+            return self.ActionArmyCount(obs, moveNum)
+        elif action == ACTION_HARVEST_GAS:
             return self.ActionHarvestGas(obs, moveNum)
-    
-    def ScvGroupsNotBalanced(self):
-        for key in self.numScvReq4Group.keys():
-            if self.scvGroups[key] > self.numScvReq4Group[key]:
-                return True
-
-        return False
-
-    def ActionGrouping(self, obs, moveNum):
-        if self.scvGroups[SCV_GROUP_MINERALS] < self.numScvReq4Group[SCV_GROUP_MINERALS]:
+        elif action == ACTION_INITIAL_SCV_GROUPING:
             return self.CreateMineralsGroup(obs, moveNum)
-        elif self.ShouldCreateScv(obs):
-            return self.CreateScv(obs, moveNum)
-        elif self.scvGroups[SCV_GROUP_GAS1] < self.numScvReq4Group[SCV_GROUP_GAS1] and self.scvGroups[SCV_GROUP_MINERALS] > self.numScvReq4Group[SCV_GROUP_MINERALS]:
-            return self.Add2GasGroup(obs, moveNum, 0)
-        elif self.scvGroups[SCV_GROUP_GAS2] < self.numScvReq4Group[SCV_GROUP_GAS2] and self.scvGroups[SCV_GROUP_MINERALS] > self.numScvReq4Group[SCV_GROUP_MINERALS]:
-            return self.Add2GasGroup(obs, moveNum, 1)
+        elif action == ACTION_CHECK_QUEUE:
+            return self.ActionCheckQueue(obs, moveNum)
 
         return SC2_Actions.DO_NOTHING_SC2_ACTION, True
 
@@ -227,10 +288,10 @@ class DoNothingSubAgent(BaseAgent):
                 target = [unit_x[0], unit_y[0]]
                 return actions.FunctionCall(SC2_Actions.SELECT_POINT, [SC2_Params.SELECT_ALL, target]), False
         if moveNum == 1:
-            scvStatus = self.GetSelectedUnits(obs)
+            scvStatus = GetSelectedUnits(obs)
             if len(scvStatus) > 0:
-                self.initialGrouping = True
-                return actions.FunctionCall(SC2_Actions.SELECT_CONTROL_GROUP, [SC2_Params.CONTROL_GROUP_SET, [SCV_GROUP_MINERALS]]), False
+                self.sharedData.scvMineralGroup = self.resourceMngrSubAgent.GetMineralGroup()
+                return actions.FunctionCall(SC2_Actions.SELECT_CONTROL_GROUP, [SC2_Params.CONTROL_GROUP_SET, [self.sharedData.scvMineralGroup]]), False
         elif moveNum == 2:
             if SC2_Actions.HARVEST_GATHER in obs.observation['available_actions']:
                 unitType = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
@@ -240,68 +301,18 @@ class DoNothingSubAgent(BaseAgent):
 
         return SC2_Actions.DO_NOTHING_SC2_ACTION, True
 
-    def Add2GasGroup(self, obs, moveNum, gasGroup):
+    def ActionHarvestGas(self, obs, moveNum):
         if moveNum == 0:
-            return actions.FunctionCall(SC2_Actions.SELECT_CONTROL_GROUP, [SC2_Params.CONTROL_GROUP_RECALL, [SCV_GROUP_MINERALS]]), False
-
+            gasGroup = self.sharedData.scvGasGroups[self.gasGroup2SentScv]
+            if gasGroup != None:
+                return actions.FunctionCall(SC2_Actions.SELECT_CONTROL_GROUP, [SC2_Params.CONTROL_GROUP_RECALL, [gasGroup]]), False
         elif moveNum == 1:
-            unitSelected = obs.observation['feature_screen'][SC2_Params.SELECTED_IN_SCREEN]
-            unit_y, unit_x = SelectUnitValidPoints(unitSelected != 0) 
-            if len(unit_y) > 0:
-                target = [unit_x[0], unit_y[0]]
-                return actions.FunctionCall(SC2_Actions.SELECT_POINT, [SC2_Params.SELECT_SINGLE, target]), False
-
-        elif moveNum == 2:
-            scvStatus = self.GetSelectedUnits(obs)
-            terminal = False if gasGroup < self.numCompletedRefineries else True
-            if len(scvStatus) == 1:
-                return actions.FunctionCall(SC2_Actions.SELECT_CONTROL_GROUP, [SC2_Params.CONTROL_GROUP_APPEND_AND_STEAL, [GAS_GROUPS[gasGroup]]]), terminal
-
-        elif moveNum == 3:
             if SC2_Actions.HARVEST_GATHER in obs.observation['available_actions']:
-                target = self.sharedData.buildingCompleted[Terran.Refinery][gasGroup].m_screenLocation
+                target = self.sharedData.buildingCompleted[Terran.Refinery][self.gasGroup2SentScv].m_screenLocation
+                self.gasGroup2SentScv += 1
                 return actions.FunctionCall(SC2_Actions.HARVEST_GATHER, [SC2_Params.QUEUED, SwapPnt(target)]), True
 
         return SC2_Actions.DO_NOTHING_SC2_ACTION, True
-
-    def ShouldCreateScv(self, obs):
-        need2Create = obs.observation['player'][SC2_Params.WORKERS_SUPPLY_OCCUPATION] + len(self.sharedData.scvBuildingQ) < self.numScvRequired
-        qNotLimit = len(self.sharedData.scvBuildingQ) < self.maxQSize
-        return need2Create & qNotLimit
-
-    def CreateScv(self, obs, moveNum):
-        if moveNum == 0:
-            unitType = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
-            target = SelectBuildingValidPoint(unitType, Terran.CommandCenter)
-            if target[0] >= 0:
-                return actions.FunctionCall(SC2_Actions.SELECT_POINT, [SC2_Params.SELECT_SINGLE, SwapPnt(target)]), False
-        
-        elif moveNum == 1:
-            if SC2_Actions.TRAIN_SCV in obs.observation['available_actions']:
-                terminal = self.rallyPointSet
-                self.sharedData.scvBuildingQ.append(ScvCmd())
-                return actions.FunctionCall(SC2_Actions.TRAIN_SCV, [SC2_Params.QUEUED]), terminal
-
-        if moveNum == 2:
-            if SC2_Actions.RALLY_SCV in obs.observation['available_actions']:
-                coord = self.rallyCoordScv
-                self.rallyPointSet = True
-                return actions.FunctionCall(SC2_Actions.RALLY_SCV, [SC2_Params.NOT_QUEUED, coord]), True
-
-        return SC2_Actions.DO_NOTHING_SC2_ACTION, True 
-    
-    def Need2HarvestGas(self):
-        return self.sent2HarvestGasLast < len(self.sharedData.buildingCompleted[Terran.Refinery])
-
-    def ActionHarvestGas(self, obs, moveNum):
-        if moveNum == 0:
-            gasGroup = GAS_GROUPS[self.sent2HarvestGasLast]
-            return actions.FunctionCall(SC2_Actions.SELECT_CONTROL_GROUP, [SC2_Params.CONTROL_GROUP_RECALL, [gasGroup]]), False
-        elif moveNum == 1:
-            if SC2_Actions.HARVEST_GATHER in obs.observation['available_actions']:
-                target = self.sharedData.buildingCompleted[Terran.Refinery][self.sent2HarvestGasLast].m_screenLocation
-                self.sent2HarvestGasLast += 1
-                return actions.FunctionCall(SC2_Actions.HARVEST_GATHER, [SC2_Params.QUEUED, SwapPnt(target)]), True
 
     def ActionBuildingCount(self, obs, moveNum):
         if moveNum == 0:  
@@ -336,9 +347,9 @@ class DoNothingSubAgent(BaseAgent):
             if SC2_Actions.SELECT_IDLE_WORKER in obs.observation['available_actions']:
                 return actions.FunctionCall(SC2_Actions.SELECT_IDLE_WORKER, [SC2_Params.SELECT_ALL]), False
         elif moveNum == 1:
-            scvStatus = self.GetSelectedUnits(obs)
+            scvStatus = GetSelectedUnits(obs)
             if len(scvStatus) > 0:
-                return actions.FunctionCall(SC2_Actions.SELECT_CONTROL_GROUP, [SC2_Params.CONTROL_GROUP_APPEND_AND_STEAL, [SCV_GROUP_MINERALS]]), False
+                return actions.FunctionCall(SC2_Actions.SELECT_CONTROL_GROUP, [SC2_Params.CONTROL_GROUP_APPEND_AND_STEAL, [self.sharedData.scvMineralGroup]]), False
         elif moveNum == 2:
             if SC2_Actions.HARVEST_GATHER in obs.observation['available_actions']:
                 unitType = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
@@ -352,32 +363,77 @@ class DoNothingSubAgent(BaseAgent):
 
         return SC2_Actions.DO_NOTHING_SC2_ACTION, True
 
-    def ActionAttackMonitor(self, obs, moveNum):
+    def ActionLandBuilding(self, obs, moveNum):
         return SC2_Actions.DO_NOTHING_SC2_ACTION, True
 
+    def ActionCheckQueue(self, obs, moveNum):
+        if moveNum == 0:
+            found = self.FindQueue2Check()
+            self.idxBuildingQueue2Check = 0
+            if not found:
+                return SC2_Actions.DO_NOTHING_SC2_ACTION, True
+                   
+        if self.idxBuildingQueue2Check > 0:
+            self.CorrectQueue(obs.observation['build_queue'])
 
-    def ShouldReturnt2Base(self, unitType):
-        cc_y, cc_x = (unitType == Terran.CommandCenter).nonzero()
-        if len(cc_y) == 0:
-            return True  
+        buildingType = self.queue2Check[self.currQueue2Check]
+        numBuildings = len(self.sharedData.buildingCompleted[buildingType])
+
+        if self.idxBuildingQueue2Check >= numBuildings:
+            additionType = self.addition2QueueCheck[self.currQueue2Check]
+            idx = self.idxBuildingQueue2Check - numBuildings
+
+            if idx >= len(self.sharedData.buildingCompleted[additionType]):
+                self.buildingSelected = None
+                self.currQueue2Check = (self.currQueue2Check + 1) % len(self.queue2Check)
+                return SC2_Actions.DO_NOTHING_SC2_ACTION, True
+            
+            self.buildingSelected = self.sharedData.buildingCompleted[additionType][idx]
+        else:
+            self.buildingSelected = self.sharedData.buildingCompleted[buildingType][self.idxBuildingQueue2Check]
+
+        self.idxBuildingQueue2Check += 1
+
+        target = self.buildingSelected.m_screenLocation
+        return actions.FunctionCall(SC2_Actions.SELECT_POINT, [SC2_Params.SELECT_SINGLE, SwapPnt(target)]), False
+            
+
+    def CorrectQueue(self, buildingQueue):
+        stepCompleted = -1000
+        self.buildingSelected.qForProduction = []
+        for bq in buildingQueue:
+            unit = TrainCmd(bq[SC2_Params.UNIT_TYPE_IDX])
+            
+            if bq[SC2_Params.COMPLETION_RATIO_IDX] > 0:
+                unit.step = bq[SC2_Params.COMPLETION_RATIO_IDX]
+            else:
+                unit.step = stepCompleted
+                stepCompleted -= 1
+
+            self.buildingSelected.qForProduction.append(unit)
+
+    def FindQueue2Check(self):
+        found = False
+        idxBuildingCheck = self.currQueue2Check
+        while not found:
+            buildingType = self.queue2Check[idxBuildingCheck]
+            additionType = self.addition2QueueCheck[idxBuildingCheck]
+            if len(self.sharedData.buildingCompleted[buildingType]) >= 0 or len(self.sharedData.buildingCompleted[additionType]) >= 0:
+                found = True
+                self.currQueue2Check = idxBuildingCheck
+            else:
+                idxBuildingCheck = (self.currQueue2Check + 1) % len(self.queue2Check)
+                if idxBuildingCheck == self.currQueue2Check:
+                    return False
         
-        midPnt = FindMiddle(cc_y, cc_x)
-        maxDiff = max(SC2_Params.SCREEN_SIZE / 2 - midPnt[SC2_Params.X_IDX], SC2_Params.SCREEN_SIZE / 2 - midPnt[SC2_Params.Y_IDX])
-        return maxDiff > 20
+        return found
 
-    def GetSelectedUnits(self, obs):
-        scvStatus = list(obs.observation['multi_select'])
-        if len(scvStatus) ==  0:
-            scvStatus = list(obs.observation['single_select'])
-        return scvStatus
-
-    def HasResources(self):
+    def HasResources(self, unitType):
         resourceList = SC2_Params.NEUTRAL_MINERAL_FIELD + SC2_Params.VESPENE_GAS_FIELD
         for val in resourceList[:]:
-            if (self.unitType == val).any():
+            if (unitType == val).any():
                 return True
         
-        #print("\n\n\nout of resources!!\n\n")
         return False
 
     def HasArmyProductionBuildings(self):
@@ -427,7 +483,7 @@ class DoNothingSubAgent(BaseAgent):
         numComplete = 0
         inProgress = 0
         for stat in buildingStatus[:]:
-            if stat[SC2_Params.BUILDING_COMPLETION_IDX] == 0:
+            if stat[SC2_Params.COMPLETION_RATIO_IDX] == 0:
                 numComplete += 1
             else:
                 inProgress += 1
@@ -514,52 +570,5 @@ class DoNothingSubAgent(BaseAgent):
         
         return -10000
 
-    def UpdateAttackPower(self, obs):
-        unitCount = {}
-        unitStatus = obs.observation['multi_select']
-        
-        if len(unitStatus) == 0:
-            unitStatus = obs.observation['single_select']
-            if len(unitStatus) == 0:
-                return unitCount
-        
-        
-        # count army
-        for unit in unitStatus:
-            uType = unit[SC2_Params.UNIT_TYPE_IDX]
-            if uType in unitCount:
-                unitCount[uType] += 1
-            else:
-                unitCount[uType] = 1
 
-        return unitCount
-        
-    def SelectedClose2Enemy(self, obs):
-        s_y, s_x = obs.observation['feature_minimap'][SC2_Params.SELECTED_IN_MINIMAP].nonzero()
-        e_y, e_x = (obs.observation['feature_minimap'][SC2_Params.PLAYER_RELATIVE_MINIMAP] == SC2_Params.PLAYER_HOSTILE).nonzero()
-
-        for s in range(len(s_y)):
-            for e in range(len(e_y)):
-                diffY = s_y[s] - e_y[e]
-                diffX = s_x[s] - e_x[e]
-                dist = diffY * diffY + diffX * diffX
-                if dist < CLOSE_TO_ENEMY_RANGE_SQUARE:
-                    #self.PrintSel(obs)
-                    return True
-        
-        return False
-
-    def PrintSel(self, obs):
-        selectedMat = obs.observation['feature_minimap'][SC2_Params.SELECTED_IN_MINIMAP]
-        enemyMat = (obs.observation['feature_minimap'][SC2_Params.PLAYER_RELATIVE_MINIMAP] == SC2_Params.PLAYER_HOSTILE)
-        print("\n\nmonitor attack:\n")
-        for y in range(64):
-            for x in range(64):
-                if selectedMat[y][x] != 0:
-                    print("s", end = ' ')
-                elif enemyMat[y][x] != 0:
-                    print("e", end = ' ')
-                else:
-                    print("_", end = ' ')
             
-            print("|")
