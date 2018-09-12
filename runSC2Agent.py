@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-# run example: python .\run.py --map=Simple64 --typeFile=NaiveRunDiff2.txt --trainAgent=super --train=True
+# run example: python .\runSC2Agent.py --map=Simple64 --configFile=NaiveRunDiff2.txt --trainAgent=super --train=True
 # kill all sc ps:  $ Taskkill /IM SC2_x64.exe /F
 
 import logging
@@ -34,7 +34,7 @@ MINIMAP_SIZE = SC2_Params.MINIMAP_SIZE
 
 flags.DEFINE_string("trainAgent", "none", "Which agent to train.")
 flags.DEFINE_string("playAgent", "none", "Which agent to play.")
-flags.DEFINE_string("typeFile", "none", "config file that builds heirarchi for decision maker (should contain a dict name dm_Types)")
+flags.DEFINE_string("configFile", "none", "config file that builds heirarchi for decision maker (should contain a dict name dm_Types)")
 flags.DEFINE_string("train", "True", "open multiple threads for train.")
 flags.DEFINE_string("map", "none", "Which map to run.")
 flags.DEFINE_string("numSteps", "0", "Which map to run.")
@@ -82,7 +82,7 @@ def start_agent():
         show_render = RENDER
 
     # tables
-    dm_Types = eval(open(flags.FLAGS.typeFile, "r+").read())
+    dm_Types = eval(open(flags.FLAGS.configFile, "r+").read())
 
     if flags.FLAGS.trainAgent == "none":
         trainList = ["super"]
