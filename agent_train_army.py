@@ -209,9 +209,9 @@ class NaiveDecisionMakerTrain(BaseNaiveDecisionMaker):
     def __init__(self, resultFName = None, directory = None, numTrials2Learn = 20):
         super(NaiveDecisionMakerTrain, self).__init__(numTrials2Learn, resultFName, directory)
 
-    def ActionValuesVec(self, state, target = True):    
+    def ActionValuesVec(self, state, target = True):  
         vals = np.zeros(NUM_ACTIONS,dtype = float)
-        
+           
         if state[TRAIN_STATE.ARMY_POWER] < 20:
             vals[ID_ACTION_TRAIN_MARINE] = 0.4
             vals[ID_ACTION_TRAIN_REAPER] = 0.4
@@ -226,6 +226,16 @@ class NaiveDecisionMakerTrain(BaseNaiveDecisionMaker):
             vals[ID_ACTION_TRAIN_SIEGETANK] = 0.5
             vals[ID_ACTION_TRAIN_HELLION] = 0.4 
 
+        if state[TRAIN_STATE.BARRACKS_IDX] == 0:
+            vals[ID_ACTION_TRAIN_MARINE] = -0.1
+            vals[ID_ACTION_TRAIN_REAPER] = -0.1
+
+        if state[TRAIN_STATE.FACTORY_IDX] == 0:
+            vals[ID_ACTION_TRAIN_HELLION] = -0.1
+            vals[ID_ACTION_TRAIN_SIEGETANK] = -0.1  
+        
+        if state[TRAIN_STATE.TECHLAB_IDX] == 0:
+            vals[ID_ACTION_TRAIN_SIEGETANK] = -0.1  
 
         vals[ID_ACTION_DO_NOTHING] = 0.1
 
@@ -248,6 +258,8 @@ class TrainArmySubAgent(BaseAgent):
         else:
             self.decisionMaker = self.CreateDecisionMaker(dmTypes, isMultiThreaded)
 
+        self.history = self.decisionMaker.AddHistory()
+        
         if not self.playAgent:
             self.subAgentPlay = self.FindActingHeirarchi()
 
@@ -305,6 +317,9 @@ class TrainArmySubAgent(BaseAgent):
     def EndRun(self, reward, score, stepNum):
         if self.trainAgent:
             self.decisionMaker.end_run(reward, score, stepNum)
+        elif self.inTraining:
+            self.decisionMaker.TrimHistory()
+
 
     def Action2SC2Action(self, obs, a, moveNum):
         if moveNum == 0:
@@ -386,7 +401,6 @@ class TrainArmySubAgent(BaseAgent):
         num = len(self.sharedData.buildingCompleted[buildingType])
         if buildingType in TRAIN_STATE.BUILDING_2_ADDITION:
             num += len(self.sharedData.buildingCompleted[TRAIN_STATE.BUILDING_2_ADDITION[buildingType]])
-            num += len(self.sharedData.buildCommands[TRAIN_STATE.BUILDING_2_ADDITION[buildingType]])
 
         return num
 

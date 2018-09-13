@@ -22,22 +22,20 @@ from agent_super import SuperAgent
 
 from utils import SC2_Params
 
-# run from cpu
-import os
-os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+RUN = True
 
-PARALLEL_THREADS = 16
 RENDER = False
 SCREEN_SIZE = SC2_Params.SCREEN_SIZE
 MINIMAP_SIZE = SC2_Params.MINIMAP_SIZE
 
 flags.DEFINE_string("trainAgent", "none", "Which agent to train.")
 flags.DEFINE_string("playAgent", "none", "Which agent to play.")
-flags.DEFINE_string("configFile", "none", "config file that builds heirarchi for decision maker (should contain a dict name dm_Types)")
+flags.DEFINE_string("configFile", "none", "config file that builds heirarchi for decision maker (should contain a defenition of a dictionary)")
 flags.DEFINE_string("train", "True", "open multiple threads for train.")
 flags.DEFINE_string("map", "none", "Which map to run.")
-flags.DEFINE_string("numSteps", "0", "Which map to run.")
+flags.DEFINE_string("numSteps", "0", "num steps of map.")
+flags.DEFINE_string("device", "gpu", "Which device to run nn on.")
+flags.DEFINE_string("threadsNum", "8", "num of game threads.")
 
 nonRelevantRewardMap = ["BaseMngr"]
 singlePlayerMaps = ["ArmyAttack5x5", "AttackBase", "AttackMngr"]
@@ -52,22 +50,23 @@ By default it runs the A3C agent.
 def run_thread(agent, display, players, numSteps):
     """Runs an agent thread."""
 
-    try:
+    while RUN:
+        try:
 
-        agent_interface_format=sc2_env.AgentInterfaceFormat(feature_dimensions=sc2_env.Dimensions(screen=SCREEN_SIZE,minimap=MINIMAP_SIZE))
+            agent_interface_format=sc2_env.AgentInterfaceFormat(feature_dimensions=sc2_env.Dimensions(screen=SCREEN_SIZE,minimap=MINIMAP_SIZE))
 
-        with sc2_env.SC2Env(map_name=flags.FLAGS.map,
-                            players=players,
-                            game_steps_per_episode=numSteps,
-                            agent_interface_format=agent_interface_format,
-                            visualize=display) as env:
-            run_loop.run_loop([agent], env)
+            with sc2_env.SC2Env(map_name=flags.FLAGS.map,
+                                players=players,
+                                game_steps_per_episode=numSteps,
+                                agent_interface_format=agent_interface_format,
+                                visualize=display) as env:
+                run_loop.run_loop([agent], env)
 
-    
-    except Exception as e:
-        print(e)
-        print(traceback.format_exc())
-        logging.error(traceback.format_exc())
+        
+        except Exception as e:
+            print(e)
+            print(traceback.format_exc())
+            logging.error(traceback.format_exc())
 
 
 def start_agent():
@@ -78,7 +77,7 @@ def start_agent():
         parallel = 1
         show_render = True
     else:
-        parallel = PARALLEL_THREADS
+        parallel = int(flags.FLAGS.threadsNum)
         show_render = RENDER
 
     # tables
@@ -125,17 +124,21 @@ def start_agent():
     
     numSteps = int(flags.FLAGS.numSteps)
 
-
+    idx = 0
     for agent in agents:
         thread_args = (agent, show, players, numSteps)
         t = threading.Thread(target=run_thread, args=thread_args)
+        t.setName("GameThread_" + str(idx))
+
         threads.append(t)
         t.start()
         time.sleep(5)
         show = False
+        idx += 1
 
 
     runThreadAlive = True
+    threading.current_thread().setName("TrainThread")
     while runThreadAlive:
         # train  when flag of training is on
         decisionMaker.TrainAll()
@@ -160,6 +163,12 @@ def main(argv):
     :return:
     """
 
+    if flags.FLAGS.device == "cpu":
+        # run from cpu
+        import os
+        os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+        os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+        
     start_agent()
 
 

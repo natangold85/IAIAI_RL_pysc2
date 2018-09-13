@@ -6,6 +6,7 @@ import os.path
 import time
 import datetime
 import sys
+import threading
 
 import tensorflow as tf
 
@@ -272,7 +273,7 @@ class ResultFile:
             self.sumScore = 0
             self.numRuns = 0
             self.sumSteps = 0
-            print("avg results for", self.numToWrite, "trials: reward =", avgReward, "score =",  avgScore)
+            print("\t\t", threading.current_thread().getName(),"avg results for", self.numToWrite, "trials: reward =", avgReward, "score =",  avgScore)
 
     def end_run(self, r, score, steps, saveTable):
         self.sumSteps += steps

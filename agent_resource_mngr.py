@@ -27,7 +27,7 @@ from utils_decisionMaker import LearnWithReplayMngr
 from utils_decisionMaker import UserPlay
 
 from utils_results import ResultFile
-from utils_results import PlotMngr
+from utils_results import PlotResults
 
 # params
 from utils_dqn import DQN_PARAMS
@@ -233,6 +233,8 @@ class ResourceMngrSubAgent(BaseAgent):
         else:
             self.decisionMaker = self.CreateDecisionMaker(dmTypes, isMultiThreaded)
 
+        self.history = self.decisionMaker.AddHistory()
+
         if not self.playAgent:
             self.subAgentPlay = self.FindActingHeirarchi()
 
@@ -285,12 +287,12 @@ class ResourceMngrSubAgent(BaseAgent):
     def Learn(self, reward, terminal):            
         if self.trainAgent:
             if self.isActionCommitted:
-                self.decisionMaker.learn(self.previous_scaled_state, self.lastActionCommitted, reward, self.current_scaled_state, terminal)
+                self.history.learn(self.previous_scaled_state, self.lastActionCommitted, reward, self.current_scaled_state, terminal)
             elif terminal:
                 # if terminal reward entire state if action is not chosen for current step
                 for a in range(ACTIONS.NUM_ACTIONS):
-                    self.decisionMaker.learn(self.previous_scaled_state, a, reward, self.terminalState, terminal)
-                    self.decisionMaker.learn(self.current_scaled_state, a, reward, self.terminalState, terminal)
+                    self.history.learn(self.previous_scaled_state, a, reward, self.terminalState, terminal)
+                    self.history.learn(self.current_scaled_state, a, reward, self.terminalState, terminal)
 
         self.previous_scaled_state[:] = self.current_scaled_state[:]
         self.isActionCommitted = False
@@ -468,164 +470,6 @@ class ResourceMngrSubAgent(BaseAgent):
         return [-1,-1]
 
 
-
-
-
 if __name__ == "__main__":
     if "results" in sys.argv:
-        runTypeArg = list(ALL_TYPES.intersection(sys.argv))
-        runTypeArg.sort()
-        resultFnames = []
-        directoryNames = []
-        for arg in runTypeArg:
-            runType = RUN_TYPES[arg]
-            fName = runType[RESULTS]
-            
-            if DIRECTORY in runType.keys():
-                dirName = runType[DIRECTORY]
-            else:
-                dirName = ''
-
-            resultFnames.append(fName)
-            directoryNames.append(dirName)
-
-        grouping = int(sys.argv[len(sys.argv) - 1])
-        plot = PlotMngr(resultFnames, directoryNames, runTypeArg)
-        plot.Plot(grouping)
-
-# # for independent run
-# class Gather(BaseAgent):
-#     def __init__(self, runArg = None, decisionMaker = None, isMultiThreaded = False):
-#         super(Gather, self).__init__(STATE.SIZE)
-
-#         if runArg == None:
-#             runTypeArg = list(ALL_TYPES.intersection(sys.argv))
-#             runArg = runTypeArg.pop()
-#         self.agent = ResourceMngrSubAgent(runArg, decisionMaker, isMultiThreaded)
-
-#         self.maxNumRef = 2
-#         self.refineryMineralsCost = 75
-    
-#     def GetDecisionMaker(self):
-#         return self.agent.GetDecisionMaker()
-
-#     def step(self, obs):
-#         super(Gather, self).step(obs)
-
-#         if obs.first():
-#             self.FirstStep(obs)
-
-#         a = self.agent.step(obs,self.moveNum, self.sharedData)
-
-#         self.currMin = obs.observation['player'][SC2_Params.MINERALS]
-
-#         if not self.startMineMinerals:
-#             sc2Action, terminal = self.StartMine(obs, self.moveNum)
-#         elif self.refBuildCmd + self.refBuildComplete != self.maxNumRef and self.currMin >= self.refineryMineralsCost:
-#             sc2Action, terminal = self.BuildRefinery(obs, self.moveNum)
-#         else:
-#             monitor = False
-            
-#             if self.refBuildComplete != self.maxNumRef and self.refBuildCmd > 0:
-#                 idx = np.random.randint(0,10)
-#                 if idx > 6:
-#                     sc2Action, terminal = self.MonitorRefBuild(obs, self.moveNum)
-#                     monitor = True
-            
-#             if not monitor:
-#                 sc2Action, terminal = self.agent.Action2SC2Action(obs, a, self.moveNum)
-                
-
-#         self.moveNum = 0 if terminal else self.moveNum + 1
-#         return sc2Action
-
-#     def FirstStep(self, obs):
-#         self.moveNum = 0
-#         self.startMineMinerals = False
-
-#         self.refBuildCmd = 0
-#         self.refBuildComplete = 0
-
-#         self.sharedData = SharedDataGather()
-#         self.sharedData.scvIdle = obs.observation['player'][SC2_Params.IDLE_WORKER_COUNT]
-
-#     def StartMine(self, obs, moveNum):
-#         if moveNum == 0:
-#             return actions.FunctionCall(SC2_Actions.SELECT_IDLE_WORKER, [SC2_Params.SELECT_ALL]), False
-#         elif moveNum == 1:
-#             numScv = len(obs.observation['multi_select'])
-#             if numScv == 0:
-#                 numScv = len(obs.observation['single_select'])
-            
-#             if SC2_Actions.HARVEST_GATHER in obs.observation['available_actions']:
-#                 target = self.agent.GatherResource(SC2_Params.NEUTRAL_MINERAL_FIELD)
-#                 if target[0] >= 0:
-
-#                     return actions.FunctionCall(SC2_Actions.HARVEST_GATHER, [SC2_Params.NOT_QUEUED, SwapPnt(target)]), False
-        
-#         elif moveNum == 2:
-#             if obs.observation['player'][SC2_Params.IDLE_WORKER_COUNT] == 0:
-#                 self.sharedData.scvIdle = 0
-#                 self.sharedData.scvMinerals = obs.observation['player'][SC2_Params.WORKERS_SUPPLY_OCCUPATION]
-#                 self.startMineMinerals = True
-
-#         return SC2_Actions.DO_NOTHING_SC2_ACTION, True
-
-#     def BuildRefinery(self, obs, moveNum):
-#         if moveNum == 0:
-#             if obs.observation['player'][SC2_Params.IDLE_WORKER_COUNT] > 0:
-#                 return actions.FunctionCall(SC2_Actions.SELECT_IDLE_WORKER, [SC2_Params.SELECT_SINGLE]), False
-
-#             target = self.agent.FindClosestSCVFromRes(SC2_Params.NEUTRAL_MINERAL_FIELD)
-                
-#             if target[0] >= 0:      
-#                 return actions.FunctionCall(SC2_Actions.SELECT_POINT, [SC2_Params.NOT_QUEUED, SwapPnt(target)]), False
-        
-#         elif moveNum == 1:
-#             finishedAction = False
-#             sc2Action = TerranUnit.BUILDING_SPEC[Terran.Refinery].sc2Action
-
-#             if sc2Action in obs.observation['available_actions']:
-#                 self.cameraCornerNorthWest , self.cameraCornerSouthEast = GetScreenCorners(obs)
-#                 coord = GetLocationForBuilding(obs, Terran.Refinery)
-
-#                 if coord[SC2_Params.Y_IDX] >= 0:
-#                     self.refBuildCmd += 1
-#                     self.sharedData.scvMinerals -= 1
-#                     return actions.FunctionCall(sc2Action, [SC2_Params.NOT_QUEUED, SwapPnt(coord)]), finishedAction
-
-#         return SC2_Actions.DO_NOTHING_SC2_ACTION, True
-
-#     def MonitorRefBuild(self, obs, moveNum):
-#         if moveNum == 0:
-#             target = SelectBuildingValidPoint(obs.observation['feature_screen'][SC2_Params.UNIT_TYPE], Terran.Refinery)
-#             if target[0] >= 0 and SC2_Actions.SELECT_POINT in obs.observation['available_actions']:
-#                 return actions.FunctionCall(SC2_Actions.SELECT_POINT, [SC2_Params.SELECT_ALL, SwapPnt(target)]), False
-
-#         elif moveNum == 1:
-#             refNum = self.RefineryNum(obs)
-#             if self.refBuildComplete < refNum:
-#                 cmdEnded = refNum - self.refBuildComplete
-#                 self.refBuildCmd -= cmdEnded
-#                 self.refBuildComplete = refNum
-#                 self.sharedData.activeRefinery = refNum
-#                 self.sharedData.scvGas += cmdEnded
-
-#         return SC2_Actions.DO_NOTHING_SC2_ACTION, True
-
-#     def RefineryNum(self, obs):
-#         buildingStatus = obs.observation['multi_select']
-#         if len(buildingStatus) == 0:
-#             buildingStatus = obs.observation['single_select']
-#             if len(buildingStatus) == 0:
-#                 return self.refBuildComplete
-
-#         if buildingStatus[0][SC2_Params.UNIT_TYPE_IDX] != Terran.Refinery:
-#             return self.refBuildComplete
-
-#         numComplete = 0
-#         for stat in buildingStatus[:]:
-#             if stat[SC2_Params.COMPLETION_RATIO_IDX] == 0:
-#                 numComplete += 1
-        
-#         return numComplete
+        PlotResults(AGENT_NAME, AGENT_DIR, RUN_TYPES)

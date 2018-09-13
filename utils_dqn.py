@@ -3,6 +3,7 @@ import pandas as pd
 import random
 import pickle
 import os.path
+import threading
 
 import tensorflow as tf
 import os
@@ -195,9 +196,8 @@ class DQN:
         rNextState = self.outputLayer.eval({self.inputLayer: s_.reshape(size,self.num_input)}, session=self.sess)
         R = r + np.invert(terminal) * self.params.discountFactor * np.max(rNextState, axis=1)
 
-        idxArray = np.arange(size)
         for i in range(int(size  / self.params.batchSize)):
-            chosen = np.random.choice(idxArray, self.params.batchSize)
+            chosen = np.arange(i * self.params.batchSize, (i + 1) * self.params.batchSize)
             feedDict = {self.inputLayer: s[chosen].reshape(self.params.batchSize, self.num_input), self.outputSingle: R[chosen], self.actionSelected: a[chosen]}
 
             self.sess.run([self.train_op, self.loss_op], feed_dict=feedDict)
@@ -210,7 +210,7 @@ class DQN:
     def Close(self):
         self.sess.close()
         
-    def SaveDQN(self, numRuns2Save = None):
+    def SaveDQN(self, numRuns2Save = None, toPrint = True):
         
         if numRuns2Save == None:
             self.saver.save(self.sess, self.directoryName)
@@ -225,8 +225,8 @@ class DQN:
             assign4Repeat2Train = self.numRuns.assign(currNumRuns)
             self.sess.run(assign4Repeat2Train)
 
-
-        print("\n\t\tsave nn with", numRuns2Save)
+        if toPrint:
+            print("\n\t", threading.current_thread().getName(), " : save dqn with", numRuns2Save, "runs")
 
     def NumRuns(self):
         return int(self.numRuns.eval(session = self.sess))
@@ -277,8 +277,6 @@ class DQN_WithTarget(DQN):
         self.bestReward = -1000
 
     def CopyDqn2Target(self):
-        
-
         dqnParams = [t for t in tf.trainable_variables() if t.name.startswith(self.scope)]
         dqnParams = sorted(dqnParams, key=lambda v: v.name)
 
@@ -291,7 +289,7 @@ class DQN_WithTarget(DQN):
             update_ops.append(op)
 
         self.sess.run(update_ops)
-        self.SaveDQN()
+        self.SaveDQN(toPrint=False)
 
     def CopyTarget2DQN(self):
         numRuns = self.NumRuns()

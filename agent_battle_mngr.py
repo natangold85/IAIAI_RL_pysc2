@@ -34,7 +34,7 @@ from utils_decisionMaker import BaseDecisionMaker
 
 
 from utils_results import ResultFile
-from utils_results import PlotMngr
+from utils_results import PlotResults
 
 # params
 from utils_dqn import DQN_PARAMS
@@ -185,6 +185,8 @@ class BattleMngr(BaseAgent):
         else:
             self.decisionMaker = self.CreateDecisionMaker(dmTypes, isMultiThreaded)
 
+        self.history = self.decisionMaker.AddHistory()
+
         self.sharedData = sharedData
         self.subAgents = {}
         for key, name in SUBAGENTS_NAMES.items():
@@ -267,12 +269,12 @@ class BattleMngr(BaseAgent):
     def Learn(self, reward, terminal):
         if self.trainAgent:
             if self.isActionCommitted:
-                self.decisionMaker.learn(self.previous_state, self.lastActionCommitted, reward, self.current_state, terminal)
+                self.history.learn(self.previous_state, self.lastActionCommitted, reward, self.current_state, terminal)
             elif terminal:
                 # if terminal reward entire state if action is not chosen for current step
                 for a in range(NUM_ACTIONS):
-                    self.decisionMaker.learn(self.previous_state, a, reward, self.terminalState, terminal)
-                    self.decisionMaker.learn(self.current_state, a, reward, self.terminalState, terminal)
+                    self.history.learn(self.previous_state, a, reward, self.terminalState, terminal)
+                    self.history.learn(self.current_state, a, reward, self.terminalState, terminal)
 
         for sa in self.activeSubAgents:
             self.subAgents[sa].Learn(reward, terminal)
@@ -341,7 +343,7 @@ class BattleMngr(BaseAgent):
             self.current_state[STATE.START_ENEMY_ARMY_MAT + idx] = self.sharedData.enemyArmyMat[idx]
 
         #self.GetEnemyBuildingLoc(obs)
-        self.current_state[self.state_timeLineIdx] = int(self.numStep / STATE.TIME_LINE_BUCKETING)
+        self.current_state[self.state_timeLineIdx] = self.sharedData.numStep
 
     def GetSelfLoc(self, obs):
         playerType = obs.observation["feature_screen"][SC2_Params.PLAYER_RELATIVE]
@@ -463,23 +465,5 @@ class BattleMngr(BaseAgent):
 
 
 if __name__ == "__main__":
-    if "plotResults" in sys.argv:
-        runTypeArg = list(ALL_TYPES.intersection(sys.argv))
-        runTypeArg.sort()
-        resultFnames = []
-        directoryNames = []
-        for arg in runTypeArg:
-            runType = RUN_TYPES[arg]
-            fName = runType[RESULTS]
-            
-            if DIRECTORY in runType.keys():
-                dirName = runType[DIRECTORY]
-            else:
-                dirName = ''
-
-            resultFnames.append(fName)
-            directoryNames.append(dirName)
-
-        grouping = int(sys.argv[len(sys.argv) - 1])
-        plot = PlotMngr(resultFnames, directoryNames, runTypeArg)
-        plot.Plot(grouping)
+    if "results" in sys.argv:
+        PlotResults(AGENT_NAME, AGENT_DIR, RUN_TYPES)

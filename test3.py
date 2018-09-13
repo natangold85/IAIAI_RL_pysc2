@@ -6,21 +6,29 @@ from utils_dqn import DQN_PARAMS
 from utils_dqn import DQN
 
 import random
+import math
 
-
-def CreateDqn(useGpu = True):
+def CreateDqn(useGpu = False):
     if not useGpu:
         import os
         os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
         os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
-    dqnParams = DQN_PARAMS(16, 7, layersNum = 2)
+    # dqnParams = DQN_PARAMS(16, 7, layersNum = 2)
+    dqnParams = DQN_PARAMS(11, 5, layersNum = 2)
     dqn = DQN(dqnParams, "test3", "./test3/", loadNN=False, isMultiThreaded=False)
     return dqn
 
-def getHist():
-    histFile = "replayHistory_buildOnly.gz"
+def history():
+    histFile = "replayHistory_trainOnly.gz"
     histDict = pd.read_pickle(histFile, compression='gzip')
+
+    return histDict
+
+
+def getHist(histDict):
+    if histDict == None:
+        histDict = history()
 
     s = np.array(histDict["s"], dtype = float)
     a = np.array(histDict["a"], dtype = int)
@@ -34,8 +42,8 @@ def getHist():
     return s, a, r, s_, terminal
 
 
-def train(dqn, histSize):
-    s, a, r, s_, terminal = getHist()
+def train(dqn, histSize, histDict):
+    s, a, r, s_, terminal = getHist(histDict)
     if len(a) < histSize:
         histSize = len(terminal)
 
@@ -64,6 +72,9 @@ def PrintValues(dqn, allStates):
         for v in values:
             print(v, end = ', ')
         print("]")
+
+
+## BUILDER:
 
 # actions
     # ID_DO_NOTHING = 0
@@ -94,15 +105,46 @@ def PrintValues(dqn, allStates):
     # IN_PROGRESS_TECHLAB_IDX = 14    
     
     # SUPPLY_USED = 15
+
+## TRAINER:
+
+    # MINERALS_IDX = 0
+    # GAS_IDX = 1
+    # BARRACKS_IDX = 2
+    # FACTORY_IDX = 3
+    # REACTORS_IDX = 4
+    # TECHLAB_IDX = 5
+
+    # SUPPLY_LEFT = 6
+
+    # QUEUE_BARRACKS = 7
+    # QUEUE_FACTORY = 8
+    # QUEUE_FACTORY_WITH_TECHLAB = 9
+    
+    # ARMY_POWER = 10
+
+    # SIZE = 11
+
 def getCheckStates():
     
-    states =  np.array([[ 1, 0.5,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0.2],  # no sd (sd affect check)
-       [ 1, 0.5,  0,  0.1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0.2],  # 1 sd (sd affect check)
-       [ 1, 0.5,  0, 0.1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0.2],  # 7 sd (sd affect check)
-       [ 1, 0.5,  0,  0.2,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0.2],  # no barracks (barracks affect check)
-       [ 1, 0.5,  0,  0.2,  0,  0.33,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0.2],  # 1 barrack (barracks affect check)
-       [ 1, 0.5,  0,  0.2,  0,  0.66,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0.2],  # 2 barracks (barracks affect check)
-       [ 1, 0.5,  0,  0.2,  0,  0,  0,  0,  0,  0,  0,  0.5,  0,  0,  0,  0.2]]) # 1 barrack in progress (barracks affect check)
+    # builder state:
+
+    # states =  np.array([[ 1, 0.5,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0.2],  # no sd (sd affect check)
+    #    [ 1, 0.5,  0,  0.1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0.2],  # 1 sd (sd affect check)
+    #    [ 1, 0.5,  0, 0.1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0.2],  # 7 sd (sd affect check)
+    #    [ 1, 0.5,  0,  0.2,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0.2],  # no barracks (barracks affect check)
+    #    [ 1, 0.5,  0,  0.2,  0,  0.33,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0.2],  # 1 barrack (barracks affect check)
+    #    [ 1, 0.5,  0,  0.2,  0,  0.66,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0.2],  # 2 barracks (barracks affect check)
+    #    [ 1, 0.5,  0,  0.2,  0,  0,  0,  0,  0,  0,  0,  0.5,  0,  0,  0,  0.2]]) # 1 barrack in progress (barracks affect check)
+
+    # trainer state:
+
+    states =  np.array([[0.5,  0.3,  0.25,  0,  0,  0,  0,  0,  0,  0, 0],  # no sd (sd affect check)
+       [0.5,  0.3,  0.25,  0,  0,  0,  0,  0,  0.5,  0, 0.2],  # 1 sd (sd affect check)
+       [0.5,  0.3,  0.25,  0,  0,  0,  0,  0,  0.75,  0, 0.5],  # 7 sd (sd affect check)
+       [0.5,  0.3,  0.25,  0.5,  0,  0,  0,  0,  0,  0, 0],  # no barracks (barracks affect check)
+       [0.5,  0.3,  0.25,  0.5,  0,  0,  0,  0,  0,  0, 0.2],  # 1 barrack (barracks affect check)
+       [0.5,  0.3,  0.25,  0.5,  0,  0,  0,  0,  0,  0, 0.5]]) # 1 barrack in progress (barracks affect check)
 
     return states
 
@@ -124,27 +166,25 @@ def MinMaxValues(dqn, states, size):
 
     return [sumMax / size, sumMin / size]
 
-def checkExploding(startSize = 32, endSize = 500000, numEpochs = 100, jumps = 32):
-    results = {}
+def checkExploding(size = 500000, numEpochs = 20, numLearns = 10):
+
+    histDict = history()
+    results = []
 
     checkStates = getCheckStates()
     checkSize = checkStates.shape[0]
     dqn = CreateDqn()
     
-    for size in range(startSize, endSize, jumps):
+    for l in range(numLearns):
         singleResults = []
         singleResults.append(MinMaxValues(dqn, checkStates, checkSize))
         
         for epoch in range(numEpochs):
-            train(dqn, size)
+            train(dqn, size, histDict)
         
         singleResults.append(MinMaxValues(dqn, checkStates, checkSize))
-        results[size] = singleResults
+        results.append(singleResults)
         dqn.Reset()
         print("finished training size =", size)
 
     return results
-
-
-        
-

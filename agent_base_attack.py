@@ -186,6 +186,8 @@ class BaseAttack(BaseAgent):
         else:
             self.decisionMaker = self.CreateDecisionMaker(dmTypes, isMultiThreaded)
 
+        self.history = self.decisionMaker.AddHistory()
+
         self.terminalState = np.zeros(STATE_SIZE, dtype=np.int, order='C')
 
         allTerranBuildings = TerranUnit.BUILDINGS + [Terran.SCV]
@@ -245,12 +247,12 @@ class BaseAttack(BaseAgent):
     def Learn(self, reward, terminal):
         if self.trainAgent:
             if self.isActionCommitted:
-                self.decisionMaker.learn(self.previous_state, self.lastActionCommitted, reward, self.current_state, terminal)
+                self.history.learn(self.previous_state, self.lastActionCommitted, reward, self.current_state, terminal)
             elif terminal:
                 # if terminal reward entire state if action is not chosen for current step
                 for a in range(NUM_ACTIONS):
-                    self.decisionMaker.learn(self.previous_state, a, reward, self.terminalState, terminal)
-                    self.decisionMaker.learn(self.current_state, a, reward, self.terminalState, terminal)
+                    self.history.learn(self.previous_state, a, reward, self.terminalState, terminal)
+                    self.history.learn(self.current_state, a, reward, self.terminalState, terminal)
 
         self.previous_state[:] = self.current_state[:]
         self.isActionCommitted = False
@@ -304,7 +306,7 @@ class BaseAttack(BaseAgent):
         self.current_state = np.zeros(STATE_SIZE, dtype=np.int, order='C')
         self.GetSelfLoc(obs)
         self.GetEnemyBuildingLoc(obs)
-        self.current_state[STATE_TIME_LINE_IDX] = int(self.numStep / TIME_LINE_BUCKETING)
+        self.current_state[STATE_TIME_LINE_IDX] = self.sharedData.numStep
 
         for idx in range(GRID_SIZE * GRID_SIZE):
            self.sharedData.enemyBuildingMat[idx] = self.current_state[STATE_START_ENEMY_MAT + idx]

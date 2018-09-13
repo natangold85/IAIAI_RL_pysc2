@@ -145,6 +145,8 @@ class DoNothingSubAgent(BaseAgent):
             self.decisionMaker = decisionMaker
         else:
             self.decisionMaker = self.CreateDecisionMaker(dmTypes, isMultiThreaded)
+        
+        self.history = self.decisionMaker.AddHistory()
 
         # create sub agents and get decision makers
         resMngrDM = self.decisionMaker.GetSubAgentDecisionMaker(SUB_AGENT_RESOURCE_MNGR)  
@@ -253,7 +255,7 @@ class DoNothingSubAgent(BaseAgent):
     def Learn(self, reward, terminal):            
         if self.trainAgent:
             if self.isActionCommitted:
-                self.decisionMaker.learn(self.previous_state, self.lastActionCommitted, reward, self.current_state, terminal)
+                self.history.learn(self.previous_state, self.lastActionCommitted, reward, self.current_state, terminal)
 
         self.resourceMngrSubAgent.Learn(reward, terminal)
         self.previous_state[:] = self.current_state[:]

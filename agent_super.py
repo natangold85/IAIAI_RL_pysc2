@@ -197,8 +197,8 @@ class SharedDataSuper(SharedDataBase, SharedDataAttack, SharedDataScout, SharedD
 
 
 REWARD_MAX_SUPPLY = 0
-NORMALIZATION_TRAIN_LOCAL_REWARD = 3
-NORMALIZATION_TRAIN_GAME_REWARD = 5
+BASE_MNGR_MAX_NAIVE_REWARD = 3.5
+NORMALIZATION_TRAIN_LOCAL_REWARD = 2 * BASE_MNGR_MAX_NAIVE_REWARD
 
 BATTLE_TYPES = set(["battle_mngr", "attack_army", "attack_base"])
 
@@ -224,6 +224,8 @@ class SuperAgent(BaseAgent):
         else:
             self.decisionMaker = self.CreateDecisionMaker(dmTypes, isMultiThreaded)
 
+        self.history = self.decisionMaker.AddHistory()
+        
         # create sub agents and get decision makers
         self.subAgents = {}
 
@@ -252,6 +254,7 @@ class SuperAgent(BaseAgent):
         self.useMapRewards = useMapRewards
 
         self.move_number = 0
+        self.maxReward = .0
 
     def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
         
@@ -345,9 +348,8 @@ class SuperAgent(BaseAgent):
         self.previous_scaled_state = np.zeros(STATE.SIZE, dtype=np.int32, order='C')
         self.current_scaled_state = np.zeros(STATE.SIZE, dtype=np.int32, order='C')
 
-        if SUB_AGENT_ID_BASE in self.activeSubAgents and not self.trainAgent:
-            self.accumulatedTrainReward = 0.0
-            self.discountForLocalReward = 0.995
+        self.accumulatedTrainReward = 0.0
+        self.discountForLocalReward = 0.995
 
         self.subAgentsActions = {}
         for sa in range(NUM_SUB_AGENTS):
@@ -368,13 +370,17 @@ class SuperAgent(BaseAgent):
 
         sumReward = reward
         if SUB_AGENT_ID_BASE in self.activeSubAgents and not self.trainAgent:
-            sumReward += self.accumulatedTrainReward / NORMALIZATION_TRAIN_GAME_REWARD
+            sumReward += self.accumulatedTrainReward
         
         score = obs.observation["score_cumulative"][0]
 
         self.CreateState(obs)
-        self.Learn(sumReward, True)  
-        self.EndRun(sumReward, score, self.sharedData.numStep)
+        self.Learn(reward, True)  
+    
+        if sumReward > self.maxReward:
+            self.maxReward = sumReward
+
+        self.EndRun(sumReward, score, self.sharedData.numAgentStep)
 
     def SendAction(self, sc2Action):
         self.sharedData.numStep += 1
@@ -502,11 +508,11 @@ class SuperAgent(BaseAgent):
     def Learn(self, reward = 0, terminal = False):
         
         if SUB_AGENT_ID_BASE in self.activeSubAgents and not self.trainAgent:
-            localReward = self.sharedData.prevTrainActionReward * pow(self.discountForLocalReward, self.sharedData.numAgentStep)
+            localReward = self.sharedData.prevTrainActionReward / NORMALIZATION_TRAIN_LOCAL_REWARD
             maxSupplyReward = REWARD_MAX_SUPPLY if self.maxSupply else 0.0 
-            reward += localReward / NORMALIZATION_TRAIN_LOCAL_REWARD + maxSupplyReward
+            reward += localReward + maxSupplyReward
 
-            self.accumulatedTrainReward += reward
+            self.accumulatedTrainReward += reward * pow(self.discountForLocalReward, self.sharedData.numAgentStep)
             self.sharedData.prevTrainActionReward = 0
 
         if self.trainAgent and self.current_action is not None:

@@ -229,7 +229,9 @@ class NaiveDecisionMakerBaseMngr(BaseNaiveDecisionMaker):
         super(NaiveDecisionMakerBaseMngr, self).__init__(numTrials2Learn, resultFName, directory)
 
     def choose_action(self, state):
-        action = 0
+        action = ACTION_DO_NOTHING
+        if np.random.uniform() > 0.75:
+            return action
 
         numSDAll = state[BASE_STATE.SUPPLY_DEPOT_IDX] + state[BASE_STATE.IN_PROGRESS_SUPPLY_DEPOT_IDX]
         numRefAll = state[BASE_STATE.REFINERY_IDX] + state[BASE_STATE.IN_PROGRESS_REFINERY_IDX]
@@ -269,6 +271,7 @@ class NaiveDecisionMakerBaseMngr(BaseNaiveDecisionMaker):
 
         return vals
 
+
 class BaseMngr(BaseAgent):
     def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList):
         super(BaseMngr, self).__init__(BASE_STATE.SIZE)
@@ -289,6 +292,8 @@ class BaseMngr(BaseAgent):
         else:
             self.decisionMaker = self.CreateDecisionMaker(dmTypes, isMultiThreaded)
 
+        self.history = self.decisionMaker.AddHistory()
+
         # create sub agents and get decision makers
         self.subAgents = {}
 
@@ -308,9 +313,9 @@ class BaseMngr(BaseAgent):
         self.sharedData = sharedData
         self.terminalState = np.zeros(BASE_STATE.SIZE, dtype=np.int, order='C')
 
-
         # model params 
         self.minPriceMinerals = 50
+
 
     def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
         
@@ -404,7 +409,6 @@ class BaseMngr(BaseAgent):
         for subAgent in self.subAgents.values():
             subAgent.EndRun(reward, score, stepNum)
         
-
         if self.trainSubAgentsSimultaneously:
             currSubAgent = self.subAgents[self.trainOrder[self.currTrainSubAgentIdx]]
             numRuns = currSubAgent.decisionMaker.NumRuns()
@@ -451,15 +455,15 @@ class BaseMngr(BaseAgent):
 
         self.current_scaled_state[BASE_STATE.SUPPLY_LEFT] = min(BASE_STATE.SUPPLY_LEFT_MAX, self.current_scaled_state[BASE_STATE.SUPPLY_LEFT])
 
-    def Learn(self, reward, terminal):            
+    def Learn(self, reward, terminal): 
         if self.trainAgent:
             if self.isActionCommitted:
-                self.decisionMaker.learn(self.previous_scaled_state, self.lastActionCommitted, reward, self.current_scaled_state, terminal)
+                self.history.learn(self.previous_scaled_state, self.lastActionCommitted, reward, self.current_scaled_state, terminal)
             elif terminal:
                 # if terminal reward entire state if action is not chosen for current step
                 for a in range(NUM_ACTIONS):
-                    self.decisionMaker.learn(self.previous_scaled_state, a, reward, self.terminalState, terminal)
-                    self.decisionMaker.learn(self.current_scaled_state, a, reward, self.terminalState, terminal)
+                    self.history.learn(self.previous_scaled_state, a, reward, self.terminalState, terminal)
+                    self.history.learn(self.current_scaled_state, a, reward, self.terminalState, terminal)
 
         for sa in ALL_SUB_AGENTS:
             self.subAgents[sa].Learn(reward, terminal) 

@@ -333,6 +333,8 @@ class BuildBaseSubAgent(BaseAgent):
         else:
             self.decisionMaker = self.CreateDecisionMaker(dmTypes, isMultiThreaded)
 
+        self.history = self.decisionMaker.AddHistory()
+
         self.sharedData = sharedData
 
         # states and action:
@@ -401,24 +403,23 @@ class BuildBaseSubAgent(BaseAgent):
     def EndRun(self, reward, score, stepNum):
         if self.trainAgent:
             self.decisionMaker.end_run(reward, score, stepNum)
+        elif self.inTraining:
+            self.decisionMaker.TrimHistory()
 
     def Learn(self, reward, terminal):
         if self.inTraining:
             if self.isActionCommitted:
-                self.decisionMaker.learn(self.previous_scaled_state, self.lastActionCommitted, reward, self.current_scaled_state, terminal)
+                self.history.learn(self.previous_scaled_state, self.lastActionCommitted, reward, self.current_scaled_state, terminal)
 
-            # elif terminal:
-            #     # if terminal reward entire state if action is not chosen for current step
-            #     for a in range(ACTIONS.NUM_ACTIONS):
-            #         self.decisionMaker.learn(self.previous_scaled_state, a, reward, self.terminalState, terminal)
-            #         self.decisionMaker.learn(self.current_scaled_state, a, reward, self.terminalState, terminal)
             
             elif reward > 0:
                 if self.lastActionCommitted != None:
                     numSteps = self.sharedData.numAgentStep - self.lastActionCommittedStep
                     discountedReward = reward * pow(self.decisionMaker.DiscountFactor(), numSteps)
-                    self.decisionMaker.learn(self.lastActionCommittedState, self.lastActionCommitted, discountedReward, self.lastActionCommittedNextState, terminal)        
- 
+                    self.history.learn(self.lastActionCommittedState, self.lastActionCommitted, discountedReward, self.lastActionCommittedNextState, terminal)        
+            elif terminal:
+                self.history.learn(self.current_scaled_state, ACTIONS.ID_DO_NOTHING, reward, self.terminalState, terminal)
+
         self.previous_scaled_state[:] = self.current_scaled_state[:]
         self.isActionCommitted = False
 
@@ -649,7 +650,7 @@ class BuildBaseSubAgent(BaseAgent):
 
     def FindAdditionLocation(self, y, x, buildingType, additionType, unitType):
         
-        while unitType[y][x] == buildingType and x < SC2_Params.SCREEN_SIZE:
+        while unitType[y][x] == buildingType and x + 1 < SC2_Params.SCREEN_SIZE:
             x += 1
         
         # if right edge is not addition ride n building up and down to search for addition

@@ -4,6 +4,7 @@ import pickle
 import os.path
 import datetime
 import sys
+import threading
 
 from multiprocessing import Lock
 
@@ -15,8 +16,7 @@ from utils_dqn import DQN_WithTarget
 
 from utils_qtable import QLearningTable
 
-# prev models
-# from hallucination import HallucinationMngrPSFunc
+from utils_history import HistoryMngr
 
 # model builders:
 from utils_ttable import TransitionTable
@@ -75,6 +75,12 @@ class BaseDecisionMaker:
         return 0
     def TargetExploreProb(self):
         return 0
+
+    def TrimHistory(self):
+        pass
+    
+    def AddHistory(self):
+        return None
         
 class BaseNaiveDecisionMaker(BaseDecisionMaker):
     def __init__(self, numTrials2Save, resultFName = None, directory = None):
@@ -145,6 +151,13 @@ class LearnWithReplayMngr(BaseDecisionMaker):
     def __init__(self, modelType, modelParams, decisionMakerName = '', resultFileName = '', historyFileName = '', directory = '', numTrials2Learn = 100, isMultiThreaded = False):
         super(LearnWithReplayMngr, self).__init__()
 
+        # params
+        self.params = modelParams
+        self.numTrials2Learn = numTrials2Learn
+
+        # trial to DQN to learn
+        self.trial2LearnDQN = -1
+        
         if directory != "":
             fullDirectoryName = "./" + directory +"/"
             if not os.path.isdir(fullDirectoryName):
@@ -152,22 +165,7 @@ class LearnWithReplayMngr(BaseDecisionMaker):
         else:
             fullDirectoryName = "./"
         
-        self.numTrials2Learn = numTrials2Learn
-        self.trialNum = 0
-        self.trial2LearnDQN = -1
-
-        self.params = modelParams
-
-        self.nextExperienceIdx2Add = 0
-        self.transitions = {}
-        self.transitions["s"] = []
-        self.transitions["a"] = []
-        self.transitions["r"] = []
-        self.transitions["s_"] = []
-        self.transitions["terminal"] = []
-
-        self.transitions["maxStateVals"] = np.ones(modelParams.stateSize, int)
-
+    
         if "new" in sys.argv:
             loadFiles = False
         else:
@@ -176,15 +174,8 @@ class LearnWithReplayMngr(BaseDecisionMaker):
         decisionClass = eval(modelType)
         self.decisionMaker = decisionClass(modelParams, decisionMakerName, fullDirectoryName, loadFiles, isMultiThreaded=isMultiThreaded)
 
-        self.tTable = None
-
-        if historyFileName != '':
-            self.histFileName = fullDirectoryName + historyFileName + '.gz'
-            if os.path.isfile(self.histFileName) and loadFiles:
-                self.transitions = pd.read_pickle(self.histFileName, compression='gzip')
-        else:
-            self.histFileName = historyFileName
-
+        self.historyMngr = HistoryMngr(modelParams, historyFileName, fullDirectoryName, isMultiThreaded, loadFiles)
+        self.nonTrainingHistCount = 0
 
         if resultFileName != '':
             self.resultFile = ResultFile(fullDirectoryName + resultFileName, numTrials2Learn, loadFiles)
@@ -192,91 +183,44 @@ class LearnWithReplayMngr(BaseDecisionMaker):
             self.resultFile = None
 
         if isMultiThreaded:
-            self.learnLock = Lock()
             self.endRunLock = Lock()
         else:
             self.endRunLock = EmptyLock()
-            self.learnLock = EmptyLock()
+
+    def AddHistory(self):
+        return self.historyMngr.AddHistory()
 
     def ExploreProb(self):
         return self.decisionMaker.ExploreProb()
 
-    def normalizeState(self, state):
-        return state / self.transitions["maxStateVals"]
 
-    def choose_action(self, observation):
-        observation = self.normalizeState(observation)
-        return self.decisionMaker.choose_action(observation)     
+
+    def choose_action(self, state):
+        return self.decisionMaker.choose_action(self.historyMngr.NormalizeState(state))     
 
     def NumRuns(self):
         return self.decisionMaker.NumRuns()
 
-    def learn(self, s, a, r, s_, terminal = False):
+    def TrimHistory(self):
+        count = self.nonTrainingHistCount + 1
+        if count % self.numTrials2Learn == 0:
+            self.historyMngr.TrimHistory()
+            print("\t", threading.current_thread().getName(), ": Trim History")
 
-        if len(self.transitions["a"]) < self.params.maxReplaySize:
-            self.transitions["s"].append(s.copy())
-            self.transitions["a"].append(a)
-            self.transitions["r"].append(r)
-            self.transitions["s_"].append(s_.copy())
-            self.transitions["terminal"].append(terminal)
-        else:
-            self.learnLock.acquire()
-            idx = self.nextExperienceIdx2Add
-            self.nextExperienceIdx2Add = (idx + 1) % self.params.maxReplaySize
-            self.learnLock.release()
-
-            self.transitions["s"][idx] = s.copy()
-            self.transitions["a"][idx] = a
-            self.transitions["r"][idx] = r
-            self.transitions["s_"][idx] = s_.copy()
-            self.transitions["terminal"][idx] = terminal
-        
-
-    def NormalizeStateVals(self, s, s_):
-        maxAll = np.column_stack((self.transitions["maxStateVals"], np.max(s, axis = 0), np.max(s_, axis = 0)))
-        self.transitions["maxStateVals"] = np.max(maxAll, axis = 1)
-
-        s /= self.transitions["maxStateVals"]
-        s_ /= self.transitions["maxStateVals"]
-
-        return s , s_
-
-    def ExperienceReplay(self):   
-        idx4Shuffle = np.arange(len(self.transitions["r"]))
-        np.random.shuffle(idx4Shuffle)
-        size = int(len(idx4Shuffle) * self.params.historyProportion4Learn)
-        chosenIdx = idx4Shuffle[0:size]
-                
-        s = np.array(self.transitions["s"], dtype = float)[chosenIdx]
-        a = np.array(self.transitions["a"], dtype = int)[chosenIdx]
-        r = np.array(self.transitions["r"], dtype = float)[chosenIdx]
-        s_ = np.array(self.transitions["s_"], dtype = float)[chosenIdx]
-        terminal = np.array(self.transitions["terminal"], dtype = bool)[chosenIdx]
-
-        s, s_ = self.NormalizeStateVals(s, s_)
-
-        if self.histFileName != '':
-            pd.to_pickle(self.transitions, self.histFileName, 'gzip') 
-
-        return s, a, r, s_, terminal
+        self.nonTrainingHistCount += 1
 
     def end_run(self, r, score, steps):
         self.endRunLock.acquire()
 
         numRun = int(self.NumRuns())
-        print("\t\tfor trial#", numRun, ": reward =", r, "score =", score, "steps =", steps)
+        print(threading.current_thread().getName(), ": for trial#", numRun, ": reward =", r, "score =", score, "steps =", steps)
 
         learnAndSave = False
-        self.trialNum += 1
-
-        if self.trialNum % self.numTrials2Learn == 0:
+        if (numRun + 1) % self.numTrials2Learn == 0:
             learnAndSave = True
 
         if self.resultFile != None:
             self.resultFile.end_run(r, score, steps, learnAndSave)
-
-        if self.tTable != None:
-            self.tTable.end_run(learnAndSave)
 
         if learnAndSave:
             self.trial2LearnDQN = numRun + 1
@@ -289,7 +233,7 @@ class LearnWithReplayMngr(BaseDecisionMaker):
         return learnAndSave 
 
     def Train(self):
-        s,a,rVec,s_, terminal = self.ExperienceReplay()
+        s,a,rVec,s_, terminal = self.historyMngr.GetHistory()
         
         if len(a) > self.params.minReplaySize:
             start = datetime.datetime.now()
@@ -302,24 +246,20 @@ class LearnWithReplayMngr(BaseDecisionMaker):
             diff = datetime.datetime.now() - start
             msDiff = diff.seconds * 1000 + diff.microseconds / 1000
             
-            print("ExperienceReplay - training with hist size = ", len(rVec), ", training last", msDiff, "milliseconds")
+            print("\t", threading.current_thread().getName(), ": ExperienceReplay - training with hist size = ", len(rVec), ", last", msDiff, "milliseconds")
+        else:
+            print("\t", threading.current_thread().getName(), ": ExperienceReplay size to small - training with hist size = ", len(rVec))
 
 
     def ResetAllData(self):
-        self.transitions = {}
-        self.transitions["s"] = []
-        self.transitions["a"] = []
-        self.transitions["r"] = []
-        self.transitions["s_"] = []
-        self.transitions["terminal"] = []
-
         self.decisionMaker.Reset()
+        self.historyMngr.Reset()
 
         if self.resultFile != None:
             self.resultFile.Reset()
 
     def ActionValuesVec(self, s, targetValues = False):
-        s = self.normalizeState(s)
+        s = self.historyMngr.NormalizeState(s)
         return self.decisionMaker.ActionValuesVec(s, targetValues)
 
     def DiscountFactor(self):
