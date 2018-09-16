@@ -267,8 +267,8 @@ class BuildingCmdAddition(BuildingCmd):
 
 
 class NaiveDecisionMakerBuilder(BaseNaiveDecisionMaker):
-    def __init__(self, resultFName = None, directory = None, numTrials2Learn = 20):
-        super(NaiveDecisionMakerBuilder, self).__init__(numTrials2Learn, resultFName, directory)
+    def __init__(self, resultFName = None, directory = None, numTrials2Save = 20):
+        super(NaiveDecisionMakerBuilder, self).__init__(numTrials2Save=numTrials2Save, resultFName=resultFName, directory=directory, agentName=AGENT_NAME)
         self.SDSupply = 8
         self.CCSupply = 15
 
@@ -360,8 +360,9 @@ class BuildBaseSubAgent(BaseAgent):
         if dmTypes[AGENT_NAME] == "naive":
             decisionMaker = NaiveDecisionMakerBuilder(resultFName=runType[RESULTS], directory=directory + runType[DIRECTORY])
         else:        
-            decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], numTrials2Learn=20,
-                                                resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY], isMultiThreaded=isMultiThreaded)
+            decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,
+                                                resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY], isMultiThreaded=isMultiThreaded,
+                                                numTrials2Learn=20)
 
         return decisionMaker
 

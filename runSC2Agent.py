@@ -35,7 +35,8 @@ flags.DEFINE_string("train", "True", "open multiple threads for train.")
 flags.DEFINE_string("map", "none", "Which map to run.")
 flags.DEFINE_string("numSteps", "0", "num steps of map.")
 flags.DEFINE_string("device", "gpu", "Which device to run nn on.")
-flags.DEFINE_string("threadsNum", "8", "num of game threads.")
+flags.DEFINE_string("numGameThreads", "8", "num of game threads.")
+flags.DEFINE_string("checkDqnValues", "False", "num of game threads.")
 
 nonRelevantRewardMap = ["BaseMngr"]
 singlePlayerMaps = ["ArmyAttack5x5", "AttackBase", "AttackMngr"]
@@ -77,11 +78,12 @@ def start_agent():
         parallel = 1
         show_render = True
     else:
-        parallel = int(flags.FLAGS.threadsNum)
+        parallel = int(flags.FLAGS.numGameThreads)
         show_render = RENDER
 
     # tables
     dm_Types = eval(open(flags.FLAGS.configFile, "r+").read())
+    dm_Types["directory"] = flags.FLAGS.configFile.replace(".txt", "")
 
     if flags.FLAGS.trainAgent == "none":
         trainList = ["super"]
@@ -154,6 +156,35 @@ def start_agent():
             else:
                 t.join() 
 
+def check_dqn():
+    dm_Types = eval(open(flags.FLAGS.configFile, "r+").read())
+    dm_Types["directory"] = flags.FLAGS.configFile.replace(".txt", "")
+    checkList = flags.FLAGS.playAgent
+    checkList = checkList.split(",")
+
+
+    superAgent = SuperAgent(dmTypes = dm_Types, playList=["super"], trainList=["super"])
+    decisionMaker = superAgent.GetDecisionMaker()
+
+    print("\n\nagent 2 check:", checkList, end='\n\n')
+
+    for agentName in checkList:
+        dm = decisionMaker.GetDecisionMakerByName(agentName)
+        historyMngr = dm.historyMngr
+        print(agentName, "hist size =", len(historyMngr.transitions["a"]))
+        print(agentName, "old hist size", len(historyMngr.oldTransitions["a"]))
+        print(agentName, "all history size", len(historyMngr.GetAllHist()["a"]))
+
+        print(agentName, "maxVals =", historyMngr.transitions["maxStateVals"])
+        print("\n")
+    
+    # for sa in checkList:
+    #     dm = decisionMaker.GetDecisionMakerByName(sa)
+    #     print("\n\n\n", dm.agentName, ":")
+    #     for i in range(100):
+    #         s = dm.DrawStateFromHist()
+    #         print(s)
+
 def main(argv):
     """Main function.
 
@@ -168,8 +199,11 @@ def main(argv):
         import os
         os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
         os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
-        
-    start_agent()
+
+    if flags.FLAGS.checkDqnValues == "False":
+        start_agent()
+    else:
+        check_dqn()
 
 
 if __name__ == '__main__':

@@ -144,7 +144,7 @@ class SharedDataBattle(SharedDataArmyAttack, SharedDataBaseAttack):
 
 class NaiveDecisionMakerBattleMngr(BaseDecisionMaker):
     def __init__(self):
-        super(NaiveDecisionMakerBattleMngr, self).__init__()        
+        super(NaiveDecisionMakerBattleMngr, self).__init__(AGENT_NAME)        
         self.startEnemyMat = GRID_SIZE * GRID_SIZE
         self.startBuildingMat = 2 * GRID_SIZE * GRID_SIZE
         self.endBuildingMat = 3 * GRID_SIZE * GRID_SIZE
@@ -227,7 +227,7 @@ class BattleMngr(BaseAgent):
             directory = dmTypes["directory"] + "/" + AGENT_DIR
             if not os.path.isdir("./" + directory):
                 os.makedirs("./" + directory)
-            decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME],  
+            decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,  
                                             resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=AGENT_DIR+runType[DIRECTORY], isMultiThreaded=isMultiThreaded)
 
         return decisionMaker

@@ -120,7 +120,7 @@ class SharedDataArmyAttack(EmptySharedData):
 
 class NaiveDecisionMakerArmyAttack(BaseDecisionMaker):
     def __init__(self):
-        super(NaiveDecisionMakerArmyAttack, self).__init__()
+        super(NaiveDecisionMakerArmyAttack, self).__init__(AGENT_NAME)
         
 
     def choose_action(self, observation):
@@ -190,7 +190,7 @@ class ArmyAttack(BaseAgent):
             directory = dmTypes["directory"] + "/" + AGENT_DIR
             if not os.path.isdir("./" + directory):
                 os.makedirs("./" + directory)
-            decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME],  
+            decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,
                                             resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory+runType[DIRECTORY], isMultiThreaded=isMultiThreaded)
 
         return decisionMaker

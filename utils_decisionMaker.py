@@ -25,13 +25,14 @@ from utils_ttable import TransitionTable
 from utils_results import ResultFile
 
 class BaseDecisionMaker:
-    def __init__(self):
+    def __init__(self, agentName):
         self.trainFlag = False
         self.switchFlag = False
 
         self.subAgentsDecisionMakers = {}
         self.switchCount = {}
         self.resultFile = None
+        self.agentName = agentName
 
     def SetSubAgentDecisionMaker(self, key, decisionMaker):
         self.subAgentsDecisionMakers[key] = decisionMaker
@@ -42,6 +43,19 @@ class BaseDecisionMaker:
             return self.subAgentsDecisionMakers[key]
         else:
             return None
+
+    def GetDecisionMakerByName(self, name):
+        if self.agentName == name:
+            return self
+        else:
+            for saDM in self.subAgentsDecisionMakers.values():
+                if saDM != None:
+                    dm = saDM.GetDecisionMakerByName(name)
+                    if dm != None:
+                        return dm
+                
+            return None
+                
 
     def TrainAll(self):
         if self.trainFlag:
@@ -81,10 +95,13 @@ class BaseDecisionMaker:
     
     def AddHistory(self):
         return None
+    
+    def DrawStateFromHist(self):
+        return None
         
 class BaseNaiveDecisionMaker(BaseDecisionMaker):
-    def __init__(self, numTrials2Save, resultFName = None, directory = None):
-        super(BaseNaiveDecisionMaker, self).__init__()
+    def __init__(self, numTrials2Save, agentName = "", resultFName = None, directory = None):
+        super(BaseNaiveDecisionMaker, self).__init__(agentName)
         self.resultFName = resultFName
         self.trialNum = 0
         self.numTrials2Save = numTrials2Save
@@ -121,8 +138,8 @@ class BaseNaiveDecisionMaker(BaseDecisionMaker):
 
 
 class UserPlay(BaseDecisionMaker):
-    def __init__(self, playWithInput = True, numActions = 1, actionDoNothing = 0):
-        super(UserPlay, self).__init__()
+    def __init__(self, agentName = "", playWithInput = True, numActions = 1, actionDoNothing = 0):
+        super(UserPlay, self).__init__(agentName)
         self.playWithInput = playWithInput
         self.numActions = numActions
         self.actionDoNothing = actionDoNothing
@@ -148,8 +165,8 @@ class UserPlay(BaseDecisionMaker):
 
 
 class LearnWithReplayMngr(BaseDecisionMaker):
-    def __init__(self, modelType, modelParams, decisionMakerName = '', resultFileName = '', historyFileName = '', directory = '', numTrials2Learn = 100, isMultiThreaded = False):
-        super(LearnWithReplayMngr, self).__init__()
+    def __init__(self, modelType, modelParams, agentName='', decisionMakerName='', resultFileName='', historyFileName='', directory='', numTrials2Learn=100, isMultiThreaded = False):
+        super(LearnWithReplayMngr, self).__init__(agentName)
 
         # params
         self.params = modelParams
@@ -205,7 +222,7 @@ class LearnWithReplayMngr(BaseDecisionMaker):
         count = self.nonTrainingHistCount + 1
         if count % self.numTrials2Learn == 0:
             self.historyMngr.TrimHistory()
-            print("\t", threading.current_thread().getName(), ": Trim History")
+            print("\t", threading.current_thread().getName(), ":", self.agentName,"->Trim History to size =", self.historyMngr.Size())
 
         self.nonTrainingHistCount += 1
 
@@ -213,7 +230,7 @@ class LearnWithReplayMngr(BaseDecisionMaker):
         self.endRunLock.acquire()
 
         numRun = int(self.NumRuns())
-        print(threading.current_thread().getName(), ": for trial#", numRun, ": reward =", r, "score =", score, "steps =", steps)
+        print(threading.current_thread().getName(), ":", self.agentName,"->for trial#", numRun, ": reward =", r, "score =", score, "steps =", steps)
 
         learnAndSave = False
         if (numRun + 1) % self.numTrials2Learn == 0:
@@ -246,9 +263,9 @@ class LearnWithReplayMngr(BaseDecisionMaker):
             diff = datetime.datetime.now() - start
             msDiff = diff.seconds * 1000 + diff.microseconds / 1000
             
-            print("\t", threading.current_thread().getName(), ": ExperienceReplay - training with hist size = ", len(rVec), ", last", msDiff, "milliseconds")
+            print("\t", threading.current_thread().getName(), ":", self.agentName,"->ExperienceReplay - training with hist size = ", len(rVec), ", last", msDiff, "milliseconds")
         else:
-            print("\t", threading.current_thread().getName(), ": ExperienceReplay size to small - training with hist size = ", len(rVec))
+            print("\t", threading.current_thread().getName(), ":", self.agentName,"->ExperienceReplay size to small - training with hist size = ", len(rVec))
 
 
     def ResetAllData(self):
@@ -264,3 +281,7 @@ class LearnWithReplayMngr(BaseDecisionMaker):
 
     def DiscountFactor(self):
         return self.decisionMaker.DiscountFactor()
+
+    def DrawStateFromHist(self):
+        return self.historyMngr.DrawState()
+

@@ -31,12 +31,13 @@ def PlotResults(agentName, agentDir, runTypes, subAgentsGroups = ["all"], groupi
     directoryNames = []
     groupNames = []
     for configFname in configFileNames:
-        groupNames.append(configFname.replace(".txt", ""))
+
+        directoryForConfig = configFname.replace(".txt", "")
+        groupNames.append(directoryForConfig)
         
         dm_Types = eval(open(configFname, "r+").read())
         runType = runTypes[dm_Types[agentName]]
         
-        directory = dm_Types["directory"]
         fName = runType["results"]
         
         if "directory" in runType.keys():
@@ -45,7 +46,7 @@ def PlotResults(agentName, agentDir, runTypes, subAgentsGroups = ["all"], groupi
             dirName = ''
 
         resultFnames.append(fName)
-        directoryNames.append(directory + "/" + agentDir + dirName)
+        directoryNames.append(directoryForConfig + "/" + agentDir + dirName)
 
     if grouping == None:
         grouping = int(sys.argv[len(sys.argv) - 1])

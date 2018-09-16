@@ -168,8 +168,8 @@ class ScvCmd:
 
 
 class NaiveDecisionMakerResource(BaseNaiveDecisionMaker):
-    def __init__(self, resultFName = None, directory = None, numTrials2Learn = 20):
-        super(NaiveDecisionMakerResource, self).__init__(numTrials2Learn, resultFName, directory)
+    def __init__(self, resultFName = None, directory = None, numTrials2Save = 20):
+        super(NaiveDecisionMakerResource, self).__init__(numTrials2Save=numTrials2Save, resultFName=resultFName, directory=directory, agentName=AGENT_NAME)
         self.desiredGroupCnt = {}
         self.desiredGroupCnt[SCV_GROUP_MINERALS] = 8
         self.desiredGroupCnt[SCV_GROUP_GAS1] = 3

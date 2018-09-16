@@ -203,7 +203,7 @@ NORMALIZATION_TRAIN_LOCAL_REWARD = 2 * BASE_MNGR_MAX_NAIVE_REWARD
 BATTLE_TYPES = set(["battle_mngr", "attack_army", "attack_base"])
 
 class SuperAgent(BaseAgent):
-    def __init__(self, dmTypes, useMapRewards, decisionMaker = None, isMultiThreaded = False, playList = None, trainList = None):
+    def __init__(self, dmTypes, useMapRewards = True, decisionMaker = None, isMultiThreaded = False, playList = None, trainList = None):
         super(SuperAgent, self).__init__(STATE.SIZE)
 
         self.sharedData = SharedDataSuper()
@@ -264,8 +264,9 @@ class SuperAgent(BaseAgent):
         directory = dmTypes["directory"] + "/" + AGENT_DIR
         if not os.path.isdir("./" + directory):
             os.makedirs("./" + directory)
-        decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], numTrials2Learn=20, 
-                                            resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY], isMultiThreaded=isMultiThreaded)
+        decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,
+                                            resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY], isMultiThreaded=isMultiThreaded,
+                                            numTrials2Learn=20)
 
         return decisionMaker
 
@@ -516,7 +517,7 @@ class SuperAgent(BaseAgent):
             self.sharedData.prevTrainActionReward = 0
 
         if self.trainAgent and self.current_action is not None:
-            self.decisionMaker.learn(self.previous_scaled_state, self.current_action, reward, self.current_scaled_state, terminal)
+            self.history.learn(self.previous_scaled_state, self.current_action, reward, self.current_scaled_state, terminal)
 
         self.previous_scaled_state[:] = self.current_scaled_state[:]
 
@@ -529,46 +530,48 @@ class SuperAgent(BaseAgent):
         self.current_scaled_state[STATE.TIME_LINE_IDX] = int(self.current_state[STATE.TIME_LINE_IDX] / STATE.TIME_LINE_BUCKETING)
 
     def PrintState(self):
-        print("barracks: min =",  self.current_state[STATE.BASE.QUEUE_BARRACKS], end = '')
-        barList = self.sharedData.buildingCompleted[Terran.Barracks] 
-        idx = 0
-        numInQ = 0
+        print ("supply depot buildings =" , self.current_state[STATE.BASE.SUPPLY_DEPOT_IDX], "in progress =", self.current_state[STATE.BASE.IN_PROGRESS_SUPPLY_DEPOT_IDX])
+        print ("barracks buildings =" , self.current_state[STATE.BASE.BARRACKS_IDX], "in progress =", self.current_state[STATE.BASE.IN_PROGRESS_BARRACKS_IDX])
+        # print("barracks: min =",  self.current_state[STATE.BASE.QUEUE_BARRACKS], end = '')
+        # barList = self.sharedData.buildingCompleted[Terran.Barracks] 
+        # idx = 0
+        # numInQ = 0
 
-        for b in barList:
-            idx += 1
-            print("\nbarracks", idx, end = ": ")
-            for u in b.qForProduction:
-                numInQ += 1
-                print(TerranUnit.ARMY_SPEC[u.unit].name, u.step, end = ', ')
+        # for b in barList:
+        #     idx += 1
+        #     print("\nbarracks", idx, end = ": ")
+        #     for u in b.qForProduction:
+        #         numInQ += 1
+        #         print(TerranUnit.ARMY_SPEC[u.unit].name, u.step, end = ', ')
 
-        idx = 0
-        for b in self.sharedData.buildingCompleted[Terran.BarracksReactor]:
-            idx += 1
-            print("\nreactor", idx, end = ": ")
-            for u in b.qForProduction:
-                numInQ += 1
-                print(TerranUnit.ARMY_SPEC[u.unit].name, u.step, end = ', ')
+        # idx = 0
+        # for b in self.sharedData.buildingCompleted[Terran.BarracksReactor]:
+        #     idx += 1
+        #     print("\nreactor", idx, end = ": ")
+        #     for u in b.qForProduction:
+        #         numInQ += 1
+        #         print(TerranUnit.ARMY_SPEC[u.unit].name, u.step, end = ', ')
 
 
-        print("\nfactory: fq:", self.current_state[STATE.BASE.QUEUE_FACTORY], "tlq:", self.current_state[STATE.BASE.QUEUE_TECHLAB], end = '')
-        faList = self.sharedData.buildingCompleted[Terran.Factory] 
-        idx = 0
-        for f in faList:
-            idx += 1
-            print("\nfactory:", idx, end = ": ")
-            for u in f.qForProduction:
-                numInQ += 1
-                print(TerranUnit.ARMY_SPEC[u.unit].name, u.step, end = ', ')
+        # print("\nfactory: fq:", self.current_state[STATE.BASE.QUEUE_FACTORY], "tlq:", self.current_state[STATE.BASE.QUEUE_TECHLAB], end = '')
+        # faList = self.sharedData.buildingCompleted[Terran.Factory] 
+        # idx = 0
+        # for f in faList:
+        #     idx += 1
+        #     print("\nfactory:", idx, end = ": ")
+        #     for u in f.qForProduction:
+        #         numInQ += 1
+        #         print(TerranUnit.ARMY_SPEC[u.unit].name, u.step, end = ', ')
 
-        idx = 0
-        for f in self.sharedData.buildingCompleted[Terran.FactoryTechLab]:
-            idx += 1
-            print("\ntechlab", idx, end = ": ")
-            for u in f.qForProduction:
-                numInQ += 1
-                print(TerranUnit.ARMY_SPEC[u.unit].name, u.step, end = ', ')
+        # idx = 0
+        # for f in self.sharedData.buildingCompleted[Terran.FactoryTechLab]:
+        #     idx += 1
+        #     print("\ntechlab", idx, end = ": ")
+        #     for u in f.qForProduction:
+        #         numInQ += 1
+        #         print(TerranUnit.ARMY_SPEC[u.unit].name, u.step, end = ', ')
 
-        print("\n\n")
+        # print("\n\n")
 
         # self.subAgents[SUB_AGENT_ID_BASE].PrintState()
 
@@ -594,4 +597,4 @@ class SuperAgent(BaseAgent):
 
 if __name__ == "__main__":
     if "results" in sys.argv:
-        PlotResults(AGENT_NAME, AGENT_DIR, RUN_TYPES)
+        PlotResults(AGENT_NAME, AGENT_DIR, RUN_TYPES)       

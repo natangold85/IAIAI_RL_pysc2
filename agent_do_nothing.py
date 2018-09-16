@@ -75,8 +75,8 @@ class SharedDataDoNothing(SharedDataResourceMngr):
 
 
 class NaiveDecisionMakerDoNothing(BaseNaiveDecisionMaker):
-    def __init__(self, resultFName = None, directory = None, numTrials2Learn = 20):
-        super(NaiveDecisionMakerDoNothing, self).__init__(numTrials2Learn, resultFName, directory)
+    def __init__(self, resultFName = None, directory = None, numTrials2Save = 20):
+        super(NaiveDecisionMakerDoNothing, self).__init__(numTrials2Save=numTrials2Save, resultFName=resultFName, directory=directory, agentName=AGENT_NAME)
 
         self.defaultActionProb = {}
         self.defaultActionProb[ACTION_BUILDING_COUNT] = 0.65

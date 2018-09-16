@@ -225,8 +225,8 @@ RUN_TYPES[NAIVE][RESULTS] = "baseMngr_result"
 
 
 class NaiveDecisionMakerBaseMngr(BaseNaiveDecisionMaker):
-    def __init__(self, resultFName = None, directory = None, numTrials2Learn = 20):
-        super(NaiveDecisionMakerBaseMngr, self).__init__(numTrials2Learn, resultFName, directory)
+    def __init__(self, resultFName = None, directory=None, numTrials2Save = 20):
+        super(NaiveDecisionMakerBaseMngr, self).__init__(numTrials2Save=numTrials2Save, agentName=AGENT_NAME, resultFName=resultFName, directory=directory)
 
     def choose_action(self, state):
         action = ACTION_DO_NOTHING
@@ -325,7 +325,7 @@ class BaseMngr(BaseAgent):
         if dmTypes[AGENT_NAME] == "naive":
             decisionMaker = NaiveDecisionMakerBaseMngr(resultFName=runType[RESULTS], directory=directory + runType[DIRECTORY])
         else:        
-            decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME],  
+            decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,  
                                                 resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY], isMultiThreaded=isMultiThreaded)
 
         return decisionMaker
@@ -503,7 +503,6 @@ class BaseMngr(BaseAgent):
                 action = self.decisionMaker.choose_action(self.current_state)
         else:
             action = self.subAgentPlay
-
 
         self.current_action = action
         return action

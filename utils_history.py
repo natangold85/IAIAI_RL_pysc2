@@ -72,16 +72,16 @@ class HistoryMngr(History):
         self.trimmingHistory = False
 
         if historyFileName != '':
-            self.addition2CurrHistFile = "_curr"
+            self.lastHistFile = "_last"
             self.histFileName = directory + historyFileName
             self.numOldHistFiles = 0
             
             if loadFiles:
-                if os.path.isfile(self.histFileName + self.addition2CurrHistFile + '.gz'):
-                    self.transitions = pd.read_pickle(self.histFileName + self.addition2CurrHistFile + '.gz', compression='gzip')
-
                 if os.path.isfile(self.histFileName + '.gz'):
-                    self.oldTransitions = pd.read_pickle(self.histFileName + '.gz', compression='gzip')
+                    self.transitions = pd.read_pickle(self.histFileName + '.gz', compression='gzip')
+
+                if os.path.isfile(self.histFileName + self.lastHistFile + '.gz'):
+                    self.oldTransitions = pd.read_pickle(self.histFileName + self.lastHistFile + '.gz', compression='gzip')
 
                 while os.path.isfile(self.histFileName + str(self.numOldHistFiles) +'.gz'):
                     self.numOldHistFiles += 1
@@ -103,7 +103,10 @@ class HistoryMngr(History):
                 self.transitions[key] += transitions[key]
 
         return size
-        
+
+    def Size(self):
+        return len(self.transitions["a"])       
+     
     def GetHistory(self):   
         self.histLock.acquire()
 
@@ -168,7 +171,7 @@ class HistoryMngr(History):
     def SaveHistFile(self, transitions):
 
         if self.histFileName != '':
-            pd.to_pickle(transitions, self.histFileName + self.addition2CurrHistFile + '.gz', 'gzip') 
+            pd.to_pickle(transitions, self.histFileName + '.gz', 'gzip') 
             
             if len(self.oldTransitions["a"]) >= self.maxReplaySize:
                 pd.to_pickle(self.oldTransitions, self.histFileName + str(self.numOldHistFiles) + '.gz', 'gzip') 
@@ -178,4 +181,28 @@ class HistoryMngr(History):
                 for key in self.transitionKeys:
                     self.oldTransitions[key] = []
             else:
-                pd.to_pickle(self.oldTransitions, self.histFileName + '.gz', 'gzip') 
+                pd.to_pickle(self.oldTransitions, self.histFileName + self.lastHistFile + '.gz', 'gzip') 
+
+    def DrawState(self):
+        sizeHist = len(self.transitions["a"])
+        if sizeHist > 0:
+            idx = np.random.randint(0,sizeHist)
+            return self.transitions["s"][idx]       
+        else:
+            return None
+
+    def GetAllHist(self):
+        transitions = {}
+        for key in self.transitionKeys:
+            transitions[key] = []
+
+        for i in range(self.numOldHistFiles):
+           currTransitions = pd.read_pickle(self.histFileName + str(i) + '.gz', compression='gzip')
+           for key in self.transitionKeys:
+               transitions[key] += currTransitions[key]
+
+        for key in self.transitionKeys:
+            transitions[key] += self.oldTransitions[key]  
+            transitions[key] += self.transitions[key]   
+
+        return transitions

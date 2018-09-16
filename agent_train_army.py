@@ -206,8 +206,8 @@ RUN_TYPES[NAIVE][DIRECTORY] = "trainArmy_naive"
 RUN_TYPES[NAIVE][RESULTS] = "trainArmy_result"
 
 class NaiveDecisionMakerTrain(BaseNaiveDecisionMaker):
-    def __init__(self, resultFName = None, directory = None, numTrials2Learn = 20):
-        super(NaiveDecisionMakerTrain, self).__init__(numTrials2Learn, resultFName, directory)
+    def __init__(self, resultFName = None, directory = None, numTrials2Save = 20):
+        super(NaiveDecisionMakerTrain, self).__init__(numTrials2Save=numTrials2Save, resultFName=resultFName, directory=directory, agentName=AGENT_NAME)
 
     def ActionValuesVec(self, state, target = True):  
         vals = np.zeros(NUM_ACTIONS,dtype = float)
@@ -280,9 +280,9 @@ class TrainArmySubAgent(BaseAgent):
         if dmTypes[AGENT_NAME] == "naive":
             decisionMaker = NaiveDecisionMakerTrain(resultFName=runType[RESULTS], directory=directory + runType[DIRECTORY])
         else:        
-            decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], numTrials2Learn=20,  
-                                                resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY], isMultiThreaded=isMultiThreaded)
-
+            decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME],  agentName=AGENT_NAME, 
+                                                resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY], isMultiThreaded=isMultiThreaded,
+                                                numTrials2Learn=20)
         return decisionMaker
 
     def GetDecisionMaker(self):
@@ -343,16 +343,16 @@ class TrainArmySubAgent(BaseAgent):
 
         return DO_NOTHING_SC2_ACTION, True
 
-    def Learn(self, reward, terminal):            
+    def Learn(self, reward, terminal):        
         if self.inTraining:
             if self.isActionCommitted:
-                self.decisionMaker.learn(self.previous_scaled_state, self.lastActionCommitted, reward, self.current_scaled_state, terminal)
+                self.history.learn(self.previous_scaled_state, self.lastActionCommitted, reward, self.current_scaled_state, terminal)
             
             elif reward > 0:
                 if self.lastActionCommitted != None:
                     numSteps = self.lastActionCommittedStep - self.sharedData.numAgentStep
                     discountedReward = reward * pow(self.decisionMaker.DiscountFactor(), numSteps)
-                    self.decisionMaker.learn(self.lastActionCommittedState, self.lastActionCommitted, discountedReward, self.lastActionCommittedNextState, terminal)  
+                    self.history.learn(self.lastActionCommittedState, self.lastActionCommitted, discountedReward, self.lastActionCommittedNextState, terminal)  
 
         self.previous_scaled_state[:] = self.current_scaled_state[:]
         self.isActionCommitted = False

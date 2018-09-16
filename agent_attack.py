@@ -68,7 +68,7 @@ class AttackAgent(BaseAgent):
         if decisionMaker != None:
             self.decisionMaker = decisionMaker
         else:
-            self.decisionMaker = BaseDecisionMaker()
+            self.decisionMaker = BaseDecisionMaker(AGENT_NAME)
 
         self.subAgents = {}
         for key, name in SUBAGENTS_NAMES.items():

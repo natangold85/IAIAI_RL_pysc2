@@ -58,9 +58,6 @@ def train(dqn, histSize, histDict):
 
     dqn.learn(shuffS, shuffA, shuffR, shuffS_, shuffT)
 
-def insertMax2Dict(histDict):
-    histDict["maxStateVals"] = np.ones(16, int)
-
 def NormalizeStateVals(histDict, s):
     return s / histDict["maxStateVals"]
 
