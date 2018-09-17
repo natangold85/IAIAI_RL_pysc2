@@ -202,8 +202,12 @@ def check_dqn():
         states2Check = []
         for i in range(numStates2Check):
             states2Check.append(dm.DrawStateFromHist())
-        print(sa, ": current dqn values =", avg_values(dm, states2Check))
-        print(sa, ": target dqn values =", avg_values(dm, states2Check, True))
+        print(sa, ": current dqn num runs = ", dm.decisionMaker.NumRuns()," avg values =", avg_values(dm, states2Check))
+        print(sa, ": target dqn num runs = ", dm.decisionMaker.NumRunsTarget()," avg values =", avg_values(dm, states2Check, True))
+
+        print("\n\n")
+
+
         # dm.decisionMaker.Reset()
 
         # print("epoch -1 : values =", avg_values(dm, states2Check))

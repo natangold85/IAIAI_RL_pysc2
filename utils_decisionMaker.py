@@ -195,7 +195,7 @@ class LearnWithReplayMngr(BaseDecisionMaker):
         self.nonTrainingHistCount = 0
 
         if resultFileName != '':
-            self.resultFile = ResultFile(fullDirectoryName + resultFileName, numTrials2Learn, loadFiles)
+            self.resultFile = ResultFile(fullDirectoryName + resultFileName, numTrials2Learn, loadFiles, self.agentName)
         else:
             self.resultFile = None
 
