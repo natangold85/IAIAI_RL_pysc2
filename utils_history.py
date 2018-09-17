@@ -59,9 +59,13 @@ class HistoryMngr(History):
         super(HistoryMngr, self).__init__(isMultiThreaded)
 
         self.maxReplaySize = params.maxReplaySize
+        self.normalizeRewards = params.normalizeRewards
+
         self.isMultiThreaded = isMultiThreaded
 
         self.transitions["maxStateVals"] = np.ones(params.stateSize, int)
+        self.transitions["rewardMax"] = 0.0
+        self.transitions["rewardMin"] = 0.0
 
         self.oldTransitions = {}
         for key in self.transitionKeys:
@@ -130,6 +134,8 @@ class HistoryMngr(History):
         terminal = np.array(allTransitions["terminal"], dtype = bool)[idx4Shuffle]
 
         s, s_ = self.NormalizeStateVals(s, s_)
+        if self.normalizeRewards:
+            r = self.NormalizeRewards(r)
 
         self.SaveHistFile(allTransitions)    
 
@@ -155,7 +161,7 @@ class HistoryMngr(History):
             self.histLock.release()
 
     def NormalizeState(self, state):
-        return state / self.transitions["maxStateVals"]
+        return (state * 2) / self.transitions["maxStateVals"] - 1.0
 
     def NormalizeStateVals(self, s, s_):
         maxAll = np.column_stack((self.transitions["maxStateVals"].copy(), np.max(s, axis = 0), np.max(s_, axis = 0)))
@@ -163,10 +169,17 @@ class HistoryMngr(History):
 
         maxStateVals = self.transitions["maxStateVals"]
         
-        s /= maxStateVals
-        s_ /= maxStateVals
+        s = (s * 2) / maxStateVals - 1.0
+        s_ = (s_ * 2) / maxStateVals - 1.0
 
         return s , s_
+    
+    def NormalizeRewards(self, r):
+        self.transitions["rewardMax"] = max(self.transitions["rewardMax"] , np.max(r))
+        self.transitions["rewardMin"] = min(self.transitions["rewardMin"] , np.min(r))
+        midReward = self.transitions["rewardMax"] - self.transitions["rewardMin"]
+        return r - midReward
+
 
     def SaveHistFile(self, transitions):
 

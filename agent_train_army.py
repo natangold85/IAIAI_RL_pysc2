@@ -118,7 +118,9 @@ class TRAIN_STATE:
     
     ARMY_POWER = 10
 
-    SIZE = 11
+    TIME_LINE_IDX = 11
+    
+    SIZE = 12
 
     IDX2STR = {}
     IDX2STR[MINERALS_IDX] = "min"
@@ -381,7 +383,9 @@ class TrainArmySubAgent(BaseAgent):
                 self.current_state[value] = self.sharedData.qMinSizes[key]
             else:
                 self.current_state[value] = TRAIN_STATE.NON_EXIST_Q_VAL
-     
+
+        self.current_state[TRAIN_STATE.TIME_LINE_IDX] = self.sharedData.numStep 
+
         self.ScaleState()
 
         if self.isActionCommitted:

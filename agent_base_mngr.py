@@ -85,10 +85,7 @@ class BASE_STATE:
     MINERALS_BUCKETING = 50
     GAS_BUCKETING = 50
 
-    SUPPLY_LEFT_MAX = 10
-    SUPPLY_LEFT_BUCKETING = 2
-
-    TIME_LINE_BUCKETING = 1500
+    SUPPLY_LEFT_MAX = 20
 
     COMMAND_CENTER_IDX = 0
     MINERALS_IDX = 1
@@ -114,7 +111,7 @@ class BASE_STATE:
     QUEUE_TECHLAB = 18
 
     ARMY_POWER = 19
-    TIME_LINE = 20
+    TIME_LINE_IDX = 20
     SIZE = 21
 
     STATE_IDX_MNGR_2_BUILDER_TRANSITIONS = {}
@@ -441,7 +438,7 @@ class BaseMngr(BaseAgent):
 
         self.current_state[BASE_STATE.MINERALS_IDX] = obs.observation['player'][SC2_Params.MINERALS]
         self.current_state[BASE_STATE.GAS_IDX] = obs.observation['player'][SC2_Params.VESPENE]
-        self.current_state[BASE_STATE.TIME_LINE] = self.sharedData.numStep
+        self.current_state[BASE_STATE.TIME_LINE_IDX] = self.sharedData.numStep
 
         self.ScaleState()
 

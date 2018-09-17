@@ -114,8 +114,6 @@ class STATE:
     MAX_SCOUT_VAL = 10
     VAL_IS_SCOUTED = 8
 
-    TIME_LINE_BUCKETING = 20
-
 
 class ACTIONS:
     
@@ -217,6 +215,14 @@ class SuperAgent(BaseAgent):
             if len(BATTLE_TYPES.intersection(playList)) == 0:
                 saPlayList.append("do_nothing")
             
+        self.singleReward = False
+        self.bothRewards = False
+        if 'rewardType' in dmTypes:
+            if dmTypes['rewardType'] == 'single':
+                self.singleReward = True
+            elif dmTypes['rewardType'] == 'both':
+                self.bothRewards = True
+
         self.illigalmoveSolveInModel = True
 
         if decisionMaker != None:
@@ -254,7 +260,12 @@ class SuperAgent(BaseAgent):
         self.useMapRewards = useMapRewards
 
         self.move_number = 0
-        self.maxReward = .0
+        self.minReward = 0.0
+        self.maxReward = 2.0
+        self.discountForLocalReward = 0.999
+
+
+
 
     def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
         
@@ -264,6 +275,10 @@ class SuperAgent(BaseAgent):
         directory = dmTypes["directory"] + "/" + AGENT_DIR
         if not os.path.isdir("./" + directory):
             os.makedirs("./" + directory)
+
+        if self.singleReward or self.bothRewards:
+            runType[PARAMS].normalizeRewards = False
+
         decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,
                                             resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY], isMultiThreaded=isMultiThreaded,
                                             numTrials2Learn=20)
@@ -350,7 +365,6 @@ class SuperAgent(BaseAgent):
         self.current_scaled_state = np.zeros(STATE.SIZE, dtype=np.int32, order='C')
 
         self.accumulatedTrainReward = 0.0
-        self.discountForLocalReward = 0.995
 
         self.subAgentsActions = {}
         for sa in range(NUM_SUB_AGENTS):
@@ -376,10 +390,11 @@ class SuperAgent(BaseAgent):
         score = obs.observation["score_cumulative"][0]
 
         self.CreateState(obs)
+        
+        # self.maxReward = max(self.maxReward, sumReward)
+        # self.minReward = min(self.minReward, sumReward)
+        
         self.Learn(reward, True)  
-    
-        if sumReward > self.maxReward:
-            self.maxReward = sumReward
 
         self.EndRun(sumReward, score, self.sharedData.numAgentStep)
 
@@ -388,6 +403,8 @@ class SuperAgent(BaseAgent):
         return sc2Action
 
     def EndRun(self, reward, score, numStep):
+        middle = (self.maxReward - self.minReward) / 2
+        reward -= middle
         if self.trainAgent:
             self.decisionMaker.end_run(reward, score, numStep)
         
@@ -516,6 +533,22 @@ class SuperAgent(BaseAgent):
             self.accumulatedTrainReward += reward * pow(self.discountForLocalReward, self.sharedData.numAgentStep)
             self.sharedData.prevTrainActionReward = 0
 
+            if self.singleReward: 
+                if not terminal:
+                    reward = 0.0
+                else:
+                    reward = self.accumulatedTrainReward
+                    middle = (self.maxReward - self.minReward) / 2
+                    reward -= middle
+            
+            if self.bothRewards and terminal:
+                reward = reward + self.accumulatedTrainReward
+                middle = (self.maxReward - self.minReward) / 2
+                reward -= middle 
+            
+
+
+
         if self.trainAgent and self.current_action is not None:
             self.history.learn(self.previous_scaled_state, self.current_action, reward, self.current_scaled_state, terminal)
 
@@ -526,8 +559,6 @@ class SuperAgent(BaseAgent):
      
     def ScaleCurrState(self):
         self.current_scaled_state[:] = self.current_state[:]
-
-        self.current_scaled_state[STATE.TIME_LINE_IDX] = int(self.current_state[STATE.TIME_LINE_IDX] / STATE.TIME_LINE_BUCKETING)
 
     def PrintState(self):
         print ("supply depot buildings =" , self.current_state[STATE.BASE.SUPPLY_DEPOT_IDX], "in progress =", self.current_state[STATE.BASE.IN_PROGRESS_SUPPLY_DEPOT_IDX])

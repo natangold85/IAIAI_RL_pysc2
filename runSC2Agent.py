@@ -13,6 +13,7 @@ import tensorflow as tf
 import collections
 from absl import app
 from absl import flags
+import numpy as np
 
 from pysc2.env import run_loop
 from pysc2.env import sc2_env
@@ -23,6 +24,10 @@ from agent_super import SuperAgent
 from utils import SC2_Params
 
 RUN = True
+
+NUM_CRASHES = 0
+
+NUM_CRASHES_2_RESTART = 5
 
 RENDER = False
 SCREEN_SIZE = SC2_Params.SCREEN_SIZE
@@ -68,6 +73,9 @@ def run_thread(agent, display, players, numSteps):
             print(e)
             print(traceback.format_exc())
             logging.error(traceback.format_exc())
+
+        global NUM_CRASHES
+        NUM_CRASHES += 1
 
 
 def start_agent():
@@ -156,6 +164,13 @@ def start_agent():
             else:
                 t.join() 
 
+        global NUM_CRASHES
+        if NUM_CRASHES > NUM_CRASHES_2_RESTART or not RUN:
+            #os.system('powershell.exe [Taskkill /IM SC2_x64.exe /F]')
+            print("\n\ninit all sc2 games\n\n")
+            NUM_CRASHES = 0
+
+
 def check_dqn():
     dm_Types = eval(open(flags.FLAGS.configFile, "r+").read())
     dm_Types["directory"] = flags.FLAGS.configFile.replace(".txt", "")
@@ -167,7 +182,7 @@ def check_dqn():
     decisionMaker = superAgent.GetDecisionMaker()
 
     print("\n\nagent 2 check:", checkList, end='\n\n')
-
+    np.set_printoptions(precision=2, suppress=True)
     for agentName in checkList:
         dm = decisionMaker.GetDecisionMakerByName(agentName)
         historyMngr = dm.historyMngr
@@ -178,12 +193,37 @@ def check_dqn():
         print(agentName, "maxVals =", historyMngr.transitions["maxStateVals"])
         print("\n")
     
-    # for sa in checkList:
-    #     dm = decisionMaker.GetDecisionMakerByName(sa)
-    #     print("\n\n\n", dm.agentName, ":")
-    #     for i in range(100):
-    #         s = dm.DrawStateFromHist()
-    #         print(s)
+    numStates2Check = 100
+    numEpochs = 10
+    for sa in checkList:
+        dm = decisionMaker.GetDecisionMakerByName(sa)
+        s, a, r, s_, terminal = dm.historyMngr.GetHistory()
+
+        states2Check = []
+        for i in range(numStates2Check):
+            states2Check.append(dm.DrawStateFromHist())
+        print(sa, ": current dqn values =", avg_values(dm, states2Check))
+        print(sa, ": target dqn values =", avg_values(dm, states2Check, True))
+        # dm.decisionMaker.Reset()
+
+        # print("epoch -1 : values =", avg_values(dm, states2Check))
+        # for i in range(numEpochs):
+        #     dm.decisionMaker.learn(s,a,r,s_, terminal)
+        #     print("epoch", i,": values =", avg_values(dm, states2Check))
+            
+def avg_values(decisionMaker, states2Check, targetVals = False):
+    vals = np.zeros(decisionMaker.params.numActions, float)
+    for s in states2Check:
+        vals += decisionMaker.ActionValuesVec(s, targetVals)  
+    return vals / len(states2Check) 
+
+def modify(r):
+    rMax = np.max(r)
+    rMin = np.min(r)
+    mid = (rMax - rMin) / 2
+    return r - mid
+    
+
 
 def main(argv):
     """Main function.

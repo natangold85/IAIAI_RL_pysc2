@@ -117,7 +117,7 @@ class BUILD_STATE:
     GAS_BUCKETING = 50
 
     SUPPLY_BUCKETING = 8
-    SUPPLY_LEFT_MAX = 10
+    SUPPLY_LEFT_MAX = 20
 
     COMMAND_CENTER_IDX = 0
     MINERALS_IDX = 1
@@ -138,7 +138,9 @@ class BUILD_STATE:
     
     SUPPLY_LEFT_IDX = 15
 
-    SIZE = 16
+    TIME_LINE_IDX = 16
+
+    SIZE = 17
 
     BUILDING_2_STATE_TRANSITION = {}
     BUILDING_2_STATE_TRANSITION[Terran.CommandCenter] = [COMMAND_CENTER_IDX, -1]
@@ -528,6 +530,8 @@ class BuildBaseSubAgent(BaseAgent):
         supplyUsed = obs.observation['player'][SC2_Params.SUPPLY_USED]
         supplyCap = obs.observation['player'][SC2_Params.SUPPLY_CAP]
         self.current_state[BUILD_STATE.SUPPLY_LEFT_IDX] = supplyCap - supplyUsed
+
+        self.current_state[BUILD_STATE.TIME_LINE_IDX] = self.sharedData.numStep   
 
         self.ScaleState()
 

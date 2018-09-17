@@ -250,12 +250,12 @@ class LearnWithReplayMngr(BaseDecisionMaker):
         return learnAndSave 
 
     def Train(self):
-        s,a,rVec,s_, terminal = self.historyMngr.GetHistory()
+        s,a,r,s_, terminal = self.historyMngr.GetHistory()
         
         if len(a) > self.params.minReplaySize:
             start = datetime.datetime.now()
             
-            self.decisionMaker.learn(s,a,rVec,s_, terminal)
+            self.decisionMaker.learn(s, a, r, s_, terminal)
             self.endRunLock.acquire()
             self.decisionMaker.SaveDQN(self.trial2LearnDQN)
             self.endRunLock.release()
@@ -263,9 +263,9 @@ class LearnWithReplayMngr(BaseDecisionMaker):
             diff = datetime.datetime.now() - start
             msDiff = diff.seconds * 1000 + diff.microseconds / 1000
             
-            print("\t", threading.current_thread().getName(), ":", self.agentName,"->ExperienceReplay - training with hist size = ", len(rVec), ", last", msDiff, "milliseconds")
+            print("\t", threading.current_thread().getName(), ":", self.agentName,"->ExperienceReplay - training with hist size = ", len(r), ", last", msDiff, "milliseconds")
         else:
-            print("\t", threading.current_thread().getName(), ":", self.agentName,"->ExperienceReplay size to small - training with hist size = ", len(rVec))
+            print("\t", threading.current_thread().getName(), ":", self.agentName,"->ExperienceReplay size to small - training with hist size = ", len(r))
 
 
     def ResetAllData(self):

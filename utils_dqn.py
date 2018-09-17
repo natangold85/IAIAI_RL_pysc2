@@ -12,7 +12,7 @@ from utils import ParamsBase
 
 # dqn params
 class DQN_PARAMS(ParamsBase):
-    def __init__(self, stateSize, numActions, layersNum = 1, neuronsInLayerNum = 256, numTrials2CmpResults = 1000, historyProportion4Learn = 1, nn_Func = None, propogateReward = False, outputGraph = False, discountFactor = 0.95, batchSize = 32, maxReplaySize = 500000, minReplaySize = 1000, copyEvalToTarget = 5, explorationProb = 0.1, descendingExploration = True, exploreChangeRate = 0.001, states2Monitor = [], scopeVarName = ''):
+    def __init__(self, stateSize, numActions, layersNum = 1, neuronsInLayerNum = 256, numTrials2CmpResults = 1000, historyProportion4Learn = 1, nn_Func = None, propogateReward = False, outputGraph = False, discountFactor = 0.95, batchSize = 32, maxReplaySize = 500000, minReplaySize = 1000, copyEvalToTarget = 5, explorationProb = 0.1, descendingExploration = True, exploreChangeRate = 0.001, states2Monitor = [], scopeVarName = '', normalizeRewards = True):
         super(DQN_PARAMS, self).__init__(stateSize, numActions, historyProportion4Learn, propogateReward, discountFactor, maxReplaySize, minReplaySize)
         
         self.nn_Func = nn_Func
@@ -35,6 +35,8 @@ class DQN_PARAMS(ParamsBase):
         self.layersNum = layersNum
         self.neuronsInLayerNum = neuronsInLayerNum
 
+        self.normalizeRewards = normalizeRewards
+
     def ExploreProb(self, numRuns, resultRatio = 1):
         if self.descendingExploration:
             return self.explorationProb + (1 - self.explorationProb) * np.exp(-self.exploreChangeRate * resultRatio * numRuns)
@@ -51,7 +53,7 @@ class DQN_EMBEDDING_PARAMS(DQN_PARAMS):
 
 
 class DQN:
-    def __init__(self, modelParams, nnName, nnDirectory, loadNN, isMultiThreaded = False, createSaver = True, learning_rate = 0.001):
+    def __init__(self, modelParams, nnName, nnDirectory, loadNN, isMultiThreaded = False, createSaver = True, learning_rate = 0.00001):
         # Parameters
         self.params = modelParams
         self.learning_rate = learning_rate
@@ -196,16 +198,21 @@ class DQN:
         rNextState = self.outputLayer.eval({self.inputLayer: s_.reshape(size,self.num_input)}, session=self.sess)
         R = r + np.invert(terminal) * self.params.discountFactor * np.max(rNextState, axis=1)
 
+        # feedDictAll = {self.inputLayer: s.reshape(size, self.num_input), self.outputSingle: R, self.actionSelected: a}
+        # lossBefore = self.sess.run([self.loss_op], feed_dict=feedDictAll)  
         for i in range(int(size  / self.params.batchSize)):
             chosen = np.arange(i * self.params.batchSize, (i + 1) * self.params.batchSize)
             feedDict = {self.inputLayer: s[chosen].reshape(self.params.batchSize, self.num_input), self.outputSingle: R[chosen], self.actionSelected: a[chosen]}
 
-            self.sess.run([self.train_op, self.loss_op], feed_dict=feedDict)
+            self.sess.run([self.train_op, self.loss_op], feed_dict=feedDict) 
 
-        for i in range(self.numStates2Check):
-            state = self.params.states2Monitor[i][0]
-            actions2Print = self.params.states2Monitor[i][1]
-            print(list(self.ActionValuesVec(state)[actions2Print]), end = "\n\n")     
+        # lossAfter = self.sess.run([self.loss_op], feed_dict=feedDictAll)    
+        
+        # rNextStateAfter = self.outputLayer.eval({self.inputLayer: s_.reshape(size,self.num_input)}, session=self.sess)
+        # R_after = r + np.invert(terminal) * self.params.discountFactor * np.max(rNextStateAfter, axis=1)
+        # feedDictAfter = {self.inputLayer: s.reshape(size, self.num_input), self.outputSingle: R_after, self.actionSelected: a}
+        # lossAfterWithR = self.sess.run([self.loss_op], feed_dict=feedDictAfter)    
+        # print("loss before =", '%f' % lossBefore[0], "loss after =", '%f' % lossAfter[0], "loss after on current r =", '%f' % lossAfterWithR[0])
 
     def Close(self):
         self.sess.close()
@@ -243,7 +250,7 @@ class DQN:
 
 
 class DQN_WithTarget(DQN):
-    def __init__(self, modelParams, nnName, nnDirectory, loadNN, isMultiThreaded = False, learning_rate = 0.001):
+    def __init__(self, modelParams, nnName, nnDirectory, loadNN, isMultiThreaded = False, learning_rate = 0.00001):
         super(DQN_WithTarget, self).__init__(modelParams=modelParams, nnName=nnName, nnDirectory=nnDirectory, isMultiThreaded=isMultiThreaded,
                                                 loadNN=loadNN, learning_rate=learning_rate, createSaver=False)
         self.numTrials2CmpResults = modelParams.numTrials2CmpResults

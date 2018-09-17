@@ -220,10 +220,11 @@ class PlotMngr:
         return np.array(groupResults), np.array(timeLine)    
 
 class ResultFile:
-    def __init__(self, tableName, numToWrite = 100, loadFile = True):
+    def __init__(self, tableName, numToWrite = 100, loadFile = True, agentName = ''):
         self.saveFileName = tableName + '.gz'
                 
         self.numToWrite = numToWrite
+        self.agentName = agentName
 
         self.rewardCol = list(range(4))
         self.result_table = pd.DataFrame(columns=self.rewardCol, dtype=np.float)
@@ -274,7 +275,7 @@ class ResultFile:
             self.sumScore = 0
             self.numRuns = 0
             self.sumSteps = 0
-            print("\t\t", threading.current_thread().getName(),"avg results for", self.numToWrite, "trials: reward =", avgReward, "score =",  avgScore)
+            print("\t\t", threading.current_thread().getName(), ":", self.agentName, "->avg results for", self.numToWrite, "trials: reward =", avgReward, "score =",  avgScore)
 
     def end_run(self, r, score, steps, saveTable):
         self.sumSteps += steps
