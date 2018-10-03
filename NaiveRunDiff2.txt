@@ -1,1 +1,0 @@
-{'difficulty' : '2', 'directory' : 'NaiveRunDiff1', 'super': 'dqn_2l', 'base_mngr': 'naive', 'battle_mngr': 'naive', 'do_nothing': 'naive', 'army_attack': 'naive', 'base_attack': 'naive', 'builder': 'naive', 'trainer': 'naive'}

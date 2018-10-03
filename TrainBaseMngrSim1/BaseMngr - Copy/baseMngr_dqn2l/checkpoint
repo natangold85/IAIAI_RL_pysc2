@@ -1,0 +1,2 @@
+model_checkpoint_path: "baseMngr_dqn2l"
+all_model_checkpoint_paths: "baseMngr_dqn2l"

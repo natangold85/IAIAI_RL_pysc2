@@ -28,6 +28,9 @@ from utils_results import PlotResults
 # params
 from utils_dqn import DQN_PARAMS
 from utils_dqn import DQN_EMBEDDING_PARAMS
+from utils_dqn import DQN_PARAMS_WITH_DEFAULT_DM
+
+
 from utils_qtable import QTableParams
 from utils_qtable import QTableParamsExplorationDecay
 
@@ -51,10 +54,9 @@ AGENT_NAME = "train_army"
 QTABLE = 'q'
 DQN = 'dqn'
 DQN2L = 'dqn_2l' 
+DQN2L_DFLT = 'dqn_2l_dflt'
 NAIVE = "naive"
 USER_PLAY = 'play'
-
-ALL_TYPES = set([USER_PLAY, QTABLE, DQN, DQN2L, NAIVE])
 
 # data for run type
 TYPE = "type"
@@ -63,6 +65,10 @@ HISTORY = "hist"
 RESULTS = "results"
 PARAMS = 'params'
 DIRECTORY = 'directory'
+
+# Model Params
+NUM_TRIALS_2_LEARN = 20
+NUM_TRIALS_4_CMP = 200
 
 
 ID_ACTION_DO_NOTHING = 0
@@ -196,19 +202,45 @@ RUN_TYPES[DQN][RESULTS] = "result"
 
 RUN_TYPES[DQN2L] = {}
 RUN_TYPES[DQN2L][TYPE] = "DQN_WithTarget"
-RUN_TYPES[DQN2L][PARAMS] = DQN_PARAMS(TRAIN_STATE.SIZE, NUM_ACTIONS, layersNum=2, numTrials2CmpResults=200)
+RUN_TYPES[DQN2L][PARAMS] = DQN_PARAMS(TRAIN_STATE.SIZE, NUM_ACTIONS, layersNum=2, numTrials2CmpResults=NUM_TRIALS_4_CMP, descendingExploration=False)
 RUN_TYPES[DQN2L][DECISION_MAKER_NAME] = "train_dqn2l"
 RUN_TYPES[DQN2L][DIRECTORY] = "trainArmy_dqn2l"
 RUN_TYPES[DQN2L][HISTORY] = "replayHistory"
 RUN_TYPES[DQN2L][RESULTS] = "result"
 
 
+RUN_TYPES[DQN2L_DFLT] = {}
+RUN_TYPES[DQN2L_DFLT][TYPE] = "DQN_WithTargetAndDefault"
+RUN_TYPES[DQN2L_DFLT][PARAMS] = DQN_PARAMS_WITH_DEFAULT_DM(TRAIN_STATE.SIZE, NUM_ACTIONS, layersNum=2, numTrials2CmpResults=NUM_TRIALS_4_CMP, descendingExploration=False)
+RUN_TYPES[DQN2L_DFLT][DECISION_MAKER_NAME] = "train_dqn2l_dflt"
+RUN_TYPES[DQN2L_DFLT][DIRECTORY] = "trainArmy_dqn2l_dflt"
+RUN_TYPES[DQN2L_DFLT][HISTORY] = "replayHistory"
+RUN_TYPES[DQN2L_DFLT][RESULTS] = "result"
+
+
 RUN_TYPES[NAIVE] = {}
 RUN_TYPES[NAIVE][DIRECTORY] = "trainArmy_naive"
 RUN_TYPES[NAIVE][RESULTS] = "trainArmy_result"
 
+
+def CreateDecisionMakerTrainArmy(dmTypes, isMultiThreaded, numTrials2Learn=NUM_TRIALS_2_LEARN):
+    runType = RUN_TYPES[dmTypes[AGENT_NAME]]
+    # create agent dir
+    directory = dmTypes["directory"] + "/" + AGENT_DIR
+
+    if dmTypes[AGENT_NAME] == "naive":
+        decisionMaker = NaiveDecisionMakerTrain(resultFName=runType[RESULTS], directory=directory + runType[DIRECTORY])
+    else:
+        if runType[TYPE] == "DQN_WithTargetAndDefault":
+            runType[PARAMS].defaultDecisionMaker = NaiveDecisionMakerTrain()
+
+        decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME],  agentName=AGENT_NAME, 
+                                            resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY], isMultiThreaded=isMultiThreaded,
+                                            numTrials2Learn=numTrials2Learn)
+    return decisionMaker, runType
+
 class NaiveDecisionMakerTrain(BaseNaiveDecisionMaker):
-    def __init__(self, resultFName = None, directory = None, numTrials2Save = 20):
+    def __init__(self, resultFName = None, directory = None, numTrials2Save=NUM_TRIALS_2_LEARN):
         super(NaiveDecisionMakerTrain, self).__init__(numTrials2Save=numTrials2Save, resultFName=resultFName, directory=directory, agentName=AGENT_NAME)
 
     def ActionValuesVec(self, state, target = True):  
@@ -258,7 +290,7 @@ class TrainArmySubAgent(BaseAgent):
         if decisionMaker != None:
             self.decisionMaker = decisionMaker
         else:
-            self.decisionMaker = self.CreateDecisionMaker(dmTypes, isMultiThreaded)
+            self.decisionMaker, _ = CreateDecisionMakerTrainArmy(dmTypes, isMultiThreaded)
 
         self.history = self.decisionMaker.AddHistory()
         
@@ -273,19 +305,6 @@ class TrainArmySubAgent(BaseAgent):
         self.actionsRequirement[ID_ACTION_TRAIN_REAPER] = ActionRequirement(50, 50, Terran.Barracks)
         self.actionsRequirement[ID_ACTION_TRAIN_HELLION] = ActionRequirement(100, 0, Terran.Factory)
         self.actionsRequirement[ID_ACTION_TRAIN_SIEGETANK] = ActionRequirement(150, 125, Terran.FactoryTechLab)
-
-    def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
-        runType = RUN_TYPES[dmTypes[AGENT_NAME]]
-        # create agent dir
-        directory = dmTypes["directory"] + "/" + AGENT_DIR
-
-        if dmTypes[AGENT_NAME] == "naive":
-            decisionMaker = NaiveDecisionMakerTrain(resultFName=runType[RESULTS], directory=directory + runType[DIRECTORY])
-        else:        
-            decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME],  agentName=AGENT_NAME, 
-                                                resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY], isMultiThreaded=isMultiThreaded,
-                                                numTrials2Learn=20)
-        return decisionMaker
 
     def GetDecisionMaker(self):
         return self.decisionMaker
@@ -317,10 +336,11 @@ class TrainArmySubAgent(BaseAgent):
         return a == ID_ACTION_DO_NOTHING
 
     def EndRun(self, reward, score, stepNum):
+        saved = False
         if self.trainAgent:
-            self.decisionMaker.end_run(reward, score, stepNum)
-        elif self.inTraining:
-            self.decisionMaker.TrimHistory()
+            saved = self.decisionMaker.end_run(reward, score, stepNum)
+
+        return saved
 
 
     def Action2SC2Action(self, obs, a, moveNum):
@@ -346,7 +366,7 @@ class TrainArmySubAgent(BaseAgent):
         return DO_NOTHING_SC2_ACTION, True
 
     def Learn(self, reward, terminal):        
-        if self.inTraining:
+        if self.history != None and self.trainAgent:
             if self.isActionCommitted:
                 self.history.learn(self.previous_scaled_state, self.lastActionCommitted, reward, self.current_scaled_state, terminal)
             
@@ -413,7 +433,7 @@ class TrainArmySubAgent(BaseAgent):
             if self.illigalmoveSolveInModel:
                 validActions = self.ValidActions()
             
-                if self.inTraining:
+                if self.trainAgent:
                     targetValues = False
                     exploreProb = self.decisionMaker.ExploreProb()              
                 else:
@@ -551,5 +571,14 @@ class TrainArmySubAgent(BaseAgent):
 
 
 if __name__ == "__main__":
+    from absl import app
+    from absl import flags
+    flags.DEFINE_string("directoryNames", "", "directory names to take results")
+    flags.DEFINE_string("grouping", "100", "grouping size of results.")
+    flags.FLAGS(sys.argv)
+
+    directoryNames = (flags.FLAGS.directoryNames).split(",")
+    grouping = int(flags.FLAGS.grouping)
+
     if "results" in sys.argv:
-        PlotResults(AGENT_NAME, AGENT_DIR, RUN_TYPES)
+        PlotResults(AGENT_NAME, AGENT_DIR, RUN_TYPES, runDirectoryNames=directoryNames, grouping=grouping)

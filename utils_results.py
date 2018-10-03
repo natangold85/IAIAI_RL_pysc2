@@ -11,7 +11,6 @@ import threading
 import tensorflow as tf
 
 from utils_dqn import DQN
-from hallucination import HallucinationMngrPSFunc
 
 import matplotlib.pyplot as plt
 
@@ -19,26 +18,19 @@ from multiprocessing import Process, Lock, Value, Array, Manager
 
 from utils import ParamsBase
 
-def PlotResults(agentName, agentDir, runTypes, subAgentsGroups = ["all"], grouping = None):
-    configFileNames = []
-    for arg in sys.argv:
-        if arg.find(".txt") >= 0:
-            configFileNames.append(arg)
-
-    configFileNames.sort()
+def PlotResults(agentName, agentDir, runTypes, runDirectoryNames, grouping, subAgentsGroups = [""], keyResults = "results", additionPlots=[]):
+    runDirectoryNames.sort()
 
     resultFnames = []
-    directoryNames = []
     groupNames = []
-    for configFname in configFileNames:
-
-        directoryForConfig = configFname.replace(".txt", "")
-        groupNames.append(directoryForConfig)
+    fullDirectoryNames = []
+    for runDirName in runDirectoryNames:
+        groupNames.append(runDirName)
         
-        dm_Types = eval(open(configFname, "r+").read())
+        dm_Types = eval(open("./" + runDirName + "/config.txt", "r+").read())
         runType = runTypes[dm_Types[agentName]]
         
-        fName = runType["results"]
+        fName = runType[keyResults]
         
         if "directory" in runType.keys():
             dirName = runType["directory"]
@@ -46,15 +38,12 @@ def PlotResults(agentName, agentDir, runTypes, subAgentsGroups = ["all"], groupi
             dirName = ''
 
         resultFnames.append(fName)
-        directoryNames.append(directoryForConfig + "/" + agentDir + dirName)
-
-    if grouping == None:
-        grouping = int(sys.argv[len(sys.argv) - 1])
+        fullDirectoryNames.append(runDirName + "/" + agentDir + dirName)
     
     print(resultFnames)
-    print(directoryNames)
-    plot = PlotMngr(resultFnames, directoryNames, groupNames, agentDir, subAgentsGroups)
-    plot.Plot(grouping)
+    print(fullDirectoryNames)
+    plot = PlotMngr(resultFnames, fullDirectoryNames, groupNames, agentDir, subAgentsGroups)
+    plot.Plot(grouping, additionPlots)
 
 class PlotMngr:
     def __init__(self, resultFilesNamesList, resultFilesDirectories, legendList, directory2Save, subAgentsGroups):
@@ -71,7 +60,8 @@ class PlotMngr:
             else:
                 name = resultFilesNamesList[i]
 
-            resultFile = ResultFile(name)
+            resultFile = ReadOnlyResults(name)
+
             self.resultFileList.append(resultFile)
 
 
@@ -90,39 +80,67 @@ class PlotMngr:
         self.subAgentsGroups = subAgentsGroups
 
 
-    def Plot(self, grouping):
+    def Plot(self, grouping, additionPlots):
         tableCol = ['count', 'reward', 'score', '# of steps']
+        idxReward = 1
+
         fig = plt.figure(figsize=(19.0, 11.0))
         fig.suptitle("results for " + self.scriptName + ":", fontsize=20)
 
-        for idx in range(1, 4):
-            plt.subplot(2,2,idx)
-            legend = []  
-            for iTable in range(len(self.resultFileList)):
-                results, t = self.ResultsFromTable(self.resultFileList[iTable].result_table, grouping, idx) 
-                switchingSubAgentsIdx = self.FindSwitchingLocations(self.resultFileList[iTable].result_table, t)
+        numPlots = 1 + len(additionPlots)
+        numRows = math.ceil(numPlots / 2)
+        idxPlot = 1
+        plt.subplot(numRows,2,idxPlot)
+        
+        legend = []  
+        results4Addition = {}
+        for iTable in range(len(self.resultFileList)):
+            results, t = self.ResultsFromTable(self.resultFileList[iTable].table, grouping, idxReward) 
 
-                for subAgentGroup in self.subAgentsGroups:
-                    allIdx = switchingSubAgentsIdx[subAgentGroup]
-                    if len(allIdx) > 0:
+            switchingSubAgentsIdx = self.FindSwitchingLocations(self.resultFileList[iTable].table, t, grouping)
+
+            for subAgentGroup in self.subAgentsGroups:
+                allIdx = switchingSubAgentsIdx[subAgentGroup]
+                if len(allIdx) > 0:
+                    if subAgentGroup != "":
                         legend.append(self.legendList[iTable] + "_" + subAgentGroup)
+                    else:
+                        legend.append(self.legendList[iTable])
 
-                        resultsTmp = np.zeros(len(results), float)
-                        resultsTmp[:] = np.nan
-                        resultsTmp[allIdx] = results[allIdx]
+                    resultsTmp = np.zeros(len(results), float)
+                    resultsTmp[:] = np.nan
+                    resultsTmp[allIdx] = results[allIdx]
 
-                        plt.plot(t, resultsTmp)
+                    plt.plot(t, resultsTmp)
+
+                    if subAgentGroup in additionPlots:
+                        results4Addition[subAgentGroup] = results[allIdx]
+
                 
-            plt.ylabel('avg '+ tableCol[idx] + ' for ' + str(grouping) + ' trials')
+            plt.ylabel('avg results for ' + str(grouping) + ' trials')
             plt.xlabel('#trials')
-            plt.title('Average ' + tableCol[idx])
+            plt.title('Average ' + tableCol[idxPlot])
             plt.grid(True)
             plt.legend(legend, loc='best')
+
+            for subAgentGroup in self.subAgentsGroups:
+                if subAgentGroup in results4Addition:
+                    idxPlot += 1
+                    plt.subplot(numRows,2,idxPlot)
+                    plt.plot(results4Addition[subAgentGroup])
+                    plt.ylabel('avg results for ' + str(grouping) + ' trials')
+                    plt.xlabel('#trials')
+                    plt.title('Average results for sub agent ' + subAgentGroup)
+                    plt.grid(True)
+
+
+
+
 
         fig.savefig(self.plotFName)
         print("results graph saved in:", self.plotFName)
 
-    def FindSwitchingLocations(self, table, t):
+    def FindSwitchingLocations(self, table, t, grouping):
         switchingSubAgents = {}
         
         names = list(table.index)
@@ -152,19 +170,24 @@ class PlotMngr:
             for val in startVals:
                 allSwitching.append([val, 0, key])
 
-        allSwitching.sort()
-        for idx in range(len(allSwitching) - 1):
-            allSwitching[idx][1] = allSwitching[idx + 1][0]
+        if len(allSwitching) > 0:
+            allSwitching.sort()
+            for idx in range(len(allSwitching) - 1):
+                allSwitching[idx][1] = allSwitching[idx + 1][0]
+            
+            allSwitching[-1][1] = sum(numRuns)
+        else:
+            allSwitching.append([0, sum(numRuns), ""])
+            if "" not in self.subAgentsGroups:
+                self.subAgentsGroups.append("")
         
-        allSwitching[-1][1] = sum(numRuns)
-
         subAgentIdx = {}
         for subAgentGroup in self.subAgentsGroups:
             subAgentIdx[subAgentGroup] = []
 
         for switching in allSwitching:
             start = (np.abs(t - switching[0])).argmin()
-            end = (np.abs(t - switching[1])).argmin() + 1
+            end = (np.abs(t - (switching[1] - grouping))).argmin() + 1
             subAgentIdx[switching[2]] += list(range(start,end))
 
         return subAgentIdx
@@ -173,7 +196,6 @@ class PlotMngr:
 
     def ResultsFromTable(self, table, grouping, dataIdx, groupSizeIdx = 0):
         names = list(table.index)
-
         tableSize = len(names) -1
         
         sumRuns = 0
@@ -218,6 +240,17 @@ class PlotMngr:
             t += minSubGrouping
 
         return np.array(groupResults), np.array(timeLine)    
+
+class ReadOnlyResults():
+    def __init__(self, tableName):
+        self.rewardCol = list(range(4))
+        self.table = pd.DataFrame(columns=self.rewardCol, dtype=np.float)
+        print(tableName)
+        if os.path.isfile(tableName + ".gz"):
+            self.table = pd.read_pickle(tableName + ".gz", compression='gzip')    
+        else:
+            print("\n\nERROR!!")
+            exit()
 
 class ResultFile:
     def __init__(self, tableName, numToWrite = 100, loadFile = True, agentName = ''):

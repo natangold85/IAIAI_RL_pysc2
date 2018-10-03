@@ -17,8 +17,8 @@ from utils import ParamsBase
 
 #qtable params
 class QTableParams(ParamsBase):
-    def __init__(self, stateSize, numActions, historyProportion4Learn = 1, propogateReward = False, learning_rate=0.01, discountFactor=0.95, explorationProb=0.1, maxReplaySize = 500000, minReplaySize = 1000, states2Monitor = []):
-        super(QTableParams, self).__init__(stateSize, numActions, historyProportion4Learn, propogateReward, discountFactor, maxReplaySize, minReplaySize, states2Monitor)    
+    def __init__(self, stateSize, numActions, learning_rate=0.01, discountFactor=0.95, explorationProb=0.1, maxReplaySize = 500000, minReplaySize = 1000):
+        super(QTableParams, self).__init__(stateSize, numActions, discountFactor, maxReplaySize, minReplaySize)    
         self.learningRate = learning_rate
         self.explorationProb = explorationProb        
     
@@ -26,8 +26,8 @@ class QTableParams(ParamsBase):
         return self.explorationProb
 
 class QTableParamsExplorationDecay(ParamsBase):
-    def __init__(self, stateSize, numActions, historyProportion4Learn = 1, propogateReward = False, learning_rate=0.01, discountFactor=0.95, exploreRate = 0.001, exploreStop = 0.1, maxReplaySize = 50000, minReplaySize = 1000, states2Monitor = []):
-        super(QTableParamsExplorationDecay, self).__init__(stateSize, numActions, historyProportion4Learn, propogateReward, discountFactor, maxReplaySize, minReplaySize, states2Monitor) 
+    def __init__(self, stateSize, numActions, learning_rate=0.01, discountFactor=0.95, exploreRate = 0.001, exploreStop = 0.1, maxReplaySize = 50000, minReplaySize = 1000):
+        super(QTableParamsExplorationDecay, self).__init__(stateSize, numActions, discountFactor, maxReplaySize, minReplaySize) 
 
         self.learningRate = learning_rate        
         self.exploreStart = 1
@@ -137,14 +137,6 @@ class QLearningTable:
             self.check_state_exist(s)
             self.check_state_exist(s_)
             self.learnIMP(s, actionsVec[i], rewardsVec[i], s_, terminal[i])
-
-        for i in range(len(self.params.states2Monitor)):
-            state = str(self.params.states2Monitor[i][0])
-            actions2Print = self.params.states2Monitor[i][1]
-            vals = self.ActionValuesVec(state)
-            for a in actions2Print:
-                print(vals[a], end = ", ")           
-            print("\n")
 
     def learnIMP(self, s, a, r, s_, terminal):
         q_predict = self.table.ix[s, a]

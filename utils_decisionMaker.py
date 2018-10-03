@@ -13,6 +13,7 @@ from utils import EmptyLock
 #decision makers
 from utils_dqn import DQN
 from utils_dqn import DQN_WithTarget
+from utils_dqn import DQN_WithTargetAndDefault
 
 from utils_qtable import QLearningTable
 
@@ -33,6 +34,9 @@ class BaseDecisionMaker:
         self.switchCount = {}
         self.resultFile = None
         self.agentName = agentName
+
+        self.copyTargetLock = Lock()
+        self.copyTarget2DmNumRuns = -1
 
     def SetSubAgentDecisionMaker(self, key, decisionMaker):
         self.subAgentsDecisionMakers[key] = decisionMaker
@@ -58,35 +62,59 @@ class BaseDecisionMaker:
                 
 
     def TrainAll(self):
+        
+        self.copyTargetLock.acquire()
+        if self.copyTarget2DmNumRuns > 0:
+            self.CopyTarget2Dm(self.copyTarget2DmNumRuns)
+            self.copyTarget2DmNumRuns = -1
+        self.copyTargetLock.release()
+
+
         if self.trainFlag:
             self.Train()
             self.trainFlag = False
-        
+
         for subDM in self.subAgentsDecisionMakers.values():
             if subDM != None:
                 subDM.TrainAll()
 
-    def AddSwitch(self, idx, numSwitch, name):
-        if self.resultFile != None and idx in self.switchCount:
+    def AddSwitch(self, idx, numSwitch, name, resultFile):
+        if resultFile != None:
+            if idx not in self.switchCount:
+                self.switchCount[idx] = 0
+
             if self.switchCount[idx] <= numSwitch:
                 self.switchCount[idx] = numSwitch + 1
                 slotName = name + "_" + str(numSwitch)
-                self.resultFile.AddSwitchSlot(slotName)
+                resultFile.AddSwitchSlot(slotName)
+
+    def AddResultFile(self, resultFile):
+        self.secondResultFile = resultFile
+        
+    def GetResultFile(self):
+        return self.secondResultFile
 
     def Train(self):
-        pass      
+        pass     
+
     def NumRuns(self):
         pass
+
     def choose_action(self, observation):
         pass
+
     def learn(self, s, a, r, s_, terminal = False):
         pass
+
     def ActionValuesVec(self,state, targetValues = False):
         pass
+
     def end_run(self, r, score = 0 ,steps = 0):
         pass
+
     def ExploreProb(self):
         return 0
+
     def TargetExploreProb(self):
         return 0
 
@@ -98,7 +126,33 @@ class BaseDecisionMaker:
     
     def DrawStateFromHist(self):
         return None
-        
+    
+    def TakeTargetDM(self, numRunsEnd):
+        self.copyTargetLock.acquire()
+        self.copyTarget2DmNumRuns = numRunsEnd    
+        self.copyTargetLock.release()
+
+    def CopyTarget2Dm(self, numRuns):
+        pass
+
+    def GetMinReward(self):
+        return 0.0
+    
+    def SetMinReward(self, r):
+        pass
+
+    def GetMaxReward(self):
+        return 0.01
+    
+    def SetMaxReward(self, r):
+        pass
+
+    def IsWithDfltDecisionMaker(self):
+        return False
+
+    def NumDfltRuns(self):
+        return 0
+
 class BaseNaiveDecisionMaker(BaseDecisionMaker):
     def __init__(self, numTrials2Save, agentName = "", resultFName = None, directory = None):
         super(BaseNaiveDecisionMaker, self).__init__(agentName)
@@ -120,7 +174,7 @@ class BaseNaiveDecisionMaker(BaseDecisionMaker):
             else:
                 loadFiles = True
 
-            self.resultFile = ResultFile(fullDirectoryName + resultFName, numTrials2Save, loadFiles)
+            self.resultFile = ResultFile(fullDirectoryName + resultFName, numTrials2Save, loadFiles, agentName)
 
     def end_run(self, r, score, steps):
         saveFile = False
@@ -189,7 +243,7 @@ class LearnWithReplayMngr(BaseDecisionMaker):
             loadFiles = True
 
         decisionClass = eval(modelType)
-        self.decisionMaker = decisionClass(modelParams, decisionMakerName, fullDirectoryName, loadFiles, isMultiThreaded=isMultiThreaded)
+        self.decisionMaker = decisionClass(modelParams, decisionMakerName, fullDirectoryName, loadFiles, isMultiThreaded=isMultiThreaded, agentName=self.agentName)
 
         self.historyMngr = HistoryMngr(modelParams, historyFileName, fullDirectoryName, isMultiThreaded, loadFiles)
         self.nonTrainingHistCount = 0
@@ -210,10 +264,14 @@ class LearnWithReplayMngr(BaseDecisionMaker):
     def ExploreProb(self):
         return self.decisionMaker.ExploreProb()
 
-
+    def TargetExploreProb(self):
+        return self.decisionMaker.TargetExploreProb()
 
     def choose_action(self, state):
-        return self.decisionMaker.choose_action(self.historyMngr.NormalizeState(state))     
+        if not self.decisionMaker.TakeDfltValues():
+            state = self.historyMngr.NormalizeState(state)
+
+        return self.decisionMaker.choose_action(state)     
 
     def NumRuns(self):
         return self.decisionMaker.NumRuns()
@@ -255,7 +313,7 @@ class LearnWithReplayMngr(BaseDecisionMaker):
         if len(a) > self.params.minReplaySize:
             start = datetime.datetime.now()
             
-            self.decisionMaker.learn(s, a, r, s_, terminal)
+            self.decisionMaker.learn(s, a, r, s_, terminal, self.trial2LearnDQN)
             self.endRunLock.acquire()
             self.decisionMaker.SaveDQN(self.trial2LearnDQN)
             self.endRunLock.release()
@@ -268,20 +326,55 @@ class LearnWithReplayMngr(BaseDecisionMaker):
             print("\t", threading.current_thread().getName(), ":", self.agentName,"->ExperienceReplay size to small - training with hist size = ", len(r))
 
 
-    def ResetAllData(self):
-        self.decisionMaker.Reset()
-        self.historyMngr.Reset()
+    def ResetHistory(self, dump2Old=True):
+        self.historyMngr.Reset(dump2Old)
 
-        if self.resultFile != None:
+    def ResetAllData(self, resetDecisionMaker=True, resetHistory=True, resetResults=True):
+        if resetDecisionMaker:
+            self.decisionMaker.Reset()
+
+        if resetHistory:
+            self.historyMngr.Reset()
+
+        if resetResults and self.resultFile != None:
             self.resultFile.Reset()
 
+
     def ActionValuesVec(self, s, targetValues = False):
-        s = self.historyMngr.NormalizeState(s)
+        if not self.decisionMaker.TakeDfltValues():
+            s = self.historyMngr.NormalizeState(s)
+
         return self.decisionMaker.ActionValuesVec(s, targetValues)
 
+    def CopyTarget2Dm(self, numRuns):
+        print("\t", threading.current_thread().getName(), ":", self.agentName,"->Copy Target 2 DQN")
+        self.decisionMaker.CopyTarget2DQN(numRuns)
+    
     def DiscountFactor(self):
         return self.decisionMaker.DiscountFactor()
 
     def DrawStateFromHist(self):
         return self.historyMngr.DrawState()
+
+    def GetMinReward(self):
+        return self.historyMngr.GetMinReward()
+    
+    def SetMinReward(self, r):
+        self.historyMngr.SetMinReward(r)
+
+    def GetMaxReward(self):
+        return self.historyMngr.GetMaxReward()
+    
+    def SetMaxReward(self, r):
+        self.historyMngr.SetMaxReward(r)
+
+    def IsWithDfltDecisionMaker(self):
+        return self.decisionMaker.IsWithDfltDecisionMaker()
+
+    def NumDfltRuns(self):
+        return self.decisionMaker.NumDfltRuns()
+
+    def DfltValueInitialized(self):
+        return self.decisionMaker.DfltValueInitialized()
+        
 

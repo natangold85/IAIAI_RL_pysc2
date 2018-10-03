@@ -18,7 +18,6 @@ class History():
         for key in self.transitionKeys:
             self.transitions[key] = []
 
-        #self.transitions["maxStateVals"] = np.ones(modelParams.stateSize, int)
         if isMultiThreaded:
             self.histLock = Lock()
         else:
@@ -52,10 +51,20 @@ class History():
         for key in self.transitionKeys:
             self.transitions[key] = []
         self.histLock.release()
+    
+    def RemoveNonTerminalHistory(self):
+        self.histLock.acquire()
+        idx = len(self.transitions["terminal"]) - 1
+        while self.transitions["terminal"][idx] != True and idx >= 0:
+            for key in self.transitionKeys:
+                self.transitions[key].pop(-1)
+            idx -= 1
+        self.histLock.release()
+
 
 
 class HistoryMngr(History):
-    def __init__(self, params, historyFileName = '', directory = '', isMultiThreaded = False, loadFiles = True):
+    def __init__(self, params, historyFileName = '', directory = '', isMultiThreaded = False, loadFiles = True, createAllHistFiles = True):
         super(HistoryMngr, self).__init__(isMultiThreaded)
 
         self.maxReplaySize = params.maxReplaySize
@@ -64,31 +73,39 @@ class HistoryMngr(History):
         self.isMultiThreaded = isMultiThreaded
 
         self.transitions["maxStateVals"] = np.ones(params.stateSize, int)
-        self.transitions["rewardMax"] = 0.0
+        self.transitions["rewardMax"] = 0.01
         self.transitions["rewardMin"] = 0.0
 
-        self.oldTransitions = {}
-        for key in self.transitionKeys:
-            self.oldTransitions[key] = []
+        self.createAllHistFiles = createAllHistFiles
+
+        if createAllHistFiles:
+            self.oldTransitions = {}
+            for key in self.transitionKeys:
+                self.oldTransitions[key] = []
 
         self.historyData = []
 
         self.trimmingHistory = False
 
         if historyFileName != '':
-            self.lastHistFile = "_last"
             self.histFileName = directory + historyFileName
-            self.numOldHistFiles = 0
             
             if loadFiles:
                 if os.path.isfile(self.histFileName + '.gz'):
                     self.transitions = pd.read_pickle(self.histFileName + '.gz', compression='gzip')
 
-                if os.path.isfile(self.histFileName + self.lastHistFile + '.gz'):
-                    self.oldTransitions = pd.read_pickle(self.histFileName + self.lastHistFile + '.gz', compression='gzip')
 
-                while os.path.isfile(self.histFileName + str(self.numOldHistFiles) +'.gz'):
-                    self.numOldHistFiles += 1
+            if self.createAllHistFiles:
+                self.lastHistFileAdd = "_last"
+                self.numOldHistFiles = 0
+
+                if loadFiles:
+                    if os.path.isfile(self.histFileName + self.lastHistFileAdd + '.gz'):
+                        self.oldTransitions = pd.read_pickle(self.histFileName + self.lastHistFileAdd + '.gz', compression='gzip')
+
+                    while os.path.isfile(self.histFileName + str(self.numOldHistFiles) +'.gz'):
+                        self.numOldHistFiles += 1
+
         else:
             self.histFileName = historyFileName
 
@@ -110,21 +127,33 @@ class HistoryMngr(History):
 
     def Size(self):
         return len(self.transitions["a"])       
-     
+    
+    def PopHist2ReplaySize(self):
+        if self.createAllHistFiles:
+            while (len(self.transitions["a"]) > self.maxReplaySize):
+                for key in self.transitionKeys:
+                    self.oldTransitions[key].append(self.transitions[key].pop(0))
+
+        else:
+            while (len(self.transitions["a"]) > self.maxReplaySize):
+                for key in self.transitionKeys:
+                    self.transitions[key].pop(0)
+                            
     def GetHistory(self):   
         self.histLock.acquire()
 
         self.JoinHistroyFromSons()
-
-        while (len(self.transitions["a"]) > self.maxReplaySize):
-            for key in self.transitionKeys:
-                self.oldTransitions[key].append(self.transitions[key].pop(0))
+        self.PopHist2ReplaySize()
 
         allTransitions = self.transitions.copy()
         self.histLock.release()
 
+        size = len(allTransitions["r"])
+        if size == 0:
+            emptyM = np.array([]) 
+            return emptyM, emptyM, emptyM, emptyM, emptyM
 
-        idx4Shuffle = np.arange(len(allTransitions["r"]))
+        idx4Shuffle = np.arange(size)
         np.random.shuffle(idx4Shuffle)
         
         s = np.array(allTransitions["s"], dtype = float)[idx4Shuffle]
@@ -133,7 +162,8 @@ class HistoryMngr(History):
         s_ = np.array(allTransitions["s_"], dtype = float)[idx4Shuffle]
         terminal = np.array(allTransitions["terminal"], dtype = bool)[idx4Shuffle]
 
-        s, s_ = self.NormalizeStateVals(s, s_)
+        s, s_ = self.NormalizeStateVals(s, s_, allTransitions)
+
         if self.normalizeRewards:
             r = self.NormalizeRewards(r)
 
@@ -147,13 +177,15 @@ class HistoryMngr(History):
             self.trimmingHistory = True
             
             self.JoinHistroyFromSons()
-            
-            while (len(self.transitions["a"]) > self.maxReplaySize):
-                for key in self.transitionKeys:
-                    self.oldTransitions[key].append(self.transitions[key].pop(0))
+            self.PopHist2ReplaySize()
             
             transitions = self.transitions.copy()
             self.histLock.release()
+
+            if len(transitions["a"]) > 0:
+                s = np.array(transitions["s"])
+                s_ = np.array(transitions["s_"])
+                self.FindMaxStateVals(s, s_, transitions)
 
             self.SaveHistFile(transitions) 
             self.trimmingHistory = False
@@ -163,38 +195,57 @@ class HistoryMngr(History):
     def NormalizeState(self, state):
         return (state * 2) / self.transitions["maxStateVals"] - 1.0
 
-    def NormalizeStateVals(self, s, s_):
-        maxAll = np.column_stack((self.transitions["maxStateVals"].copy(), np.max(s, axis = 0), np.max(s_, axis = 0)))
-        self.transitions["maxStateVals"] = np.max(maxAll, axis = 1)
-
-        maxStateVals = self.transitions["maxStateVals"]
+    def FindMaxStateVals(self, s, s_, transitions):
+        maxAll = np.column_stack((transitions["maxStateVals"], np.max(s, axis = 0), np.max(s_, axis = 0)))
+        transitions["maxStateVals"] = np.max(maxAll, axis = 1)
         
-        s = (s * 2) / maxStateVals - 1.0
-        s_ = (s_ * 2) / maxStateVals - 1.0
+        self.transitions["maxStateVals"] = transitions["maxStateVals"].copy()
+
+    def NormalizeStateVals(self, s, s_, transitions):
+        
+        self.FindMaxStateVals(s, s_, transitions)
+
+        s = (s * 2) / transitions["maxStateVals"] - 1.0
+        s_ = (s_ * 2) / transitions["maxStateVals"] - 1.0
 
         return s , s_
     
     def NormalizeRewards(self, r):
         self.transitions["rewardMax"] = max(self.transitions["rewardMax"] , np.max(r))
         self.transitions["rewardMin"] = min(self.transitions["rewardMin"] , np.min(r))
-        midReward = self.transitions["rewardMax"] - self.transitions["rewardMin"]
-        return r - midReward
 
+        return (r - self.transitions["rewardMin"]) / (self.transitions["rewardMax"] - self.transitions["rewardMin"])
+
+    def GetMinReward(self):
+        return self.transitions["rewardMin"]
+
+    def GetMaxReward(self):
+        return self.transitions["rewardMax"]
+
+    def SetMinReward(self, r):
+        self.transitions["rewardMin"] = min(self.transitions["rewardMin"], r)
+    
+    def SetMaxReward(self, r):
+        self.transitions["rewardMax"] = max(self.transitions["rewardMax"], r)
 
     def SaveHistFile(self, transitions):
 
         if self.histFileName != '':
-            pd.to_pickle(transitions, self.histFileName + '.gz', 'gzip') 
+            if len(transitions["a"]) > 0:
+                pd.to_pickle(transitions, self.histFileName + '.gz', 'gzip') 
+                if os.path.getsize(self.histFileName + '.gz') == 0:
+                    print("\n\n\n\nError save 0 bytes\n\n\n")
             
-            if len(self.oldTransitions["a"]) >= self.maxReplaySize:
-                pd.to_pickle(self.oldTransitions, self.histFileName + str(self.numOldHistFiles) + '.gz', 'gzip') 
-                
-                self.numOldHistFiles += 1
-                
-                for key in self.transitionKeys:
-                    self.oldTransitions[key] = []
-            else:
-                pd.to_pickle(self.oldTransitions, self.histFileName + self.lastHistFile + '.gz', 'gzip') 
+            if self.createAllHistFiles:
+                if len(self.oldTransitions["a"]) >= self.maxReplaySize:
+                    pd.to_pickle(self.oldTransitions, self.histFileName + str(self.numOldHistFiles) + '.gz', 'gzip') 
+                    
+                    self.numOldHistFiles += 1
+                    
+                    for key in self.transitionKeys:
+                        self.oldTransitions[key] = []
+                elif len(self.oldTransitions["a"]) > 0:
+                    pd.to_pickle(self.oldTransitions, self.histFileName + self.lastHistFileAdd + '.gz', 'gzip') 
 
     def DrawState(self):
         sizeHist = len(self.transitions["a"])
@@ -202,20 +253,35 @@ class HistoryMngr(History):
             idx = np.random.randint(0,sizeHist)
             return self.transitions["s"][idx]       
         else:
-            return None
+            return np.array([])
 
     def GetAllHist(self):
         transitions = {}
         for key in self.transitionKeys:
             transitions[key] = []
 
-        for i in range(self.numOldHistFiles):
-           currTransitions = pd.read_pickle(self.histFileName + str(i) + '.gz', compression='gzip')
-           for key in self.transitionKeys:
-               transitions[key] += currTransitions[key]
-
+        if self.createAllHistFiles:
+            for i in range(self.numOldHistFiles):
+                currTransitions = pd.read_pickle(self.histFileName + str(i) + '.gz', compression='gzip')
+                for key in self.transitionKeys:
+                    transitions[key] += currTransitions[key]
+            
+            for key in self.transitionKeys:
+                transitions[key] += self.oldTransitions[key] 
+        
         for key in self.transitionKeys:
-            transitions[key] += self.oldTransitions[key]  
             transitions[key] += self.transitions[key]   
 
         return transitions
+
+    def Reset(self, dump2Old=True):
+        self.histLock.acquire()
+        if dump2Old:
+            while (len(self.transitions["a"]) > 0):
+                for key in self.transitionKeys:
+                    self.oldTransitions[key].append(self.transitions[key].pop(0))
+        else:
+            for key in self.transitionKeys:
+                self.transitions[key] = []
+        
+        self.histLock.release()

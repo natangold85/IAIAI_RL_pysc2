@@ -1,2 +1,0 @@
-model_checkpoint_path: "armyAttack_dqn_Embedding"
-all_model_checkpoint_paths: "armyAttack_dqn_Embedding"

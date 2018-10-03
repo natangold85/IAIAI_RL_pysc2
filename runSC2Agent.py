@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-# run example: python .\runSC2Agent.py --map=Simple64 --configFile=NaiveRunDiff2.txt --trainAgent=super --train=True
+# run example: python .\runSC2Agent.py --map=Simple64 --runDir=NaiveRunDiff2 --trainAgent=super --train=True
 # kill all sc ps:  $ Taskkill /IM SC2_x64.exe /F
 
 import logging
@@ -33,15 +33,26 @@ RENDER = False
 SCREEN_SIZE = SC2_Params.SCREEN_SIZE
 MINIMAP_SIZE = SC2_Params.MINIMAP_SIZE
 
+# general params
+flags.DEFINE_string("do", "run", "what to  do: options =[run, check, copyNN]") 
+flags.DEFINE_string("device", "gpu", "Which device to run nn on.")
+flags.DEFINE_string("runDir", "none", "directory of the decision maker (should contain config file name config.txt)")
+
+# for run:
 flags.DEFINE_string("trainAgent", "none", "Which agent to train.")
 flags.DEFINE_string("playAgent", "none", "Which agent to play.")
-flags.DEFINE_string("configFile", "none", "config file that builds heirarchi for decision maker (should contain a defenition of a dictionary)")
 flags.DEFINE_string("train", "True", "open multiple threads for train.")
 flags.DEFINE_string("map", "none", "Which map to run.")
 flags.DEFINE_string("numSteps", "0", "num steps of map.")
-flags.DEFINE_string("device", "gpu", "Which device to run nn on.")
 flags.DEFINE_string("numGameThreads", "8", "num of game threads.")
-flags.DEFINE_string("checkDqnValues", "False", "num of game threads.")
+
+# for check:
+flags.DEFINE_string("checkAgent", "none", "Which agent to check.")
+flags.DEFINE_string("fromDir", "none", "directory of the decision maker to copy from (should contain config file name config.txt)")
+
+# for copy network
+flags.DEFINE_string("copyAgent", "none", "Which agent to copy.")
+
 
 nonRelevantRewardMap = ["BaseMngr"]
 singlePlayerMaps = ["ArmyAttack5x5", "AttackBase", "AttackMngr"]
@@ -73,6 +84,9 @@ def run_thread(agent, display, players, numSteps):
             print(e)
             print(traceback.format_exc())
             logging.error(traceback.format_exc())
+        
+        # remove creahsed terminal history
+        agent.RemoveNonTerminalHistory()
 
         global NUM_CRASHES
         NUM_CRASHES += 1
@@ -90,8 +104,8 @@ def start_agent():
         show_render = RENDER
 
     # tables
-    dm_Types = eval(open(flags.FLAGS.configFile, "r+").read())
-    dm_Types["directory"] = flags.FLAGS.configFile.replace(".txt", "")
+    dm_Types = eval(open("./" + flags.FLAGS.runDir + "/config.txt", "r+").read())
+    dm_Types["directory"] = flags.FLAGS.runDir
 
     if flags.FLAGS.trainAgent == "none":
         trainList = ["super"]
@@ -149,6 +163,7 @@ def start_agent():
 
     runThreadAlive = True
     threading.current_thread().setName("TrainThread")
+
     while runThreadAlive:
         # train  when flag of training is on
         decisionMaker.TrainAll()
@@ -164,21 +179,23 @@ def start_agent():
             else:
                 t.join() 
 
-        global NUM_CRASHES
-        if NUM_CRASHES > NUM_CRASHES_2_RESTART or not RUN:
-            #os.system('powershell.exe [Taskkill /IM SC2_x64.exe /F]')
-            print("\n\ninit all sc2 games\n\n")
-            NUM_CRASHES = 0
+        # global NUM_CRASHES
+        # if NUM_CRASHES > NUM_CRASHES_2_RESTART or not RUN:
+        #     print("\n\ninit all sc2 games\n\n")
+        #     os.system('taskkill /f /im SC2_x64.exe')
+        #     NUM_CRASHES = 0
+    
 
 
 def check_dqn():
-    dm_Types = eval(open(flags.FLAGS.configFile, "r+").read())
-    dm_Types["directory"] = flags.FLAGS.configFile.replace(".txt", "")
-    checkList = flags.FLAGS.playAgent
+    dm_Types = eval(open("./" + flags.FLAGS.runDir + "/config.txt", "r+").read())
+    dm_Types["directory"] = flags.FLAGS.runDir
+    
+    checkList = flags.FLAGS.checkAgent
     checkList = checkList.split(",")
 
 
-    superAgent = SuperAgent(dmTypes = dm_Types, playList=["super"], trainList=["super"])
+    superAgent = SuperAgent(dmTypes = dm_Types)
     decisionMaker = superAgent.GetDecisionMaker()
 
     print("\n\nagent 2 check:", checkList, end='\n\n')
@@ -191,44 +208,65 @@ def check_dqn():
         print(agentName, "all history size", len(historyMngr.GetAllHist()["a"]))
 
         print(agentName, "maxVals =", historyMngr.transitions["maxStateVals"])
+        print(agentName, "maxReward =", historyMngr.GetMaxReward(), "minReward =", historyMngr.GetMinReward())
         print("\n")
     
     numStates2Check = 100
     numEpochs = 10
     for sa in checkList:
         dm = decisionMaker.GetDecisionMakerByName(sa)
-        s, a, r, s_, terminal = dm.historyMngr.GetHistory()
 
         states2Check = []
         for i in range(numStates2Check):
-            states2Check.append(dm.DrawStateFromHist())
+            s = dm.DrawStateFromHist()
+            if len(s) > 0:
+                states2Check.append(s)
         print(sa, ": current dqn num runs = ", dm.decisionMaker.NumRuns()," avg values =", avg_values(dm, states2Check))
         print(sa, ": target dqn num runs = ", dm.decisionMaker.NumRunsTarget()," avg values =", avg_values(dm, states2Check, True))
+        
+        if flags.FLAGS.runDir.find("Dflt") >= 0:
+            print("dqn value =", dm.decisionMaker.ValueDqn(), "target value =", dm.decisionMaker.ValueTarget(), "heuristic values =", dm.decisionMaker.ValueDefault())
+        else:
+            print("dqn value =", dm.decisionMaker.ValueDqn(), "target value =", dm.decisionMaker.ValueTarget())
 
         print("\n\n")
 
+def avg_values(dm, states, targetVals=False):
+    vals = []
+    for s in states:
+        vals.append(dm.ActionValuesVec(s, targetVals))
 
-        # dm.decisionMaker.Reset()
+    return np.average(vals, axis=0)
 
-        # print("epoch -1 : values =", avg_values(dm, states2Check))
-        # for i in range(numEpochs):
-        #     dm.decisionMaker.learn(s,a,r,s_, terminal)
-        #     print("epoch", i,": values =", avg_values(dm, states2Check))
-            
-def avg_values(decisionMaker, states2Check, targetVals = False):
-    vals = np.zeros(decisionMaker.params.numActions, float)
-    for s in states2Check:
-        vals += decisionMaker.ActionValuesVec(s, targetVals)  
-    return vals / len(states2Check) 
+def copy_dqn():
+    dmTypesSource = eval(open("./" + flags.FLAGS.fromDir + "/config.txt", "r+").read())
+    dmTypesSource["directory"] = flags.FLAGS.fromDir
 
-def modify(r):
-    rMax = np.max(r)
-    rMin = np.min(r)
-    mid = (rMax - rMin) / 2
-    return r - mid
+    superAgentSource = SuperAgent(dmTypes = dmTypesSource)
+    decisionMakerSource = superAgentSource.GetDecisionMaker()    
+
+    dmTypesTarget = eval(open("./" + flags.FLAGS.runDir + "/config.txt", "r+").read())
+    dmTypesTarget["directory"] = flags.FLAGS.runDir
     
+    superAgentTarget = SuperAgent(dmTypes = dmTypesTarget)
+    decisionMakerTarget = superAgentTarget.GetDecisionMaker()    
+    
+    copyList = flags.FLAGS.copyAgent
+    copyList = copyList.split(",")
 
+    for agent in copyList:
+        currDmSource = decisionMakerSource.GetDecisionMakerByName(agent)
+        currDmTarget = decisionMakerTarget.GetDecisionMakerByName(agent)
 
+        if currDmSource != None and currDmTarget != None:
+            allVarsSource, _ = currDmSource.decisionMaker.GetAllNNVars()
+            currDmTarget.decisionMaker.AssignAllNNVars(allVarsSource)
+            currDmTarget.decisionMaker.SaveDQN()
+        else:
+            print("Error in agent = ", agent)
+            print("source =", type(currDmSource))
+            print("target =", type(currDmTarget))
+        
 def main(argv):
     """Main function.
 
@@ -244,10 +282,12 @@ def main(argv):
         os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
         os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
-    if flags.FLAGS.checkDqnValues == "False":
+    if flags.FLAGS.do == "run":
         start_agent()
-    else:
+    elif flags.FLAGS.do == "check":
         check_dqn()
+    elif flags.FLAGS.do == "copyNN":
+        copy_dqn()
 
 
 if __name__ == '__main__':

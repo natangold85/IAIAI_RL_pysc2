@@ -30,6 +30,7 @@ from utils_results import PlotResults
 # params
 from utils_dqn import DQN_PARAMS
 from utils_dqn import DQN_EMBEDDING_PARAMS
+from utils_dqn import DQN_PARAMS_WITH_DEFAULT_DM
 from utils_qtable import QTableParams
 from utils_qtable import QTableParamsExplorationDecay
 
@@ -53,6 +54,7 @@ AGENT_NAME = "build_base"
 QTABLE = 'q'
 DQN = 'dqn'
 DQN2L = 'dqn_2l'
+DQN2L_DFLT = 'dqn_2l_dflt'
 DQN_EMBEDDING_LOCATIONS = 'dqn_Embedding' 
 NAIVE = "naive"
 USER_PLAY = 'play'
@@ -80,6 +82,10 @@ QUICK_ADDITION_ACTION[Terran.FactoryTechLab] = SC2_Actions.BUILD_TECHLAB_QUICK
 ADDITION_ACTION = {}
 ADDITION_ACTION[Terran.BarracksReactor] = SC2_Actions.BUILD_REACTOR
 ADDITION_ACTION[Terran.FactoryTechLab] = SC2_Actions.BUILD_TECHLAB
+
+# Model Params
+NUM_TRIALS_2_LEARN = 20
+NUM_TRIALS_4_CMP = 200
 
 class ACTIONS:
     ID_DO_NOTHING = 0
@@ -204,11 +210,19 @@ RUN_TYPES[DQN][RESULTS] = "result"
 
 RUN_TYPES[DQN2L] = {}
 RUN_TYPES[DQN2L][TYPE] = "DQN_WithTarget"
-RUN_TYPES[DQN2L][PARAMS] = DQN_PARAMS(BUILD_STATE.SIZE, ACTIONS.NUM_ACTIONS, layersNum = 2, numTrials2CmpResults=200)
+RUN_TYPES[DQN2L][PARAMS] = DQN_PARAMS_WITH_DEFAULT_DM(BUILD_STATE.SIZE, ACTIONS.NUM_ACTIONS, layersNum=2, numTrials2CmpResults=NUM_TRIALS_4_CMP, descendingExploration=False)
 RUN_TYPES[DQN2L][DECISION_MAKER_NAME] = "build_dqn2l"
 RUN_TYPES[DQN2L][DIRECTORY] = "buildBase_dqn2l"
 RUN_TYPES[DQN2L][HISTORY] = "replayHistory"
 RUN_TYPES[DQN2L][RESULTS] = "result"
+
+RUN_TYPES[DQN2L_DFLT] = {}
+RUN_TYPES[DQN2L_DFLT][TYPE] = "DQN_WithTargetAndDefault"
+RUN_TYPES[DQN2L_DFLT][PARAMS] = DQN_PARAMS_WITH_DEFAULT_DM(BUILD_STATE.SIZE, ACTIONS.NUM_ACTIONS, layersNum=2, numTrials2CmpResults=NUM_TRIALS_4_CMP, descendingExploration=False)
+RUN_TYPES[DQN2L_DFLT][DECISION_MAKER_NAME] = "build_dqn2l_dflt"
+RUN_TYPES[DQN2L_DFLT][DIRECTORY] = "buildBase_dqn2l_dflt"
+RUN_TYPES[DQN2L_DFLT][HISTORY] = "replayHistory"
+RUN_TYPES[DQN2L_DFLT][RESULTS] = "result"
 
 RUN_TYPES[NAIVE] = {}
 RUN_TYPES[NAIVE][DIRECTORY] = "buildBase_naive"
@@ -267,9 +281,25 @@ class BuildingCmdAddition(BuildingCmd):
         super(BuildingCmdAddition, self).__init__(screenLocation, inProgress)
         self.m_additionCoord = None
 
+def CreateDecisionMakerBuildBase(dmTypes, isMultiThreaded, numTrials2Learn=NUM_TRIALS_2_LEARN):
+    runType = RUN_TYPES[dmTypes[AGENT_NAME]]
+    # create agent dir
+    directory = dmTypes["directory"] + "/" + AGENT_DIR
+
+    if dmTypes[AGENT_NAME] == "naive":
+        decisionMaker = NaiveDecisionMakerBuilder(resultFName=runType[RESULTS], directory=directory + runType[DIRECTORY])
+    else:    
+        if runType[TYPE] == "DQN_WithTargetAndDefault":
+            runType[PARAMS].defaultDecisionMaker = NaiveDecisionMakerBuilder()
+
+        decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,
+                                            resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY], isMultiThreaded=isMultiThreaded,
+                                            numTrials2Learn=numTrials2Learn)
+
+    return decisionMaker, runType
 
 class NaiveDecisionMakerBuilder(BaseNaiveDecisionMaker):
-    def __init__(self, resultFName = None, directory = None, numTrials2Save = 20):
+    def __init__(self, resultFName = None, directory = None, numTrials2Save=NUM_TRIALS_2_LEARN):
         super(NaiveDecisionMakerBuilder, self).__init__(numTrials2Save=numTrials2Save, resultFName=resultFName, directory=directory, agentName=AGENT_NAME)
         self.SDSupply = 8
         self.CCSupply = 15
@@ -333,7 +363,7 @@ class BuildBaseSubAgent(BaseAgent):
         if decisionMaker != None:
             self.decisionMaker = decisionMaker
         else:
-            self.decisionMaker = self.CreateDecisionMaker(dmTypes, isMultiThreaded)
+            self.decisionMaker, _ = CreateDecisionMakerBuildBase(dmTypes, isMultiThreaded)
 
         self.history = self.decisionMaker.AddHistory()
 
@@ -353,20 +383,6 @@ class BuildBaseSubAgent(BaseAgent):
         self.maxNumOilRefinery = 2
 
         self.notAllowedDirections2CC = [[1, 0], [1, 1], [0, 1]]
-
-    def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
-        runType = RUN_TYPES[dmTypes[AGENT_NAME]]
-        # create agent dir
-        directory = dmTypes["directory"] + "/" + AGENT_DIR
-
-        if dmTypes[AGENT_NAME] == "naive":
-            decisionMaker = NaiveDecisionMakerBuilder(resultFName=runType[RESULTS], directory=directory + runType[DIRECTORY])
-        else:        
-            decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,
-                                                resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY], isMultiThreaded=isMultiThreaded,
-                                                numTrials2Learn=20)
-
-        return decisionMaker
 
     def GetDecisionMaker(self):
         return self.decisionMaker
@@ -404,13 +420,14 @@ class BuildBaseSubAgent(BaseAgent):
         self.building2AddIdx = -1
 
     def EndRun(self, reward, score, stepNum):
+        saved = False
         if self.trainAgent:
-            self.decisionMaker.end_run(reward, score, stepNum)
-        elif self.inTraining:
-            self.decisionMaker.TrimHistory()
+            saved = self.decisionMaker.end_run(reward, score, stepNum)
+
+        return saved
 
     def Learn(self, reward, terminal):
-        if self.inTraining:
+        if self.history != None and self.trainAgent:
             if self.isActionCommitted:
                 self.history.learn(self.previous_scaled_state, self.lastActionCommitted, reward, self.current_scaled_state, terminal)
 
@@ -552,7 +569,7 @@ class BuildBaseSubAgent(BaseAgent):
         if self.playAgent:
             if self.illigalmoveSolveInModel:
                 validActions = self.ValidActions()
-                if self.inTraining:
+                if self.trainAgent:
                     targetValues = False
                     exploreProb = self.decisionMaker.ExploreProb()              
                 else:
@@ -721,5 +738,14 @@ class BuildBaseSubAgent(BaseAgent):
         return [coordNorthWest, coordSouthWest, coordSouthEast, coordAddition]
 
 if __name__ == "__main__":
+    from absl import app
+    from absl import flags
+    flags.DEFINE_string("directoryNames", "", "directory names to take results")
+    flags.DEFINE_string("grouping", "100", "grouping size of results.")
+    flags.FLAGS(sys.argv)
+
+    directoryNames = (flags.FLAGS.directoryNames).split(",")
+    grouping = int(flags.FLAGS.grouping)
+
     if "results" in sys.argv:
-        PlotResults(AGENT_NAME, AGENT_DIR, RUN_TYPES)
+        PlotResults(AGENT_NAME, AGENT_DIR, RUN_TYPES, runDirectoryNames=directoryNames, grouping=grouping)

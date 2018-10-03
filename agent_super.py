@@ -193,7 +193,6 @@ class SharedDataSuper(SharedDataBase, SharedDataAttack, SharedDataScout, SharedD
         self.numStep = 0
         self.numAgentStep = 0
 
-
 REWARD_MAX_SUPPLY = 0
 BASE_MNGR_MAX_NAIVE_REWARD = 3.5
 NORMALIZATION_TRAIN_LOCAL_REWARD = 2 * BASE_MNGR_MAX_NAIVE_REWARD
@@ -201,7 +200,7 @@ NORMALIZATION_TRAIN_LOCAL_REWARD = 2 * BASE_MNGR_MAX_NAIVE_REWARD
 BATTLE_TYPES = set(["battle_mngr", "attack_army", "attack_base"])
 
 class SuperAgent(BaseAgent):
-    def __init__(self, dmTypes, useMapRewards = True, decisionMaker = None, isMultiThreaded = False, playList = None, trainList = None):
+    def __init__(self, dmTypes, useMapRewards = True, decisionMaker = None, isMultiThreaded = False, playList = [], trainList = []):
         super(SuperAgent, self).__init__(STATE.SIZE)
 
         self.sharedData = SharedDataSuper()
@@ -215,14 +214,6 @@ class SuperAgent(BaseAgent):
             if len(BATTLE_TYPES.intersection(playList)) == 0:
                 saPlayList.append("do_nothing")
             
-        self.singleReward = False
-        self.bothRewards = False
-        if 'rewardType' in dmTypes:
-            if dmTypes['rewardType'] == 'single':
-                self.singleReward = True
-            elif dmTypes['rewardType'] == 'both':
-                self.bothRewards = True
-
         self.illigalmoveSolveInModel = True
 
         if decisionMaker != None:
@@ -260,12 +251,7 @@ class SuperAgent(BaseAgent):
         self.useMapRewards = useMapRewards
 
         self.move_number = 0
-        self.minReward = 0.0
-        self.maxReward = 2.0
         self.discountForLocalReward = 0.999
-
-
-
 
     def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
         
@@ -275,9 +261,6 @@ class SuperAgent(BaseAgent):
         directory = dmTypes["directory"] + "/" + AGENT_DIR
         if not os.path.isdir("./" + directory):
             os.makedirs("./" + directory)
-
-        if self.singleReward or self.bothRewards:
-            runType[PARAMS].normalizeRewards = False
 
         decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,
                                             resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY], isMultiThreaded=isMultiThreaded,
@@ -377,6 +360,9 @@ class SuperAgent(BaseAgent):
 
         self.maxSupply = False
 
+        self.minReward = self.subAgents[SUB_AGENT_ID_BASE].subAgents[1].decisionMaker.GetMinReward()
+        self.maxReward = self.subAgents[SUB_AGENT_ID_BASE].subAgents[1].decisionMaker.GetMaxReward()
+
     def LastStep(self, obs):
         if self.useMapRewards:
             reward = obs.reward
@@ -391,11 +377,14 @@ class SuperAgent(BaseAgent):
 
         self.CreateState(obs)
         
-        # self.maxReward = max(self.maxReward, sumReward)
-        # self.minReward = min(self.minReward, sumReward)
+        if sumReward < self.minReward:
+            self.minReward = sumReward
+            self.subAgents[SUB_AGENT_ID_BASE].subAgents[1].decisionMaker.SetMinReward(sumReward)
+        elif sumReward > self.maxReward:
+            self.maxReward = sumReward
+            self.subAgents[SUB_AGENT_ID_BASE].subAgents[1].decisionMaker.SetMaxReward(sumReward)
         
-        self.Learn(reward, True)  
-
+        self.Learn(sumReward, True)  
         self.EndRun(sumReward, score, self.sharedData.numAgentStep)
 
     def SendAction(self, sc2Action):
@@ -403,13 +392,14 @@ class SuperAgent(BaseAgent):
         return sc2Action
 
     def EndRun(self, reward, score, numStep):
-        middle = (self.maxReward - self.minReward) / 2
-        reward -= middle
         if self.trainAgent:
             self.decisionMaker.end_run(reward, score, numStep)
         
         for sa in self.activeSubAgents:
             self.subAgents[sa].EndRun(reward, score, numStep) 
+
+    def NormalizeReward(self, reward):
+        return 2 * (reward - self.minReward) / (self.maxReward - self.minReward) - 1
 
     def ChooseAction(self):
         for sa in self.activeSubAgents:
@@ -532,24 +522,11 @@ class SuperAgent(BaseAgent):
 
             self.accumulatedTrainReward += reward * pow(self.discountForLocalReward, self.sharedData.numAgentStep)
             self.sharedData.prevTrainActionReward = 0
-
-            if self.singleReward: 
-                if not terminal:
-                    reward = 0.0
-                else:
-                    reward = self.accumulatedTrainReward
-                    middle = (self.maxReward - self.minReward) / 2
-                    reward -= middle
+         
+        if terminal:
+            reward = self.NormalizeReward(reward)
             
-            if self.bothRewards and terminal:
-                reward = reward + self.accumulatedTrainReward
-                middle = (self.maxReward - self.minReward) / 2
-                reward -= middle 
-            
-
-
-
-        if self.trainAgent and self.current_action is not None:
+        if self.history != None and self.trainAgent and self.current_action != None:
             self.history.learn(self.previous_scaled_state, self.current_action, reward, self.current_scaled_state, terminal)
 
         self.previous_scaled_state[:] = self.current_scaled_state[:]
@@ -627,5 +604,14 @@ class SuperAgent(BaseAgent):
   
 
 if __name__ == "__main__":
+    from absl import app
+    from absl import flags
+    flags.DEFINE_string("directoryNames", "", "directory names to take results")
+    flags.DEFINE_string("grouping", "100", "grouping size of results.")
+    flags.FLAGS(sys.argv)
+
+    directoryNames = (flags.FLAGS.directoryNames).split(",")
+    grouping = int(flags.FLAGS.grouping)
+
     if "results" in sys.argv:
-        PlotResults(AGENT_NAME, AGENT_DIR, RUN_TYPES)       
+        PlotResults(AGENT_NAME, AGENT_DIR, RUN_TYPES, runDirectoryNames=directoryNames, grouping=grouping)  

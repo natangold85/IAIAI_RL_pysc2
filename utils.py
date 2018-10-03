@@ -26,6 +26,8 @@ class BaseAgent(base_agent.BaseAgent):
         
         if stateSize != None:
             self.terminalState = np.zeros(stateSize, int)
+        
+        self.history = None
     
     def GetDecisionMaker(self):
         return None
@@ -67,17 +69,18 @@ class BaseAgent(base_agent.BaseAgent):
     def GetStateVal(self, idx):
         return None
 
+    def RemoveNonTerminalHistory(self):
+        if self.history != None:
+            self.history.RemoveNonTerminalHistory()
+
 # params base
 class ParamsBase:
-    def __init__(self, stateSize, numActions, historyProportion4Learn = 1, propogateReward = False, discountFactor = 0.95, maxReplaySize = 500000, minReplaySize = 1000, states2Monitor = []):
+    def __init__(self, stateSize, numActions, discountFactor = 0.95, maxReplaySize = 500000, minReplaySize = 1000):
         self.stateSize = stateSize
         self.numActions = numActions
-        self.historyProportion4Learn = historyProportion4Learn
-        self.propogateReward = propogateReward
         self.discountFactor = discountFactor
         self.maxReplaySize = maxReplaySize
         self.minReplaySize = minReplaySize
-        self.states2Monitor = states2Monitor
 
 class SC2_Params:
     # minimap feature

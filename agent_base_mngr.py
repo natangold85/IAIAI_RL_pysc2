@@ -7,6 +7,8 @@ import traceback
 import datetime
 from multiprocessing import Lock
 
+import threading
+
 import numpy as np
 import pandas as pd
 import time
@@ -30,6 +32,7 @@ from utils_results import ResultFile
 
 from utils_qtable import QTableParamsExplorationDecay
 from utils_dqn import DQN_PARAMS
+from utils_dqn import DQN_PARAMS_WITH_DEFAULT_DM
 
 from agent_build_base import BuildBaseSubAgent
 from agent_train_army import TrainArmySubAgent
@@ -55,6 +58,7 @@ AGENT_DIR = "BaseMngr/"
 
 AGENT_NAME = "base_mngr"
 TRAIN_SUB_AGENTS = "base_mngr_subAgents"
+TRAIN_ALL = "base_mngr_all"
 
 ACTION_DO_NOTHING = 0
 ACTION_BUILD_BASE = 1
@@ -63,6 +67,7 @@ NUM_ACTIONS = 3
 
 SUB_AGENT_BUILDER = 1
 SUB_AGENT_TRAINER = 2
+ID_SELF_AGENT = 3
 ALL_SUB_AGENTS = [SUB_AGENT_BUILDER, SUB_AGENT_TRAINER]
 
 ACTION2STR = ["DoNothing", "BuildBase", "TrainArmy"]
@@ -70,6 +75,10 @@ ACTION2STR = ["DoNothing", "BuildBase", "TrainArmy"]
 SUBAGENTS_NAMES = {}
 SUBAGENTS_NAMES[SUB_AGENT_BUILDER] = "BuildBaseSubAgent"
 SUBAGENTS_NAMES[SUB_AGENT_TRAINER] = "TrainArmySubAgent"
+
+# Model Params
+NUM_TRIALS_2_LEARN = 20
+NUM_TRIALS_4_CMP = 200
 
 class SharedDataBase(SharedDataBuild, SharedDataTrain):
     def __init__(self):
@@ -184,6 +193,8 @@ class BASE_STATE:
 
 QTABLE = 'q'
 DQN = 'dqn'
+DQN2L = 'dqn_2l'
+DQN2L_DFLT = 'dqn_2l_dflt'
 USER_PLAY = 'play'
 NAIVE = 'naive'
 
@@ -192,10 +203,9 @@ TYPE = "type"
 DECISION_MAKER_NAME = "dm_name"
 HISTORY = "hist"
 RESULTS = "results"
+ALL_RESULTS = "all_results"
 PARAMS = 'params'
 DIRECTORY = 'directory'
-
-ALL_TYPES = set([USER_PLAY, QTABLE, DQN, NAIVE])
 
 # table names
 RUN_TYPES = {}
@@ -210,19 +220,55 @@ RUN_TYPES[QTABLE][RESULTS] = "baseMngr_result"
 
 RUN_TYPES[DQN] = {}
 RUN_TYPES[DQN][TYPE] = "DQN_WithTarget"
-RUN_TYPES[DQN][PARAMS] = DQN_PARAMS(BASE_STATE.SIZE, NUM_ACTIONS)
+RUN_TYPES[DQN][PARAMS] = DQN_PARAMS(BASE_STATE.SIZE, NUM_ACTIONS, numTrials2CmpResults=NUM_TRIALS_4_CMP)
 RUN_TYPES[DQN][DECISION_MAKER_NAME] = "baseMngr_dqn"
 RUN_TYPES[DQN][DIRECTORY] = "baseMngr_dqn"
 RUN_TYPES[DQN][HISTORY] = "baseMngr_replayHistory"
 RUN_TYPES[DQN][RESULTS] = "baseMngr_result"
 
+RUN_TYPES[DQN2L] = {}
+RUN_TYPES[DQN2L][TYPE] = "DQN_WithTarget"
+RUN_TYPES[DQN2L][PARAMS] = DQN_PARAMS(BASE_STATE.SIZE, NUM_ACTIONS, layersNum=2, numTrials2CmpResults=NUM_TRIALS_4_CMP, descendingExploration=False)
+RUN_TYPES[DQN2L][DECISION_MAKER_NAME] = "baseMngr_dqn2l"
+RUN_TYPES[DQN2L][DIRECTORY] = "baseMngr_dqn2l"
+RUN_TYPES[DQN2L][HISTORY] = "baseMngr_replayHistory"
+RUN_TYPES[DQN2L][RESULTS] = "baseMngr_result"
+RUN_TYPES[DQN2L][ALL_RESULTS] = "baseMngr_results_all"
+
+RUN_TYPES[DQN2L_DFLT] = {}
+RUN_TYPES[DQN2L_DFLT][TYPE] = "DQN_WithTargetAndDefault"
+RUN_TYPES[DQN2L_DFLT][PARAMS] = DQN_PARAMS_WITH_DEFAULT_DM(BASE_STATE.SIZE, NUM_ACTIONS, layersNum=2, numTrials2CmpResults=NUM_TRIALS_4_CMP, descendingExploration = False)
+RUN_TYPES[DQN2L_DFLT][DECISION_MAKER_NAME] = "baseMngr_dqn2l_dflt"
+RUN_TYPES[DQN2L_DFLT][DIRECTORY] = "baseMngr_dqn2l_dflt"
+RUN_TYPES[DQN2L_DFLT][HISTORY] = "baseMngr_replayHistory"
+RUN_TYPES[DQN2L_DFLT][RESULTS] = "baseMngr_result"
+RUN_TYPES[DQN2L_DFLT][ALL_RESULTS] = "baseMngr_results_all"
+
 RUN_TYPES[NAIVE] = {}
 RUN_TYPES[NAIVE][DIRECTORY] = "baseMngr_naive"
 RUN_TYPES[NAIVE][RESULTS] = "baseMngr_result"
+RUN_TYPES[NAIVE][ALL_RESULTS] = "baseMngr_AllResults"
+
+def CreateDecisionMakerBaseMngr(dmTypes, isMultiThreaded, numTrials2Learn=NUM_TRIALS_2_LEARN):
+    
+    runType = RUN_TYPES[dmTypes[AGENT_NAME]]
+    directory = dmTypes["directory"] + "/" + AGENT_DIR + runType[DIRECTORY]
+
+    if dmTypes[AGENT_NAME] == "naive":
+        decisionMaker = NaiveDecisionMakerBaseMngr(resultFName=runType[RESULTS], directory=directory)
+    else:        
+        if runType[TYPE] == "DQN_WithTargetAndDefault":
+            runType[PARAMS].defaultDecisionMaker = NaiveDecisionMakerBaseMngr()
+
+        decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,  
+                            resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory, isMultiThreaded=isMultiThreaded,
+                            numTrials2Learn=numTrials2Learn)
+
+    return decisionMaker, runType
 
 
 class NaiveDecisionMakerBaseMngr(BaseNaiveDecisionMaker):
-    def __init__(self, resultFName = None, directory=None, numTrials2Save = 20):
+    def __init__(self, resultFName = None, directory=None, numTrials2Save =NUM_TRIALS_2_LEARN):
         super(NaiveDecisionMakerBaseMngr, self).__init__(numTrials2Save=numTrials2Save, agentName=AGENT_NAME, resultFName=resultFName, directory=directory)
 
     def choose_action(self, state):
@@ -268,6 +314,10 @@ class NaiveDecisionMakerBaseMngr(BaseNaiveDecisionMaker):
 
         return vals
 
+    def end_run(self, r, score, steps):
+        print(threading.current_thread().getName(), ":", AGENT_NAME,"->for trial#", self.trialNum, ": reward =", r, "score =", score, "steps =", steps)
+        return super(NaiveDecisionMakerBaseMngr, self).end_run(r, score, steps)
+
 
 class BaseMngr(BaseAgent):
     def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList):
@@ -281,13 +331,19 @@ class BaseMngr(BaseAgent):
         
         self.trainAgent = AGENT_NAME in trainList
         self.trainSubAgentsSimultaneously = TRAIN_SUB_AGENTS in trainList
-  
+        self.trainAll = TRAIN_ALL in trainList
+
+        self.inTraining = self.trainAgent or self.trainAll
+
         self.illigalmoveSolveInModel = True
 
         if decisionMaker != None:
             self.decisionMaker = decisionMaker
+            self.allResultFile = self.decisionMaker.GetResultFile()
         else:
             self.decisionMaker = self.CreateDecisionMaker(dmTypes, isMultiThreaded)
+
+        self.initialDfltDecisionMaker = self.decisionMaker.IsWithDfltDecisionMaker()
 
         self.history = self.decisionMaker.AddHistory()
 
@@ -304,7 +360,13 @@ class BaseMngr(BaseAgent):
         if not self.playAgent:
             self.subAgentPlay = self.FindActingHeirarchi()
 
-        if self.trainSubAgentsSimultaneously:
+        self.currCounterThreshold = -1
+
+        if self.trainAll:
+            trainOrder = [SUB_AGENT_BUILDER, SUB_AGENT_TRAINER, SUB_AGENT_BUILDER, SUB_AGENT_TRAINER, ID_SELF_AGENT]
+            self.SetSubAgentTrainSwitch(dmTypes["numTrial2Train"], trainOrder)
+            
+        elif self.trainSubAgentsSimultaneously:
             self.SetSubAgentTrainSwitch(dmTypes["numTrial2Train"], [SUB_AGENT_BUILDER, SUB_AGENT_TRAINER])
 
         self.sharedData = sharedData
@@ -313,17 +375,19 @@ class BaseMngr(BaseAgent):
         # model params 
         self.minPriceMinerals = 50
 
-
     def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
-        
-        runType = RUN_TYPES[dmTypes[AGENT_NAME]]
-        directory = dmTypes["directory"] + "/" + AGENT_DIR
+        decisionMaker, runType = CreateDecisionMakerBaseMngr(dmTypes, isMultiThreaded)
 
-        if dmTypes[AGENT_NAME] == "naive":
-            decisionMaker = NaiveDecisionMakerBaseMngr(resultFName=runType[RESULTS], directory=directory + runType[DIRECTORY])
-        else:        
-            decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,  
-                                                resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY], isMultiThreaded=isMultiThreaded)
+        directory = dmTypes["directory"] + "/" + AGENT_DIR + runType[DIRECTORY]
+        
+        fullDirectoryName = "./" + directory +"/"
+        if ALL_RESULTS in runType:
+            loadFiles = False if "new" in sys.argv else True
+            self.allResultFile = ResultFile(fullDirectoryName + runType[ALL_RESULTS], NUM_TRIALS_2_LEARN, loadFiles, "All_" + AGENT_NAME)
+        else:
+            self.allResultFile = None
+        
+        decisionMaker.AddResultFile(self.allResultFile)
 
         return decisionMaker
 
@@ -339,42 +403,65 @@ class BaseMngr(BaseAgent):
         minCounter = 1000
         for idx in range(len(trainOrder)):
             saIdx = trainOrder[idx]
-            subAgent = self.subAgents[saIdx]
-            subAgent.inTraining = True
-            subAgent.trainAgent = False
-            numRuns = subAgent.decisionMaker.NumRuns()
+            if saIdx == ID_SELF_AGENT:
+                agent = self
+            else:
+                agent = self.subAgents[saIdx]
+
+            agent.inTraining = True
+            agent.trainAgent = False
+            numRuns = agent.decisionMaker.NumRuns()
 
             self.switchCounter[saIdx] = int(numRuns / self.numTrial2Switch)
             if self.switchCounter[saIdx] < minCounter:
                 startAgent = idx
                 minCounter = self.switchCounter[saIdx]
 
-        self.currTrainSubAgentIdx = startAgent 
+        if self.initialDfltDecisionMaker and not self.decisionMaker.DfltValueInitialized():
+            self.currTrainAgentIdx = -1
+        else:
+            self.currTrainAgentIdx = startAgent 
 
         self.SwitchTrainSubAgent()
 
 
-    def SwitchTrainSubAgent(self, prevSaIdx = None):
-        if prevSaIdx != None:
-            prevSubAgent = self.subAgents[self.trainOrder[prevSaIdx]]
-            prevSubAgent.trainAgent = False
+    def SwitchTrainSubAgent(self, prevAgentIdx = None):
+        if prevAgentIdx != None:
+            if prevAgentIdx == ID_SELF_AGENT:
+                prevAgent = self
+            else:
+                prevAgent = self.subAgents[prevAgentIdx]
+            
+            prevAgent.trainAgent = False
+            prevAgent.decisionMaker.TakeTargetDM(self.currCounterThreshold)
 
-            prevSubAgent.decisionMaker.decisionMaker.CopyTarget2DQN()
-
-            self.currTrainSubAgentIdx = (self.currTrainSubAgentIdx + 1) % len(self.trainOrder)
-         
-        subAgentIdx = self.trainOrder[self.currTrainSubAgentIdx]
-        currSubAgent = self.subAgents[subAgentIdx]
-        numRuns = currSubAgent.decisionMaker.NumRuns()
-        self.currCounterThreshold = int(numRuns / self.numTrial2Switch) * self.numTrial2Switch + self.numTrial2Switch
-        currSubAgent.trainAgent = True
-
-        self.decisionMaker.AddSwitch(subAgentIdx, self.switchCounter[subAgentIdx], SUBAGENTS_NAMES[self.trainOrder[self.currTrainSubAgentIdx]])
-        self.switchCounter[subAgentIdx] += 1
-
-        print("\n\nstart train sub agent:", SUBAGENTS_NAMES[self.trainOrder[self.currTrainSubAgentIdx]])
-        print("counter threshold = ", self.currCounterThreshold)
+            self.currTrainAgentIdx = (self.currTrainAgentIdx + 1) % len(self.trainOrder)
         
+        # if idx is negative than all dm will take target values
+        if self.currTrainAgentIdx >= 0:
+            agentIdx = self.trainOrder[self.currTrainAgentIdx]
+            if agentIdx == ID_SELF_AGENT:
+                currAgent = self
+                name = AGENT_NAME
+            else:
+                currAgent = self.subAgents[agentIdx]  
+                name = SUBAGENTS_NAMES[agentIdx]
+
+            numRuns = currAgent.decisionMaker.NumRuns()
+            currAgent.decisionMaker.ResetHistory()
+            self.currCounterThreshold = int(numRuns / self.numTrial2Switch) * self.numTrial2Switch + self.numTrial2Switch
+            currAgent.trainAgent = True
+
+            self.decisionMaker.AddSwitch(agentIdx, self.switchCounter[agentIdx], name, self.allResultFile)
+            self.switchCounter[agentIdx] += 1
+
+            print("\n\nstart train sub agent:", name)
+            print("counter threshold = ", self.currCounterThreshold)
+        
+        else:
+            self.decisionMaker.AddSwitch(self.currTrainAgentIdx, 0, "DfltVals", self.allResultFile)
+            self.currCounterThreshold = self.decisionMaker.decisionMaker.trialsOfDfltRun
+            
     def FindActingHeirarchi(self):
         if self.playAgent:
             return 1
@@ -394,24 +481,54 @@ class BaseMngr(BaseAgent):
         self.current_scaled_state = np.zeros(BASE_STATE.SIZE, dtype=np.int32, order='C')
 
         self.subAgentsActions = {}
-        
+
+        self.lastActionCommittedStep = 0
+        self.lastActionCommittedState = None
+        self.lastActionCommittedNextState = None
+
         for sa in ALL_SUB_AGENTS:
             self.subAgentsActions[sa] = None
             self.subAgents[sa].FirstStep(obs) 
 
+        # switch among agents if necessary
+        if self.trainSubAgentsSimultaneously or self.trainAll:
+            if self.currTrainAgentIdx >= 0:
+                agentIdx = self.trainOrder[self.currTrainAgentIdx]
+                
+                if agentIdx == ID_SELF_AGENT:
+                    numRuns = self.decisionMaker.NumRuns()
+                else:
+                    currAgent = self.subAgents[agentIdx]
+                    numRuns = currAgent.decisionMaker.NumRuns()
+
+                if numRuns >= self.currCounterThreshold:
+                    self.SwitchTrainSubAgent(agentIdx)
+            else:
+
+                if self.decisionMaker.NumDfltRuns() >= self.currCounterThreshold:
+                    self.currTrainAgentIdx = 0
+                    self.SwitchTrainSubAgent()
+
     def EndRun(self, reward, score, stepNum):
-        if self.trainAgent or self.trainSubAgentsSimultaneously:
-            self.decisionMaker.end_run(reward, score, stepNum)            
+        saveTables = False
+        if self.trainAgent:
+            saved = self.decisionMaker.end_run(reward, score, stepNum)
+            saveTables |= saved  
 
         for subAgent in self.subAgents.values():
-            subAgent.EndRun(reward, score, stepNum)
+            saved = subAgent.EndRun(reward, score, stepNum)
+            saveTables |= saved  
         
-        if self.trainSubAgentsSimultaneously:
-            currSubAgent = self.subAgents[self.trainOrder[self.currTrainSubAgentIdx]]
-            numRuns = currSubAgent.decisionMaker.NumRuns()
+        if self.trainSubAgentsSimultaneously or self.trainAll:
+            if self.allResultFile != None:
+                self.allResultFile.end_run(reward, score, stepNum, saveTables)
+                # # for default run (all agents with target values)
+            if self.currTrainAgentIdx < 0:
+                self.decisionMaker.end_run(reward, score, stepNum)
+                for subAgent in self.subAgents.values():
+                    subAgent.decisionMaker.end_run(reward, score, stepNum)
 
-            if numRuns >= self.currCounterThreshold:
-                self.SwitchTrainSubAgent(self.currTrainSubAgentIdx)
+        return saveTables
 
 
     def MonitorObservation(self, obs):
@@ -444,6 +561,11 @@ class BaseMngr(BaseAgent):
 
         self.sharedData.currBaseState = self.current_scaled_state.copy()
 
+        if self.isActionCommitted:
+            self.lastActionCommittedStep = self.sharedData.numAgentStep
+            self.lastActionCommittedState = self.previous_scaled_state
+            self.lastActionCommittedNextState = self.current_scaled_state
+
     def ScaleState(self):
         self.current_scaled_state[:] = self.current_state[:]
         
@@ -453,14 +575,15 @@ class BaseMngr(BaseAgent):
         self.current_scaled_state[BASE_STATE.SUPPLY_LEFT] = min(BASE_STATE.SUPPLY_LEFT_MAX, self.current_scaled_state[BASE_STATE.SUPPLY_LEFT])
 
     def Learn(self, reward, terminal): 
-        if self.trainAgent:
+        if self.history != None and self.trainAgent:
             if self.isActionCommitted:
                 self.history.learn(self.previous_scaled_state, self.lastActionCommitted, reward, self.current_scaled_state, terminal)
             elif terminal:
-                # if terminal reward entire state if action is not chosen for current step
-                for a in range(NUM_ACTIONS):
-                    self.history.learn(self.previous_scaled_state, a, reward, self.terminalState, terminal)
-                    self.history.learn(self.current_scaled_state, a, reward, self.terminalState, terminal)
+                if self.lastActionCommitted != None:
+                    numSteps = self.lastActionCommittedStep - self.sharedData.numAgentStep
+                    discountedReward = reward * pow(self.decisionMaker.DiscountFactor(), numSteps)
+                    self.history.learn(self.lastActionCommittedState, self.lastActionCommitted, discountedReward, self.lastActionCommittedNextState, terminal) 
+
 
         for sa in ALL_SUB_AGENTS:
             self.subAgents[sa].Learn(reward, terminal) 
@@ -487,7 +610,7 @@ class BaseMngr(BaseAgent):
                     exploreProb = self.decisionMaker.ExploreProb()              
                 else:
                     targetValues = True
-                    exploreProb = 1 #self.decisionMaker.TargetExploreProb()   
+                    exploreProb = self.decisionMaker.TargetExploreProb()   
 
                 if np.random.uniform() > exploreProb:
                     valVec = self.decisionMaker.ActionValuesVec(self.current_state, targetValues)   
@@ -528,9 +651,21 @@ class BaseMngr(BaseAgent):
             print(BASE_STATE.IDX2STR[i], self.current_scaled_state[i], end = ', ')
         print(']')
 
+
 if __name__ == "__main__":
+    from absl import app
+    from absl import flags
+    flags.DEFINE_string("directoryNames", "", "directory names to take results")
+    flags.DEFINE_string("grouping", "100", "grouping size of results.")
+    flags.FLAGS(sys.argv)
+
+    directoryNames = (flags.FLAGS.directoryNames).split(",")
+    grouping = int(flags.FLAGS.grouping)
+
     if "results" in sys.argv:
-        PlotResults(AGENT_NAME, AGENT_DIR, RUN_TYPES)
+        print(directoryNames)
+        PlotResults(AGENT_NAME, AGENT_DIR, RUN_TYPES, runDirectoryNames=directoryNames, grouping=grouping)
     
     if "resultsSwitchingTrain" in sys.argv:
-        PlotResults(AGENT_NAME, AGENT_DIR, RUN_TYPES, subAgentsGroups = list(SUBAGENTS_NAMES.values()))
+        PlotResults(AGENT_NAME, AGENT_DIR, RUN_TYPES, runDirectoryNames=directoryNames, grouping=grouping, 
+                    subAgentsGroups=list(SUBAGENTS_NAMES.values()) + [AGENT_NAME, "DfltVals"], keyResults=ALL_RESULTS, additionPlots=list(SUBAGENTS_NAMES.values()) + [AGENT_NAME])
