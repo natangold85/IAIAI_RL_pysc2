@@ -281,7 +281,12 @@ class BattleMngr(BaseAgent):
 
     
     def Learn(self, reward, terminal):
+        for sa in self.activeSubAgents:
+            self.subAgents[sa].Learn(reward, terminal)
+
         if self.trainAgent:
+            reward = reward if not terminal else self.NormalizeReward(reward)
+
             if self.isActionCommitted:
                 self.history.learn(self.previous_state, self.lastActionCommitted, reward, self.current_state, terminal)
             elif terminal:
@@ -289,9 +294,6 @@ class BattleMngr(BaseAgent):
                 for a in range(NUM_ACTIONS):
                     self.history.learn(self.previous_state, a, reward, self.terminalState, terminal)
                     self.history.learn(self.current_state, a, reward, self.terminalState, terminal)
-
-        for sa in self.activeSubAgents:
-            self.subAgents[sa].Learn(reward, terminal)
 
         self.previous_state[:] = self.current_state[:]
         self.isActionCommitted = False

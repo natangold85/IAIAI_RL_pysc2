@@ -27,7 +27,10 @@ class BaseAgent(base_agent.BaseAgent):
         if stateSize != None:
             self.terminalState = np.zeros(stateSize, int)
         
+        self.decisionMaker = None
         self.history = None
+        self.trainAgent = False
+        self.subAgents = {}
     
     def GetDecisionMaker(self):
         return None
@@ -46,6 +49,14 @@ class BaseAgent(base_agent.BaseAgent):
 
         self.current_action = None
         self.lastActionCommitted = None
+
+        if self.decisionMaker != None:
+            self.minReward = self.decisionMaker.GetMinReward()
+            self.maxReward = self.decisionMaker.GetMaxReward()
+        else:
+            self.minReward = 0
+            self.maxReward = 0
+
 
     def EndRun(self, reward, score, stepNum):
         pass
@@ -74,7 +85,22 @@ class BaseAgent(base_agent.BaseAgent):
 
     def RemoveNonTerminalHistory(self):
         if self.history != None:
-            self.history.RemoveNonTerminalHistory()
+            self.history.RemoveNonTerminalHistory()    
+
+    def NormalizeReward(self, reward):
+        return 2 * (reward - self.minReward) / (self.maxReward - self.minReward) - 1
+        
+    def AddTerminalReward(self, reward):
+        for sa in self.subAgents.values():
+            sa.AddTerminalReward()
+
+        if self.trainAgent:
+            if reward < self.minReward:
+                self.minReward = reward
+                self.decisionMaker.SetMinReward(reward)
+            elif reward > self.maxReward:
+                self.maxReward = reward
+                self.decisionMaker.SetMaxReward(reward)    
 
 # params base
 class ParamsBase:

@@ -264,6 +264,8 @@ class DoNothingSubAgent(BaseAgent):
 
     def Learn(self, reward, terminal):            
         if self.trainAgent:
+            reward = reward if not terminal else self.NormalizeReward(reward)
+            
             if self.isActionCommitted:
                 self.history.learn(self.previous_state, self.lastActionCommitted, reward, self.current_state, terminal)
 

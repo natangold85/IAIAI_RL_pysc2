@@ -375,9 +375,6 @@ class SuperAgent(BaseAgent):
 
         self.maxSupply = False
 
-        self.minReward = self.subAgents[SUB_AGENT_ID_BASE].subAgents[1].decisionMaker.GetMinReward()
-        self.maxReward = self.subAgents[SUB_AGENT_ID_BASE].subAgents[1].decisionMaker.GetMaxReward()
-
     def LastStep(self, obs):
         if self.useMapRewards:
             reward = obs.reward
@@ -392,13 +389,8 @@ class SuperAgent(BaseAgent):
 
         self.CreateState(obs)
         
-        if sumReward < self.minReward:
-            self.minReward = sumReward
-            self.subAgents[SUB_AGENT_ID_BASE].subAgents[1].decisionMaker.SetMinReward(sumReward)
-        elif sumReward > self.maxReward:
-            self.maxReward = sumReward
-            self.subAgents[SUB_AGENT_ID_BASE].subAgents[1].decisionMaker.SetMaxReward(sumReward)
-        
+        self.AddTerminalReward(sumReward)
+
         self.Learn(sumReward, True)  
         self.EndRun(sumReward, score, self.sharedData.numAgentStep)
 
@@ -412,9 +404,6 @@ class SuperAgent(BaseAgent):
         
         for sa in self.activeSubAgents:
             self.subAgents[sa].EndRun(reward, score, numStep) 
-
-    def NormalizeReward(self, reward):
-        return 2 * (reward - self.minReward) / (self.maxReward - self.minReward) - 1
 
     def ChooseAction(self):
         for sa in self.activeSubAgents:
@@ -538,19 +527,31 @@ class SuperAgent(BaseAgent):
             self.accumulatedTrainReward += reward * pow(self.discountForLocalReward, self.sharedData.numAgentStep)
             self.sharedData.prevTrainActionReward = 0
          
-        if terminal:
-            reward = self.NormalizeReward(reward)
+        for sa in self.activeSubAgents:
+            self.subAgents[sa].Learn(reward, terminal)
             
         if self.history != None and self.trainAgent and self.current_action != None:
+            if terminal:
+                reward = self.NormalizeReward(reward)
             self.history.learn(self.previous_scaled_state, self.current_action, reward, self.current_scaled_state, terminal)
 
         self.previous_scaled_state[:] = self.current_scaled_state[:]
 
-        for sa in self.activeSubAgents:
-            self.subAgents[sa].Learn(reward, terminal)
      
     def ScaleCurrState(self):
         self.current_scaled_state[:] = self.current_state[:]
+
+    def AddTerminalReward(self, reward):
+        for sa in self.subAgents.values():
+            sa.AddTerminalReward()
+
+        if self.trainAgent:
+            if reward < self.minReward:
+                self.minReward = reward
+                self.decisionMaker.SetMinReward(reward)
+            elif reward > self.maxReward:
+                self.maxReward = reward
+                self.decisionMaker.SetMaxReward(reward)
 
     def PrintState(self):
         print ("supply depot buildings =" , self.current_state[STATE.BASE.SUPPLY_DEPOT_IDX], "in progress =", self.current_state[STATE.BASE.IN_PROGRESS_SUPPLY_DEPOT_IDX])

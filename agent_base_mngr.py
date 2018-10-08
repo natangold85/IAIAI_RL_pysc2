@@ -595,7 +595,12 @@ class BaseMngr(BaseAgent):
         self.current_scaled_state[BASE_STATE.SUPPLY_LEFT] = min(BASE_STATE.SUPPLY_LEFT_MAX, self.current_scaled_state[BASE_STATE.SUPPLY_LEFT])
 
     def Learn(self, reward, terminal): 
+        for sa in ALL_SUB_AGENTS:
+            self.subAgents[sa].Learn(reward, terminal) 
+            
         if self.history != None and self.trainAgent:
+            reward = reward if not terminal else self.NormalizeReward(reward)
+
             if self.isActionCommitted:
                 self.history.learn(self.previous_scaled_state, self.lastActionCommitted, reward, self.current_scaled_state, terminal)
             elif terminal:
@@ -603,10 +608,6 @@ class BaseMngr(BaseAgent):
                     numSteps = self.lastActionCommittedStep - self.sharedData.numAgentStep
                     discountedReward = reward * pow(self.decisionMaker.DiscountFactor(), numSteps)
                     self.history.learn(self.lastActionCommittedState, self.lastActionCommitted, discountedReward, self.lastActionCommittedNextState, terminal) 
-
-
-        for sa in ALL_SUB_AGENTS:
-            self.subAgents[sa].Learn(reward, terminal) 
 
         self.previous_scaled_state[:] = self.current_scaled_state[:]
         self.isActionCommitted = False
@@ -665,7 +666,7 @@ class BaseMngr(BaseAgent):
             return ACTION2STR[a]
         else:
             return ACTION2STR[a] + "-->" + self.subAgents[a].Action2Str(self.subAgentsActions[a])
-        
+
     def StateIdx2Str(self, idx):
         return BASE_STATE.IDX2STR[idx]
 
