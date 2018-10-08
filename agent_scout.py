@@ -75,7 +75,13 @@ class ScoutAgent(BaseAgent):
             return 1
         
         return -1
-          
+
+    def GetAgentByName(self, name):
+        if AGENT_NAME == name:
+            return self
+            
+        return None
+             
     def SetGridSize(self, gridSize):
         self.gridSize = gridSize
         

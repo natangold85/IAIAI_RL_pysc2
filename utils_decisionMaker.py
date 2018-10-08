@@ -70,13 +70,19 @@ class BaseDecisionMaker:
         self.copyTargetLock.release()
 
 
+        numTrial2Learn = -1
+        
         if self.trainFlag:
-            self.Train()
+            numTrial2Learn = self.Train()
             self.trainFlag = False
 
         for subDM in self.subAgentsDecisionMakers.values():
             if subDM != None:
-                subDM.TrainAll()
+                numTrial2LearnSa = subDM.TrainAll()
+                if numTrial2LearnSa >= 0:
+                    numTrial2Learn = numTrial2LearnSa
+        
+        return numTrial2Learn
 
     def AddSwitch(self, idx, numSwitch, name, resultFile):
         if resultFile != None:
@@ -309,12 +315,14 @@ class LearnWithReplayMngr(BaseDecisionMaker):
 
     def Train(self):
         s,a,r,s_, terminal = self.historyMngr.GetHistory()
-        
+        numRuns2Learn = -1
+       
         if len(a) > self.params.minReplaySize:
             start = datetime.datetime.now()
             
             self.decisionMaker.learn(s, a, r, s_, terminal, self.trial2LearnDQN)
             self.endRunLock.acquire()
+            numRuns2Learn = self.trial2LearnDQN
             self.decisionMaker.SaveDQN(self.trial2LearnDQN)
             self.endRunLock.release()
 
@@ -324,6 +332,8 @@ class LearnWithReplayMngr(BaseDecisionMaker):
             print("\t", threading.current_thread().getName(), ":", self.agentName,"->ExperienceReplay - training with hist size = ", len(r), ", last", msDiff, "milliseconds")
         else:
             print("\t", threading.current_thread().getName(), ":", self.agentName,"->ExperienceReplay size to small - training with hist size = ", len(r))
+
+        return numRuns2Learn
 
 
     def ResetHistory(self, dump2Old=True):

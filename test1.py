@@ -1,54 +1,67 @@
-from utils_decisionMaker import LearnWithReplayMngr
-from utils_dqn import DQN_WITH_TARGET_PARAMS
-
-from utils_results import PlotMngr
-
-from maze_game import MazeGame
-
-import sys
-
-holes = []
-holes.append([1,1])
-holes.append([5,3])
-holes.append([4,8])
-holes.append([7,9])
-holes.append([8,2])
-holes.append([6,1])
-holes.append([3,5])
-holes.append([2,3])
-holes.append([8,6])
-holes.append([0,2])
-env = MazeGame(10, holes)
-
-numTrials2CmpResults = 500
-p = DQN_WITH_TARGET_PARAMS(stateSize=env.stateSize, numActions=env.numActions, numTrials2CmpResults=numTrials2CmpResults)
-dqn = LearnWithReplayMngr("DQN_WithTarget", p, decisionMakerName = 'test_target', resultFileName = 'results', historyFileName = 'hist', directory = "test1")
-
-runTypeArg = ["test1"]
-resultFnames = ['results']
-directoryNames = ["test1"]
-
-plotName = "results.png"
-
-for i in range(100000):
-  s = env.newGame()
-  terminal = False
-  sumR = 0
-  numSteps = 0
-  
-  while not terminal:
-    a = dqn.choose_action(s)
-    s_, r, terminal = env.step(s,a)
-    dqn.learn(s, a, r, s_, terminal)
-    sumR += r
-    numSteps += 1
-    s = s_
-
-  isSaved = dqn.end_run(sumR,sumR,numSteps)  
-  print("num runs =", dqn.NumRuns(), "num target runs =", dqn.decisionMaker.NumRunsTarget())  
-  if dqn.NumRuns() > numTrials2CmpResults and isSaved:
-    plot = PlotMngr(resultFnames, directoryNames, runTypeArg, directoryNames[0])
-    plot.Plot(numTrials2CmpResults)
+import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+import matplotlib.tri as mtri
 
 
 
+fig = plt.figure(figsize=plt.figaspect(0.5))
+
+#============
+# First plot
+#============
+
+# Make a mesh in the space of parameterisation variables u and v
+u = np.linspace(0, 2.0 * np.pi, endpoint=True, num=50)
+v = np.linspace(-0.5, 0.5, endpoint=True, num=10)
+u, v = np.meshgrid(u, v)
+u, v = u.flatten(), v.flatten()
+
+# This is the Mobius mapping, taking a u, v pair and returning an x, y, z
+# triple
+x = (1 + 0.5 * v * np.cos(u / 2.0)) * np.cos(u)
+y = (1 + 0.5 * v * np.cos(u / 2.0)) * np.sin(u)
+z = 0.5 * v * np.sin(u / 2.0)
+
+# Triangulate parameter space to determine the triangles
+tri = mtri.Triangulation(u, v)
+
+# Plot the surface.  The triangles in parameter space determine which x, y, z
+# points are connected by an edge.
+ax = fig.add_subplot(1, 2, 1, projection='3d')
+ax.plot_trisurf(x, y, z, triangles=tri.triangles, cmap=plt.cm.Spectral)
+ax.set_zlim(-1, 1)
+
+#============
+# Second plot
+#============
+
+# Make parameter spaces radii and angles.
+n_angles = 36
+n_radii = 8
+min_radius = 0.25
+radii = np.linspace(min_radius, 0.95, n_radii)
+
+angles = np.linspace(0, 2*np.pi, n_angles, endpoint=False)
+angles = np.repeat(angles[..., np.newaxis], n_radii, axis=1)
+angles[:, 1::2] += np.pi/n_angles
+
+# Map radius, angle pairs to x, y, z points.
+x = (radii*np.cos(angles)).flatten()
+y = (radii*np.sin(angles)).flatten()
+z = (np.cos(radii)*np.cos(angles*3.0)).flatten()
+
+# Create the Triangulation; no triangles so Delaunay triangulation created.
+triang = mtri.Triangulation(x, y)
+
+# Mask off unwanted triangles.
+xmid = x[triang.triangles].mean(axis=1)
+ymid = y[triang.triangles].mean(axis=1)
+mask = np.where(xmid**2 + ymid**2 < min_radius**2, 1, 0)
+triang.set_mask(mask)
+
+# Plot the surface.
+ax = fig.add_subplot(1, 2, 2, projection='3d')
+ax.plot_trisurf(triang, z, cmap=plt.cm.CMRmap)
+
+plt.show()

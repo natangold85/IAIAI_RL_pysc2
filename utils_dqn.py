@@ -305,6 +305,10 @@ class DQN:
 
         self.sess.run(copy_ops)
 
+    def actionValuesSpecific(self, state, dmId): # dmId = target, curr
+        isTarget = dmId == "target"
+        return self.ActionValuesVec(state, isTarget)
+
 
 class DQN_WithTarget(DQN):
     def __init__(self, modelParams, nnName, nnDirectory, loadNN, agentName = "", isMultiThreaded = False, createSaver = True):
@@ -445,7 +449,7 @@ class DQN_WithTargetAndDefault(DQN_WithTarget):
 
         self.defaultDecisionMaker = modelParams.defaultDecisionMaker
         self.rewardHistDefault = []
-        self.trialsOfDfltRun = 2 * modelParams.numTrials2CmpResults
+        self.trialsOfDfltRun = modelParams.numTrials2CmpResults
         
         if isMultiThreaded:
             self.rewardHistDfltLock = Lock()
@@ -524,6 +528,12 @@ class DQN_WithTargetAndDefault(DQN_WithTarget):
     
     def DfltValueInitialized(self):
         return self.ValueDefault() != self.initValDflt
+
+    def actionValuesSpecific(self, state, dmId): # dmId = dflt, target, curr
+        if dmId == "dflt":
+            return self.defaultDecisionMaker.ActionValuesVec(state)
+        else:
+            return super(DQN_WithTargetAndDefault, self).actionValuesSpecific(state, dmId)
             
 # class CopyDqn:
 #     def __init__(self, argListFrom, argListTo):

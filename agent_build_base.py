@@ -20,6 +20,7 @@ from utils import SC2_Actions
 from utils import BaseAgent
 
 #decision makers
+from utils_decisionMaker import BaseDecisionMaker
 from utils_decisionMaker import LearnWithReplayMngr
 from utils_decisionMaker import UserPlay
 from utils_decisionMaker import BaseNaiveDecisionMaker
@@ -180,6 +181,7 @@ class BUILD_STATE:
     IDX2STR[IN_PROGRESS_REACTORS_IDX] = "REA_B"
     IDX2STR[IN_PROGRESS_TECHLAB_IDX] = "TECH_B"
     IDX2STR[SUPPLY_LEFT_IDX] = "SupplyLeft"
+    IDX2STR[TIME_LINE_IDX] = "TimeLine"
 
 class ActionRequirement:
     def __init__(self, mineralsPrice = 0, gasPrice = 0, buildingDependency = BUILD_STATE.MINERALS_IDX):
@@ -282,6 +284,9 @@ class BuildingCmdAddition(BuildingCmd):
         self.m_additionCoord = None
 
 def CreateDecisionMakerBuildBase(dmTypes, isMultiThreaded, numTrials2Learn=NUM_TRIALS_2_LEARN):
+    if dmTypes[AGENT_NAME] == "none":
+        return BaseDecisionMaker(AGENT_NAME), []
+
     runType = RUN_TYPES[dmTypes[AGENT_NAME]]
     # create agent dir
     directory = dmTypes["directory"] + "/" + AGENT_DIR
@@ -382,10 +387,16 @@ class BuildBaseSubAgent(BaseAgent):
 
         self.maxNumOilRefinery = 2
 
-        self.notAllowedDirections2CC = [[1, 0], [1, 1], [0, 1]]
+        self.notAllowedDirections2CC = [[1, 0], [1, 1], [0, 1]]      
 
     def GetDecisionMaker(self):
         return self.decisionMaker
+
+    def GetAgentByName(self, name):
+        if AGENT_NAME == name:
+            return self
+            
+        return None
 
     def FindActingHeirarchi(self):
         if self.playAgent:
@@ -455,7 +466,12 @@ class BuildBaseSubAgent(BaseAgent):
                 numRefinery = self.current_scaled_state[BUILD_STATE.REFINERY_IDX] + self.current_scaled_state[BUILD_STATE.IN_PROGRESS_REFINERY_IDX]               
                 group2Select = self.sharedData.scvGasGroups[numRefinery]
             else:
-                group2Select = self.sharedData.scvMineralGroup
+                if self.NumBeforeProgress(buildingType) == 0:
+                    group2Select = self.sharedData.scvMineralGroup
+                else:
+                    group2Select = None
+
+
             
             if group2Select != None:
                 return actions.FunctionCall(SC2_Actions.SELECT_CONTROL_GROUP, [SC2_Params.CONTROL_GROUP_RECALL, [group2Select]]), False
@@ -539,6 +555,7 @@ class BuildBaseSubAgent(BaseAgent):
         for key, value in BUILD_STATE.BUILDING_2_STATE_TRANSITION.items():
             self.current_state[value[0]] = self.NumBuildings(key)
             if value[1] >= 0:
+                self.current_state[value[0]] += len(self.sharedData.buildCommands[key])
                 self.current_state[value[1]] = len(self.sharedData.buildCommands[key])
 
         self.current_state[BUILD_STATE.MINERALS_IDX] = obs.observation['player'][SC2_Params.MINERALS]
@@ -611,6 +628,11 @@ class BuildBaseSubAgent(BaseAgent):
                 if numBuilding == numAddition:
                     valid.remove(action)
 
+        for building, action in ACTIONS.BUILDING_2_ACTION_TRANSITION.items():
+            if action in valid:
+                if self.NumBeforeProgress(building) > 0:
+                    valid.remove(action)
+
         return valid
 
     def ValidSingleAction(self, requirement):
@@ -619,8 +641,19 @@ class BuildBaseSubAgent(BaseAgent):
         otherReq = self.current_scaled_state[requirement.buildingDependency] > 0
         return hasMinerals & hasGas & otherReq
 
+    def NumBeforeProgress(self, building):
+        num = 0
+        for b in self.sharedData.buildCommands[building]:
+            num += not b.m_inProgress
+        
+        return num
+
+
     def Action2Str(self, a):
         return ACTIONS.ACTION2STR[a]
+
+    def StateIdx2Str(self, idx):
+        return BUILD_STATE.IDX2STR[idx]
 
     def PrintState(self):
         print(end = "[")

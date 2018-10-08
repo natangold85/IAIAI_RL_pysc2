@@ -21,6 +21,7 @@ from pysc2.lib.units import Terran
 
 from utils import BaseAgent
 
+from utils_decisionMaker import BaseDecisionMaker
 from utils_decisionMaker import BaseNaiveDecisionMaker
 
 from agent_train_army import TrainCmd
@@ -175,11 +176,20 @@ class DoNothingSubAgent(BaseAgent):
         self.unitInQueue[Terran.SiegeTank] = [Terran.Factory, Terran.FactoryTechLab]
 
     def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
+        if dmTypes[AGENT_NAME] == "none":
+            return BaseDecisionMaker(AGENT_NAME)
+  
         decisionMaker = NaiveDecisionMakerDoNothing()
         return decisionMaker
 
     def GetDecisionMaker(self):
         return self.decisionMaker
+
+    def GetAgentByName(self, name):
+        if AGENT_NAME == name:
+            return self
+            
+        return None
 
     def FindActingHeirarchi(self):
         if self.playAgent:

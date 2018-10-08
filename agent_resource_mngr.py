@@ -113,12 +113,14 @@ class RESOURCE_STATE:
     GAS_IDX = 1
     MINERALS_FIELDS_COUNT = 2
     GAS_REFINERY_COUNT = 3
-    SCV_GROUP_MINERALS_IDX = 4
-    SCV_GROUP_GAS1_IDX = 5
-    SCV_GROUP_GAS2_IDX = 6
-    SCV_BUILDING_QUEUE = 7
     
-    SIZE = 8
+    SCV_NUM = 4
+    SCV_GROUP_MINERALS_IDX = 5
+    SCV_GROUP_GAS1_IDX = 6
+    SCV_GROUP_GAS2_IDX = 7
+    SCV_BUILDING_QUEUE = 8
+    
+    SIZE = 9
 
     IDX2STR = ["ccNum" , "min", "gas", "min_fieldsCount", "gas_refCount", "scv_min", "scv_gas1", "scv_gas2", "scv_Q"]
 
@@ -186,7 +188,7 @@ class NaiveDecisionMakerResource(BaseNaiveDecisionMaker):
         gas1Size = state[RESOURCE_STATE.SCV_GROUP_GAS1_IDX]
         gas2Size = state[RESOURCE_STATE.SCV_GROUP_GAS2_IDX]
         
-        sumScv = minSize + gas1Size + gas2Size + qSize
+        sumScv = max(minSize + gas1Size + gas2Size + qSize, state[RESOURCE_STATE.SCV_NUM])
 
         if minSize > self.desiredGroupCnt[SCV_GROUP_MINERALS]:
             if gas1Size < self.desiredGroupCnt[SCV_GROUP_GAS1]:
@@ -262,6 +264,11 @@ class ResourceMngrSubAgent(BaseAgent):
     def GetDecisionMaker(self):
         return self.decisionMaker
 
+    def GetAgentByName(self, name):
+        if AGENT_NAME == name:
+            return self
+            
+        return None
 
     def FindActingHeirarchi(self):
         if self.playAgent:
@@ -354,6 +361,8 @@ class ResourceMngrSubAgent(BaseAgent):
                     
         unitType = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
 
+
+        self.current_state[RESOURCE_STATE.SCV_NUM] = obs.observation['player'][SC2_Params.WORKERS_SUPPLY_OCCUPATION]
         self.current_state[RESOURCE_STATE.MINERALS_IDX] = obs.observation['player'][SC2_Params.MINERALS]
         self.current_state[RESOURCE_STATE.GAS_IDX] = obs.observation['player'][SC2_Params.VESPENE]
 
@@ -468,8 +477,3 @@ class ResourceMngrSubAgent(BaseAgent):
             return self.gasGatherTarget[group]
         
         return [-1,-1]
-
-
-if __name__ == "__main__":
-    if "results" in sys.argv:
-        PlotResults(AGENT_NAME, AGENT_DIR, RUN_TYPES)

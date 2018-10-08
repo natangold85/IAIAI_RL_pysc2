@@ -87,7 +87,18 @@ class AttackAgent(BaseAgent):
 
     def GetDecisionMaker(self):
         return self.decisionMaker
-   
+
+    def GetAgentByName(self, name):
+        if AGENT_NAME == name:
+            return self
+        
+        for sa in self.subAgents.values():
+            ret = sa.GetAgentByName(name)
+            if ret != None:
+                return ret
+            
+        return None
+       
     def EndRun(self, reward, score, stepNum):     
         for sa in self.activeSubAgents:
             self.subAgents[sa].EndRun(reward, score, stepNum) 

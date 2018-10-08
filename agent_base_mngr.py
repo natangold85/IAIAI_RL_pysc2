@@ -22,6 +22,7 @@ from utils import TerranUnit
 from utils import SC2_Params
 from utils import SC2_Actions
 
+from utils_decisionMaker import BaseDecisionMaker
 from utils_decisionMaker import LearnWithReplayMngr
 from utils_decisionMaker import UserPlay
 from utils_decisionMaker import BaseNaiveDecisionMaker
@@ -250,7 +251,9 @@ RUN_TYPES[NAIVE][RESULTS] = "baseMngr_result"
 RUN_TYPES[NAIVE][ALL_RESULTS] = "baseMngr_AllResults"
 
 def CreateDecisionMakerBaseMngr(dmTypes, isMultiThreaded, numTrials2Learn=NUM_TRIALS_2_LEARN):
-    
+    if dmTypes[AGENT_NAME] == "none":
+        return BaseDecisionMaker(AGENT_NAME), []
+
     runType = RUN_TYPES[dmTypes[AGENT_NAME]]
     directory = dmTypes["directory"] + "/" + AGENT_DIR + runType[DIRECTORY]
 
@@ -372,11 +375,17 @@ class BaseMngr(BaseAgent):
         self.sharedData = sharedData
         self.terminalState = np.zeros(BASE_STATE.SIZE, dtype=np.int, order='C')
 
+        self.subAgentsActions = {}
+
         # model params 
         self.minPriceMinerals = 50
 
+
+
     def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
         decisionMaker, runType = CreateDecisionMakerBaseMngr(dmTypes, isMultiThreaded)
+        if dmTypes[AGENT_NAME] == "none":
+            return decisionMaker
 
         directory = dmTypes["directory"] + "/" + AGENT_DIR + runType[DIRECTORY]
         
@@ -393,6 +402,17 @@ class BaseMngr(BaseAgent):
 
     def GetDecisionMaker(self):
         return self.decisionMaker
+
+    def GetAgentByName(self, name):
+        if AGENT_NAME == name:
+            return self
+        
+        for sa in self.subAgents.values():
+            ret = sa.GetAgentByName(name)
+            if ret != None:
+                return ret
+            
+        return None
 
     def SetSubAgentTrainSwitch(self, numTrial2Switch, trainOrder):
         self.numTrial2Switch = numTrial2Switch
@@ -641,10 +661,13 @@ class BaseMngr(BaseAgent):
         return (self.current_scaled_state[BASE_STATE.TRAIN_BUILDING_RELATED_IDX] > 0).any()
 
     def Action2Str(self, a):
-        if a == ACTION_DO_NOTHING:
+        if a == ACTION_DO_NOTHING or a not in self.subAgentsActions.keys():
             return ACTION2STR[a]
         else:
             return ACTION2STR[a] + "-->" + self.subAgents[a].Action2Str(self.subAgentsActions[a])
+        
+    def StateIdx2Str(self, idx):
+        return BASE_STATE.IDX2STR[idx]
 
     def PrintState(self):
         for i in range(BASE_STATE.SIZE):

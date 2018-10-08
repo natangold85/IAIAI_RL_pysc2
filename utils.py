@@ -61,6 +61,9 @@ class BaseAgent(base_agent.BaseAgent):
 
     def Action2Str(self, a):
         return "None"
+
+    def StateIdx2Str(self, idx):
+        return "None"
     
     def SubAgentActionChosen(self, action):
         self.isActionCommitted = True

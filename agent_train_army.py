@@ -19,6 +19,7 @@ from utils import SC2_Params
 from utils import SC2_Actions
 
 #decision makers
+from utils_decisionMaker import BaseDecisionMaker
 from utils_decisionMaker import LearnWithReplayMngr
 from utils_decisionMaker import UserPlay
 from utils_decisionMaker import BaseNaiveDecisionMaker
@@ -217,13 +218,15 @@ RUN_TYPES[DQN2L_DFLT][DIRECTORY] = "trainArmy_dqn2l_dflt"
 RUN_TYPES[DQN2L_DFLT][HISTORY] = "replayHistory"
 RUN_TYPES[DQN2L_DFLT][RESULTS] = "result"
 
-
 RUN_TYPES[NAIVE] = {}
 RUN_TYPES[NAIVE][DIRECTORY] = "trainArmy_naive"
 RUN_TYPES[NAIVE][RESULTS] = "trainArmy_result"
 
 
 def CreateDecisionMakerTrainArmy(dmTypes, isMultiThreaded, numTrials2Learn=NUM_TRIALS_2_LEARN):
+    if dmTypes[AGENT_NAME] == "none":
+        return BaseDecisionMaker(AGENT_NAME), []
+    
     runType = RUN_TYPES[dmTypes[AGENT_NAME]]
     # create agent dir
     directory = dmTypes["directory"] + "/" + AGENT_DIR
@@ -308,6 +311,12 @@ class TrainArmySubAgent(BaseAgent):
 
     def GetDecisionMaker(self):
         return self.decisionMaker
+
+    def GetAgentByName(self, name):
+        if AGENT_NAME == name:
+            return self
+            
+        return None
 
     def FindActingHeirarchi(self):
         if self.playAgent:
@@ -470,6 +479,9 @@ class TrainArmySubAgent(BaseAgent):
 
     def Action2Str(self,a):
         return ACTION2STR[a]
+
+    def StateIdx2Str(self, idx):
+        return TRAIN_STATE.IDX2STR[idx]
 
     def PrintState(self):
         for i in range(TRAIN_STATE.SIZE):

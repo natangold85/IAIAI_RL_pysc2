@@ -207,7 +207,9 @@ class BaseAttack(BaseAgent):
         self.enemyBuildingGridLoc2ScreenLoc = {}
 
     def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
-        
+        if dmTypes[AGENT_NAME] == "none":
+            return BaseDecisionMaker(AGENT_NAME)
+            
         if dmTypes[AGENT_NAME] == "naive":
             decisionMaker = NaiveDecisionMakerBaseAttack()
         else:
@@ -225,6 +227,12 @@ class BaseAttack(BaseAgent):
     def GetDecisionMaker(self):
         return self.decisionMaker
 
+    def GetAgentByName(self, name):
+        if AGENT_NAME == name:
+            return self
+            
+        return None
+        
     def FindActingHeirarchi(self):
         if self.playAgent:
             return 1

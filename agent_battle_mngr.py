@@ -218,6 +218,9 @@ class BattleMngr(BaseAgent):
     
 
     def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
+        if dmTypes[AGENT_NAME] == "none":
+            return BaseDecisionMaker(AGENT_NAME)
+
         if dmTypes[AGENT_NAME] == "naive":
             decisionMaker = NaiveDecisionMakerBattleMngr()
         else:
@@ -234,6 +237,17 @@ class BattleMngr(BaseAgent):
 
     def GetDecisionMaker(self):
         return self.decisionMaker
+
+    def GetAgentByName(self, name):
+        if AGENT_NAME == name:
+            return self
+        
+        for sa in self.subAgents.values():
+            ret = sa.GetAgentByName(name)
+            if ret != None:
+                return ret
+            
+        return None
 
     def FindActingHeirarchi(self):
         if self.playAgent:
@@ -462,8 +476,3 @@ class BattleMngr(BaseAgent):
                     print(self.current_state[idx], end = ' ')
 
             print('||')
-
-
-if __name__ == "__main__":
-    if "results" in sys.argv:
-        PlotResults(AGENT_NAME, AGENT_DIR, RUN_TYPES)

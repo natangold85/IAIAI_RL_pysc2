@@ -19,6 +19,7 @@ from utils import TerranUnit
 from utils import SC2_Params
 from utils import SC2_Actions
 
+from utils_decisionMaker import BaseDecisionMaker
 from utils_decisionMaker import LearnWithReplayMngr
 
 from utils_qtable import QTableParamsExplorationDecay
@@ -255,6 +256,9 @@ class SuperAgent(BaseAgent):
 
     def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
         
+        if dmTypes[AGENT_NAME] == "none":
+            return BaseDecisionMaker(AGENT_NAME)
+
         runType = RUN_TYPES[dmTypes[AGENT_NAME]]
 
         # create agent dir
@@ -268,6 +272,17 @@ class SuperAgent(BaseAgent):
 
         return decisionMaker
 
+    def GetAgentByName(self, name):
+        if AGENT_NAME == name:
+            return self
+        
+        for sa in self.subAgents.values():
+            ret = sa.GetAgentByName(name)
+            if ret != None:
+                return ret
+            
+        return None
+     
     def GetDecisionMaker(self):
         return self.decisionMaker
 
