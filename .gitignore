@@ -10,3 +10,10 @@
 *.meta
 *.gz
 *.data-00000-of-00001
+*.data-00000-of-00001
+*.gz
+TrainBaseMngr/BaseMngr/baseMngr_dqn2l/baseMngr_dqn2l.index
+TrainBaseMngr/BaseMngr/baseMngr_dqn2l/baseMngr_dqn2l.data-00000-of-00001
+TrainBaseMngr/BaseMngr/baseMngr_dqn2l/baseMngr_dqn2l.meta
+TrainBaseMngr/BaseMngr/baseMngr_dqn2l/baseMngr_replayHistory.gz
+TrainBaseMngr/BaseMngr/baseMngr_dqn2l/baseMngr_result.gz
