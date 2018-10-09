@@ -450,12 +450,15 @@ class SuperAgent(BaseAgent):
 
         return valid
 
-    def Action2Str(self, realAct):
+    def Action2Str(self, realAct, onlyAgent=False):
         subAgent, subAgentAction = self.AdjustAction2SubAgents()
         if realAct:
             subAgent, subAgentAction = self.GetAction2Act(subAgent, subAgentAction)
 
-        return SUBAGENTS_NAMES[subAgent] + "-->" + self.subAgents[subAgent].Action2Str(subAgentAction)
+        if onlyAgent:
+            return SUBAGENTS_NAMES[subAgent]    
+        else:
+            return SUBAGENTS_NAMES[subAgent] + "-->" + self.subAgents[subAgent].Action2Str(subAgentAction)
 
     def ActAction(self, obs): 
         # get subagent and action
@@ -540,18 +543,6 @@ class SuperAgent(BaseAgent):
      
     def ScaleCurrState(self):
         self.current_scaled_state[:] = self.current_state[:]
-
-    def AddTerminalReward(self, reward):
-        for sa in self.subAgents.values():
-            sa.AddTerminalReward()
-
-        if self.trainAgent:
-            if reward < self.minReward:
-                self.minReward = reward
-                self.decisionMaker.SetMinReward(reward)
-            elif reward > self.maxReward:
-                self.maxReward = reward
-                self.decisionMaker.SetMaxReward(reward)
 
     def PrintState(self):
         print ("supply depot buildings =" , self.current_state[STATE.BASE.SUPPLY_DEPOT_IDX], "in progress =", self.current_state[STATE.BASE.IN_PROGRESS_SUPPLY_DEPOT_IDX])

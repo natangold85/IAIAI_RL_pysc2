@@ -649,7 +649,7 @@ class BuildBaseSubAgent(BaseAgent):
         return num
 
 
-    def Action2Str(self, a):
+    def Action2Str(self, a, onlyAgent=False):
         return ACTIONS.ACTION2STR[a]
 
     def StateIdx2Str(self, idx):

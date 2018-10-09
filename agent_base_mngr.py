@@ -661,8 +661,8 @@ class BaseMngr(BaseAgent):
     def ArmyBuildingExist(self):
         return (self.current_scaled_state[BASE_STATE.TRAIN_BUILDING_RELATED_IDX] > 0).any()
 
-    def Action2Str(self, a):
-        if a == ACTION_DO_NOTHING or a not in self.subAgentsActions.keys():
+    def Action2Str(self, a, onlyAgent=False):
+        if a == ACTION_DO_NOTHING or a not in self.subAgentsActions.keys() or onlyAgent:
             return ACTION2STR[a]
         else:
             return ACTION2STR[a] + "-->" + self.subAgents[a].Action2Str(self.subAgentsActions[a])

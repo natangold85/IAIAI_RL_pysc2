@@ -70,7 +70,7 @@ class BaseAgent(base_agent.BaseAgent):
     def IsDoNothingAction(self, a):
         return True
 
-    def Action2Str(self, a):
+    def Action2Str(self, a, onlyAgent=False):
         return "None"
 
     def StateIdx2Str(self, idx):
@@ -89,10 +89,10 @@ class BaseAgent(base_agent.BaseAgent):
 
     def NormalizeReward(self, reward):
         return 2 * (reward - self.minReward) / (self.maxReward - self.minReward) - 1
-        
+
     def AddTerminalReward(self, reward):
         for sa in self.subAgents.values():
-            sa.AddTerminalReward()
+            sa.AddTerminalReward(reward)
 
         if self.trainAgent:
             if reward < self.minReward:

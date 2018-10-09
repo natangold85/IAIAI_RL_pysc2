@@ -377,7 +377,7 @@ class TrainArmySubAgent(BaseAgent):
     def Learn(self, reward, terminal):        
         if self.history != None and self.trainAgent:
             reward = reward if not terminal else self.NormalizeReward(reward)
-            
+
             if self.isActionCommitted:
                 self.history.learn(self.previous_scaled_state, self.lastActionCommitted, reward, self.current_scaled_state, terminal)
             
@@ -479,7 +479,7 @@ class TrainArmySubAgent(BaseAgent):
         otherReq = self.current_scaled_state[idx] > 0
         return hasMinerals & hasGas & otherReq
 
-    def Action2Str(self,a):
+    def Action2Str(self, a, onlyAgent=False):
         return ACTION2STR[a]
 
     def StateIdx2Str(self, idx):

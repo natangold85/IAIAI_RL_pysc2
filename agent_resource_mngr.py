@@ -294,7 +294,7 @@ class ResourceMngrSubAgent(BaseAgent):
     def Learn(self, reward, terminal):            
         if self.trainAgent:
             reward = reward if not terminal else self.NormalizeReward(reward)
-            
+
             if self.isActionCommitted:
                 self.history.learn(self.previous_scaled_state, self.lastActionCommitted, reward, self.current_scaled_state, terminal)
             elif terminal:
@@ -404,7 +404,7 @@ class ResourceMngrSubAgent(BaseAgent):
 
         return count
 
-    def Action2Str(self, a):
+    def Action2Str(self, a, onlyAgent=False):
         return ACTIONS.ACTION2STR[a]
 
     def Action2SC2Action(self, obs, action, moveNum):

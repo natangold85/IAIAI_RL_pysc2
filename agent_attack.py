@@ -149,7 +149,7 @@ class AttackAgent(BaseAgent):
         for sa in SUBAGENTS_NAMES.keys():
             self.subAgents[sa].FirstStep(obs) 
 
-    def Action2Str(self, a):
+    def Action2Str(self, a, onlyAgent=False):
         if self.attackPreformAction:
             return self.subAgents[SUB_AGENT_ID_BATTLEMNGR].Action2Str()
         else: 

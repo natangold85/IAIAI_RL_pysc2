@@ -270,7 +270,7 @@ class BaseAttack(BaseAgent):
     def IsDoNothingAction(self, a):
         return a == ACTION_DO_NOTHING
 
-    def Action2Str(self, a):
+    def Action2Str(self, a, onlyAgent=False):
         return ACTION2STR[a]
 
     def Action2SC2Action(self, obs, a, moveNum):

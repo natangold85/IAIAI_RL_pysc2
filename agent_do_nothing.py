@@ -265,7 +265,7 @@ class DoNothingSubAgent(BaseAgent):
     def Learn(self, reward, terminal):            
         if self.trainAgent:
             reward = reward if not terminal else self.NormalizeReward(reward)
-            
+
             if self.isActionCommitted:
                 self.history.learn(self.previous_state, self.lastActionCommitted, reward, self.current_state, terminal)
 
@@ -476,7 +476,7 @@ class DoNothingSubAgent(BaseAgent):
         self.realBuilding2Check = None
         return [-1,-1]
 
-    def Action2Str(self, a):
+    def Action2Str(self, a, onlyAgent=False):
         if a == ACTION_BUILDING_COUNT and not self.isActionFailed and self.realBuilding2Check != None:
             return TerranUnit.BUILDING_SPEC[self.realBuilding2Check].name + "Count"
         else:

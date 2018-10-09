@@ -57,7 +57,7 @@ flags.DEFINE_string("checkAgent", "none", "Which agent to check.")
 flags.DEFINE_string("fromDir", "none", "directory of the decision maker to copy from (should contain config file name config.txt)")
 flags.DEFINE_string("stateIdx2Check", "0,1", "Which agent to check.")
 flags.DEFINE_string("actions2Check", "0", "Which agent to check.")
-flags.DEFINE_string("plotDiff", "False", "Which agent to check.")
+flags.DEFINE_string("plot", "False", "Which agent to check.")
 
 # for copy network
 flags.DEFINE_string("copyAgent", "none", "Which agent to copy.")
@@ -130,13 +130,15 @@ def start_agent():
 
     print("\n\n\nplay list =", playList)        
     print("train list =", trainList, "\n\n\n")
+    
+    isPlotThread = eval(flags.FLAGS.plot)
+    
     isMultiThreaded = parallel > 1
-
     useMapRewards = flags.FLAGS.map not in nonRelevantRewardMap
 
     decisionMaker = None
     agents = []
-    for i in range(parallel):
+    for i in range(parallel + isPlotThread):
         print("\n\n\n running thread #", i, "\n\n\n")
         agent = SuperAgent(decisionMaker=decisionMaker, isMultiThreaded=isMultiThreaded, dmTypes = dm_Types, playList=playList, trainList=trainList, useMapRewards=useMapRewards)
         
@@ -158,8 +160,8 @@ def start_agent():
     numSteps = int(flags.FLAGS.numSteps)
 
     idx = 0
-    for agent in agents:
-        thread_args = (agent, show, players, numSteps)
+    for i in range(parallel):
+        thread_args = (agents[i], show, players, numSteps)
         t = threading.Thread(target=run_thread, args=thread_args, daemon=True)
         t.setName("GameThread_" + str(idx))
 
@@ -169,19 +171,28 @@ def start_agent():
         show = False
         idx += 1
 
+    
+    numTrials2Learn = [-1]
+    if isPlotThread:
+        dir2Save = "./" + dm_Types["directory"] + "/nnGraphs/"
+        if not os.path.isdir(dir2Save):
+            os.makedirs(dir2Save)
+        thread_args = (agents[parallel], trainList[0], dir2Save, numTrials2Learn)
+        t = threading.Thread(target=plot_thread, args=thread_args, daemon=True)
+        t.setName("PlotThread")
+        threads.append(t)
+        t.start()
+
 
     runThreadAlive = True
     threading.current_thread().setName("TrainThread")
     
-    dir2Save = "./" + dm_Types["directory"] + "/nnGraphs/"
-    if not os.path.isdir(dir2Save):
-        os.makedirs(dir2Save)
 
     while runThreadAlive:
         # train  when flag of training is on
-        numTrials2Learn = decisionMaker.TrainAll()
-        if numTrials2Learn >= 0:
-            create_nnGraphs(agents[0], trainList[0], numTrials2Learn, saveGraphs=True, dir2Save = dir2Save)
+        numTrials = decisionMaker.TrainAll()
+        if numTrials >= 0:
+            numTrials2Learn[0] = numTrials
 
         time.sleep(1)
         
@@ -195,13 +206,15 @@ def start_agent():
             else:
                 t.join() 
 
-        # global NUM_CRASHES
-        # if NUM_CRASHES > NUM_CRASHES_2_RESTART or not RUN:
-        #     print("\n\ninit all sc2 games\n\n")
-        #     os.system('taskkill /f /im SC2_x64.exe')
-        #     NUM_CRASHES = 0
+def plot_thread(agent, agent2Train, dir2Save, numTrials2Learn):
+    while True:
+        if numTrials2Learn[0] >= 0:
+            numTrials = numTrials2Learn[0]
+            numTrials2Learn[0] = -1
+            create_nnGraphs(agent, agent2Train, numTrials, saveGraphs=True, dir2Save = dir2Save)
+        time.sleep(1)
 
-    
+
 def create_nnGraphs(superAgent, agent2Check, numTrials = 0, saveGraphs = False, showGraphs = False, dir2Save = "./"):
     figCurr = None
     figTarget = None
@@ -217,6 +230,8 @@ def create_nnGraphs(superAgent, agent2Check, numTrials = 0, saveGraphs = False, 
 
     agent = superAgent.GetAgentByName(agent2Check)
     dm = agent.GetDecisionMaker()
+
+    numRunsTarget = dm.decisionMaker.NumRunsTarget()
 
     xName = agent.StateIdx2Str(idxX)
     yName = agent.StateIdx2Str(idxY)
@@ -237,16 +252,28 @@ def create_nnGraphs(superAgent, agent2Check, numTrials = 0, saveGraphs = False, 
         actionsPointsTarget[actions2Check[a]] = [[], [], [], []]
 
     sizeHist = len(dm.historyMngr.transitions["a"])
-    for i in range(min(sizeHist, 20000)):
+    for i in range(sizeHist):
         s = dm.DrawStateFromHist()
-        # s[idxY] = round((s[idxY] * 10) / 624)
+
 
         vals = dm.ActionValuesVec(s)
         valsTarget = dm.ActionValuesVec(s, "target")
 
+        agent.current_scaled_state = s
+        validActions = agent.ValidActions()
+        if xName == "min" or xName == "MIN":
+            s[idxX] = int(s[idxX] / 25) 
+        if yName == "min" or yName == "MIN":
+            s[idxY] = int(s[idxY] / 25) 
+
+
         for a in actions2Check:
-            add_point(s[idxX], s[idxY], vals[a], actionsPoints[a])
-            add_point(s[idxX], s[idxY], valsTarget[a], actionsPointsTarget[a])
+            if a in validActions:
+                add_point(s[idxX], s[idxY], vals[a], actionsPoints[a])
+                add_point(s[idxX], s[idxY], valsTarget[a], actionsPointsTarget[a])
+            else:
+                add_point(s[idxX], s[idxY], np.nan, actionsPoints[a])
+                add_point(s[idxX], s[idxY], np.nan, actionsPointsTarget[a])
 
     # calculating avg val
     maxCurr = -1.0
@@ -256,12 +283,12 @@ def create_nnGraphs(superAgent, agent2Check, numTrials = 0, saveGraphs = False, 
     minTarget = 1.0
     for a in actions2Check:
         for i in range(len(actionsPoints[a][0])):
-            actionsPoints[a][3][i] = np.average(np.array(actionsPoints[a][2][i])) 
+            actionsPoints[a][3][i] = np.nanmean(np.array(actionsPoints[a][2][i])) 
             maxCurr = max(maxCurr, actionsPoints[a][3][i])
             minCurr = min(minCurr, actionsPoints[a][3][i])
 
         for i in range(len(actionsPointsTarget[a][0])):
-            actionsPointsTarget[a][3][i] = np.average(np.array(actionsPointsTarget[a][2][i])) 
+            actionsPointsTarget[a][3][i] = np.nanmean(np.array(actionsPointsTarget[a][2][i])) 
             maxTarget = max(maxTarget, actionsPointsTarget[a][3][i])
             minTarget = min(minTarget, actionsPointsTarget[a][3][i])
 
@@ -276,70 +303,68 @@ def create_nnGraphs(superAgent, agent2Check, numTrials = 0, saveGraphs = False, 
         y = np.array(actionsPoints[a][1])
         z = np.array(actionsPoints[a][3])
         ax = figCurr.add_subplot(numRows, 2, idxPlot)
-        img = plotImg(ax, x, y, z, xName, yName, "values for action = " + agent.Action2Str(a), minZ=minCurr, maxZ=maxCurr)
+        img = plotImg(ax, x, y, z, xName, yName, "values for action = " + agent.Action2Str(a, onlyAgent=True), minZ=minCurr, maxZ=maxCurr)
         figCurr.colorbar(img, shrink=0.4, aspect=5)
         idxPlot += 1
     
     idxPlot = 1
 
     figTarget = plt.figure(figsize=(19.0, 11.0))
-    plt.suptitle("action evaluation - target: (#trials = " + str(numTrials) + ")")
+    plt.suptitle("action evaluation - target: (#trials = " + str(numRunsTarget) + ")")
     for a in actions2Check:
         x = np.array(actionsPointsTarget[a][0])
         y = np.array(actionsPointsTarget[a][1])
         z = np.array(actionsPointsTarget[a][3])
         ax = figTarget.add_subplot(numRows, 2, idxPlot)
-        img = plotImg(ax, x, y, z, xName, yName, "values for action = " + agent.Action2Str(a), minZ=minTarget, maxZ=maxTarget)
+        img = plotImg(ax, x, y, z, xName, yName, "values for action = " + agent.Action2Str(a, onlyAgent=True), minZ=minTarget, maxZ=maxTarget)
         figTarget.colorbar(img, shrink=0.4, aspect=5)
         idxPlot += 1
 
-    plotDiff = eval(flags.FLAGS.plotDiff)
-    if plotDiff:
-        numRows = math.ceil(len(actions2Check) * (len(actions2Check) - 1) / 2)
+    numRows = math.ceil(len(actions2Check) * (len(actions2Check) - 1) / 2)
 
-        figCurrDiff = plt.figure(figsize=(19.0, 11.0))
-        plt.suptitle("differrence in action values - current: (#trials = " + str(numTrials) + ")")
-        idxPlot = 1
+    figCurrDiff = plt.figure(figsize=(19.0, 11.0))
+    plt.suptitle("differrence in action values - current: (#trials = " + str(numTrials) + ")")
+    idxPlot = 1
 
-        for a1Idx in range(len(actions2Check)):
-            a1 = actions2Check[a1Idx]
-            x = np.array(actionsPoints[a1][0])
-            y = np.array(actionsPoints[a1][1])
+    for a1Idx in range(len(actions2Check)):
+        a1 = actions2Check[a1Idx]
+        x = np.array(actionsPoints[a1][0])
+        y = np.array(actionsPoints[a1][1])
 
-            for a2Idx in range(a1Idx + 1, len(actions2Check)):
-                a2 = actions2Check[a2Idx]
-                z1 = np.array(actionsPoints[a1][3])
-                z2 = np.array(actionsPoints[a2][3])
-                zDiff = z2 - z1
-                maxZ = np.max(np.abs(zDiff))
-                ax = figCurrDiff.add_subplot(numRows, 2, idxPlot)
-                title = "values for differrence = " + agent.Action2Str(a1) + " - " + agent.Action2Str(a2)
-                img = plotImg(ax, x, y, zDiff, xName, yName, title, minZ=-maxZ, maxZ=maxZ)
-                figCurrDiff.colorbar(img, shrink=0.4, aspect=5)
-                idxPlot += 1
+        for a2Idx in range(a1Idx + 1, len(actions2Check)):
+            a2 = actions2Check[a2Idx]
+            z1 = np.array(actionsPoints[a1][3])
+            z2 = np.array(actionsPoints[a2][3])
+            zDiff = z1 - z2
+            maxZ = np.max(np.abs(zDiff))
+            ax = figCurrDiff.add_subplot(numRows, 2, idxPlot)
+            title = "values for differrence = " + agent.Action2Str(a1, onlyAgent=True) + " - " + agent.Action2Str(a2, onlyAgent=True)
+            img = plotImg(ax, x, y, zDiff, xName, yName, title, minZ=-maxZ, maxZ=maxZ)
+            figCurrDiff.colorbar(img, shrink=0.4, aspect=5)
+            idxPlot += 1
 
 
 
-        figTargetDiff = plt.figure(figsize=(19.0, 11.0))
-        plt.suptitle("differrence in action values - target: (#trials = " + str(numTrials) + ")")
-        idxPlot = 1
+    figTargetDiff = plt.figure(figsize=(19.0, 11.0))
+    plt.suptitle("differrence in action values - target: (#trials = " + str(numRunsTarget) + ")")
+    idxPlot = 1
 
-        for a1Idx in range(len(actions2Check)):
-            a1 = actions2Check[a1Idx]
-            x = np.array(actionsPointsTarget[a1][0])
-            y = np.array(actionsPointsTarget[a1][1])
+    for a1Idx in range(len(actions2Check)):
+        a1 = actions2Check[a1Idx]
+        x = np.array(actionsPointsTarget[a1][0])
+        y = np.array(actionsPointsTarget[a1][1])
 
-            for a2Idx in range(a1Idx + 1, len(actions2Check)):
-                a2 = actions2Check[a2Idx]
-                z1 = np.array(actionsPointsTarget[a1][3])
-                z2 = np.array(actionsPointsTarget[a2][3])
-                zDiff = z2 - z1
-                maxZ = np.max(np.abs(zDiff))
-                ax = figTargetDiff.add_subplot(numRows, 2, idxPlot, projection='3d')
-                title = "values for differrence = " + agent.Action2Str(a1) + " - " + agent.Action2Str(a2)
-                img = plotImg(ax, x, y, zDiff, xName, yName, title, minZ=-maxZ, maxZ=maxZ)
-                figTargetDiff.colorbar(img, shrink=0.4, aspect=5)
-                idxPlot += 1
+        for a2Idx in range(a1Idx + 1, len(actions2Check)):
+            a2 = actions2Check[a2Idx]
+            z1 = np.array(actionsPointsTarget[a1][3])
+            z2 = np.array(actionsPointsTarget[a2][3])
+            zDiff = z1 - z2
+            maxZ = np.max(np.abs(zDiff))
+            ax = figTargetDiff.add_subplot(numRows, 2, idxPlot)
+            title = "values for differrence = " + agent.Action2Str(a1, onlyAgent=True) + " - " + agent.Action2Str(a2, onlyAgent=True)
+            img = plotImg(ax, x, y, zDiff, xName, yName, title, minZ=-maxZ, maxZ=maxZ)
+            figTargetDiff.colorbar(img, shrink=0.4, aspect=5)
+            idxPlot += 1
     
     if saveGraphs:
         if figCurr != None:
@@ -463,12 +488,15 @@ def plotImg(ax, x, y, z, xName, yName, title, minZ = None, maxZ = None):
     offsetX = np.min(x)
     offsetY = np.min(y)
 
+    # print(x, "\n", y)
+    # print("sizes =", imSizeX, imSizeY)
+    # print("offsets =", offsetX, offsetY)
     mat = np.zeros((imSizeY, imSizeX), dtype=float)
     mat.fill(np.nan)
 
     for i in range(len(x)):
-        #print("[", x[i], y[i], "] =", z[i])
-        mat[y[i] + offsetY, x[i] + offsetX] = z[i]
+        # print("[", x[i], y[i], "] =", z[i])
+        mat[y[i] - offsetY, x[i] - offsetX] = z[i]
 
     if minZ == None:
         minZ = np.min(mat)
@@ -478,14 +506,14 @@ def plotImg(ax, x, y, z, xName, yName, title, minZ = None, maxZ = None):
     img = ax.imshow(mat, cmap=plt.cm.coolwarm, vmin=minZ, vmax=maxZ)
 
     if np.max(x) - np.min(x) < 10:
-        xTick = np.arange(np.min(x), np.max(x))
+        xTick = np.arange(np.min(x), np.max(x) + 1)
     else:
-        xTick = np.arange(np.min(x), np.max(x), 4)
+        xTick = np.arange(np.min(x), np.max(x) + 1, 4)
 
     if np.max(y) - np.min(y) < 10:
-        yTick = np.arange(np.min(y), np.max(y))
+        yTick = np.arange(np.min(y), np.max(y) + 1)
     else:
-        yTick = np.arange(np.min(y), np.max(y), 4)
+        yTick = np.arange(np.min(y), np.max(y) + 1, 4)
 
     ax.set_xticks(xTick)
     ax.set_yticks(yTick)

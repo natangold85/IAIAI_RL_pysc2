@@ -250,5 +250,5 @@ class ScoutAgent(BaseAgent):
         self.goToLast = goTo
         return actions.FunctionCall(SC2_Actions.ATTACK_MINIMAP, [SC2_Params.NOT_QUEUED, SwapPnt(goTo)]), True
     
-    def Action2Str(self, a):
+    def Action2Str(self, a, onlyAgent=False):
         return ACTION2STR[a]

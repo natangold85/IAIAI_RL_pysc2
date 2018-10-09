@@ -327,8 +327,8 @@ class BattleMngr(BaseAgent):
         self.current_action = action
         return action
 
-    def Action2Str(self, a):
-        if a == ACTION_DO_NOTHING:
+    def Action2Str(self, a, onlyAgent=False):
+        if a == ACTION_DO_NOTHING or onlyAgent:
             return ACTION2STR[a]
         else:
             return ACTION2STR[a] + "-->" + self.subAgents[a].Action2Str(self.subAgentsActions[a])
