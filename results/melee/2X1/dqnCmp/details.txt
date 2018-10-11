@@ -1,3 +1,0 @@
-direct attack actions
-regions:
-init in all playable space

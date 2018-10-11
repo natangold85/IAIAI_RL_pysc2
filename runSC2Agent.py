@@ -23,11 +23,7 @@ from pysc2.env import sc2_env
 from agent_super import SuperAgent
 
 from utils import SC2_Params
-
-import matplotlib.pyplot as plt
-import matplotlib.tri as mtri
-from mpl_toolkits.mplot3d import Axes3D
-import matplotlib.colors as colors
+from utils_plot import create_nnGraphs
 
 RUN = True
 
@@ -207,178 +203,20 @@ def start_agent():
                 t.join() 
 
 def plot_thread(agent, agent2Train, dir2Save, numTrials2Learn):
+    statesIdx = flags.FLAGS.stateIdx2Check.split(",")
+    for i in range(len(statesIdx)):
+        statesIdx[i] = int(statesIdx[i])
+
+    actions2Check = flags.FLAGS.actions2Check.split(",")   
+    for i in range(len(actions2Check)):
+        actions2Check[i] = int(actions2Check[i])
+
     while True:
         if numTrials2Learn[0] >= 0:
             numTrials = numTrials2Learn[0]
             numTrials2Learn[0] = -1
-            create_nnGraphs(agent, agent2Train, numTrials, saveGraphs=True, dir2Save = dir2Save)
+            create_nnGraphs(agent, agent2Train, statesIdx=statesIdx, actions2Check=actions2Check, numTrials=numTrials, saveGraphs=True, dir2Save = dir2Save)
         time.sleep(1)
-
-
-def create_nnGraphs(superAgent, agent2Check, numTrials = 0, saveGraphs = False, showGraphs = False, dir2Save = "./"):
-    figCurr = None
-    figTarget = None
-
-    figCurrDiff = None
-    figTargetDiff = None
-    
-    allStatesIdx = flags.FLAGS.stateIdx2Check.split(",")
-        
-    idxX = int(allStatesIdx[0])
-    idxY = int(allStatesIdx[1])
-    
-
-    agent = superAgent.GetAgentByName(agent2Check)
-    dm = agent.GetDecisionMaker()
-
-    numRunsTarget = dm.decisionMaker.NumRunsTarget()
-
-    xName = agent.StateIdx2Str(idxX)
-    yName = agent.StateIdx2Str(idxY)
-
-    actions2Check = flags.FLAGS.actions2Check.split(",")    
-    
-    actionsPoints = {}
-    actionsPointsTarget = {}
-
-    actionsPoints = {}
-    actionsPointsTarget = {}
-
-    # extracting nn vals for current nn and target nn
-
-    for a in range(len(actions2Check)):
-        actions2Check[a] = int(actions2Check[a])
-        actionsPoints[actions2Check[a]] = [[], [], [], []]
-        actionsPointsTarget[actions2Check[a]] = [[], [], [], []]
-
-    sizeHist = len(dm.historyMngr.transitions["a"])
-    for i in range(sizeHist):
-        s = dm.DrawStateFromHist()
-
-
-        vals = dm.ActionValuesVec(s)
-        valsTarget = dm.ActionValuesVec(s, "target")
-
-        agent.current_scaled_state = s
-        validActions = agent.ValidActions()
-        if xName == "min" or xName == "MIN":
-            s[idxX] = int(s[idxX] / 25) 
-        if yName == "min" or yName == "MIN":
-            s[idxY] = int(s[idxY] / 25) 
-
-
-        for a in actions2Check:
-            if a in validActions:
-                add_point(s[idxX], s[idxY], vals[a], actionsPoints[a])
-                add_point(s[idxX], s[idxY], valsTarget[a], actionsPointsTarget[a])
-            else:
-                add_point(s[idxX], s[idxY], np.nan, actionsPoints[a])
-                add_point(s[idxX], s[idxY], np.nan, actionsPointsTarget[a])
-
-    # calculating avg val
-    maxCurr = -1.0
-    minCurr = 1.0
-
-    maxTarget = -1.0
-    minTarget = 1.0
-    for a in actions2Check:
-        for i in range(len(actionsPoints[a][0])):
-            actionsPoints[a][3][i] = np.nanmean(np.array(actionsPoints[a][2][i])) 
-            maxCurr = max(maxCurr, actionsPoints[a][3][i])
-            minCurr = min(minCurr, actionsPoints[a][3][i])
-
-        for i in range(len(actionsPointsTarget[a][0])):
-            actionsPointsTarget[a][3][i] = np.nanmean(np.array(actionsPointsTarget[a][2][i])) 
-            maxTarget = max(maxTarget, actionsPointsTarget[a][3][i])
-            minTarget = min(minTarget, actionsPointsTarget[a][3][i])
-
-    
-    numRows = math.ceil(len(actions2Check) / 2)
-    idxPlot = 1
-
-    figCurr = plt.figure(figsize=(19.0, 11.0))
-    plt.suptitle("action evaluation - current: (#trials = " + str(numTrials) + ")")
-    for a in actions2Check:
-        x = np.array(actionsPoints[a][0])
-        y = np.array(actionsPoints[a][1])
-        z = np.array(actionsPoints[a][3])
-        ax = figCurr.add_subplot(numRows, 2, idxPlot)
-        img = plotImg(ax, x, y, z, xName, yName, "values for action = " + agent.Action2Str(a, onlyAgent=True), minZ=minCurr, maxZ=maxCurr)
-        figCurr.colorbar(img, shrink=0.4, aspect=5)
-        idxPlot += 1
-    
-    idxPlot = 1
-
-    figTarget = plt.figure(figsize=(19.0, 11.0))
-    plt.suptitle("action evaluation - target: (#trials = " + str(numRunsTarget) + ")")
-    for a in actions2Check:
-        x = np.array(actionsPointsTarget[a][0])
-        y = np.array(actionsPointsTarget[a][1])
-        z = np.array(actionsPointsTarget[a][3])
-        ax = figTarget.add_subplot(numRows, 2, idxPlot)
-        img = plotImg(ax, x, y, z, xName, yName, "values for action = " + agent.Action2Str(a, onlyAgent=True), minZ=minTarget, maxZ=maxTarget)
-        figTarget.colorbar(img, shrink=0.4, aspect=5)
-        idxPlot += 1
-
-    numRows = math.ceil(len(actions2Check) * (len(actions2Check) - 1) / 2)
-
-    figCurrDiff = plt.figure(figsize=(19.0, 11.0))
-    plt.suptitle("differrence in action values - current: (#trials = " + str(numTrials) + ")")
-    idxPlot = 1
-
-    for a1Idx in range(len(actions2Check)):
-        a1 = actions2Check[a1Idx]
-        x = np.array(actionsPoints[a1][0])
-        y = np.array(actionsPoints[a1][1])
-
-        for a2Idx in range(a1Idx + 1, len(actions2Check)):
-            a2 = actions2Check[a2Idx]
-            z1 = np.array(actionsPoints[a1][3])
-            z2 = np.array(actionsPoints[a2][3])
-            zDiff = z1 - z2
-            maxZ = np.max(np.abs(zDiff))
-            ax = figCurrDiff.add_subplot(numRows, 2, idxPlot)
-            title = "values for differrence = " + agent.Action2Str(a1, onlyAgent=True) + " - " + agent.Action2Str(a2, onlyAgent=True)
-            img = plotImg(ax, x, y, zDiff, xName, yName, title, minZ=-maxZ, maxZ=maxZ)
-            figCurrDiff.colorbar(img, shrink=0.4, aspect=5)
-            idxPlot += 1
-
-
-
-    figTargetDiff = plt.figure(figsize=(19.0, 11.0))
-    plt.suptitle("differrence in action values - target: (#trials = " + str(numRunsTarget) + ")")
-    idxPlot = 1
-
-    for a1Idx in range(len(actions2Check)):
-        a1 = actions2Check[a1Idx]
-        x = np.array(actionsPointsTarget[a1][0])
-        y = np.array(actionsPointsTarget[a1][1])
-
-        for a2Idx in range(a1Idx + 1, len(actions2Check)):
-            a2 = actions2Check[a2Idx]
-            z1 = np.array(actionsPointsTarget[a1][3])
-            z2 = np.array(actionsPointsTarget[a2][3])
-            zDiff = z1 - z2
-            maxZ = np.max(np.abs(zDiff))
-            ax = figTargetDiff.add_subplot(numRows, 2, idxPlot)
-            title = "values for differrence = " + agent.Action2Str(a1, onlyAgent=True) + " - " + agent.Action2Str(a2, onlyAgent=True)
-            img = plotImg(ax, x, y, zDiff, xName, yName, title, minZ=-maxZ, maxZ=maxZ)
-            figTargetDiff.colorbar(img, shrink=0.4, aspect=5)
-            idxPlot += 1
-    
-    if saveGraphs:
-        if figCurr != None:
-            figCurr.savefig(dir2Save + "currentDQN_" + str(numTrials))
-        if figTarget != None:
-            figTarget.savefig(dir2Save + "targetDQN_" + str(numTrials))
-
-        if figCurrDiff != None:
-            figCurrDiff.savefig(dir2Save + "currentDQNDiff_" + str(numTrials))
-        if figTargetDiff != None:
-            figTargetDiff.savefig(dir2Save + "targetDQNDiff_" + str(numTrials))
-
-    if showGraphs:
-        plt.show()
 
 def check_dqn():
     dm_Types = eval(open("./" + flags.FLAGS.runDir + "/config.txt", "r+").read())
@@ -422,9 +260,20 @@ def check_dqn():
 
         print("\n\n")
 
+    
+    plotGraphs = eval(flags.FLAGS.plot)
+    if plotGraphs:
+        agent2Check = checkList[0]
+        statesIdx = flags.FLAGS.stateIdx2Check.split(",")
+        for i in range(len(statesIdx)):
+            statesIdx[i] = int(statesIdx[i])
 
-    agent2Check = checkList[0]
-    create_nnGraphs(superAgent, agent2Check, showGraphs=True)
+        actions2Check = flags.FLAGS.actions2Check.split(",")   
+        for i in range(len(actions2Check)):
+            actions2Check[i] = int(actions2Check[i])
+
+        create_nnGraphs(superAgent, agent2Check, statesIdx=statesIdx, actions2Check=actions2Check)
+        create_nnGraphs(superAgent, agent2Check, statesIdx=statesIdx, actions2Check=actions2Check, plotTarget=True, showGraphs=True)
 
 
 def avg_values(dm, states, targetVals=False):
@@ -433,95 +282,6 @@ def avg_values(dm, states, targetVals=False):
         vals.append(dm.ActionValuesVec(s, targetVals))
 
     return np.average(vals, axis=0)
-
-def add_point(x, y, val, actionVec):
-    for i in range(len(actionVec[0])):
-        if x == actionVec[0][i] and y == actionVec[1][i]:
-            actionVec[2][i].append(val)
-            return
-    
-    actionVec[0].append(x)
-    actionVec[1].append(y)
-    actionVec[2].append([val])
-    actionVec[3].append(0)
-
-def plot3d(ax, x, y, z, xName, yName, zName, title, minZ = None, maxZ = None):
-    if minZ == None:
-        minZ = np.min(z)
-    if maxZ == None:
-        maxZ = np.max(z)
-
-    min_radius = 0.25
-    
-    tri = mtri.Triangulation(x, y)
-
-    xmid = x[tri.triangles].mean(axis=1)
-    ymid = y[tri.triangles].mean(axis=1)
-    mask = np.where(xmid**2 + ymid**2 < min_radius**2, 1, 0)
-    tri.set_mask(mask)
-
-    surf = ax.plot_trisurf(tri, z, cmap=plt.cm.coolwarm, norm=colors.Normalize(vmin=minZ, vmax=maxZ))
-    if np.max(x) - np.min(x) < 10:
-        xTick = np.arange(np.min(x), np.max(x))
-    else:
-        xTick = np.arange(np.min(x), np.max(x), 4)
-
-    if np.max(y) - np.min(y) < 10:
-        yTick = np.arange(np.min(y), np.max(y))
-    else:
-        yTick = np.arange(np.min(y), np.max(y), 4)
-
-
-    ax.set_xticks(xTick)
-    ax.set_yticks(yTick)
-    ax.set_xlabel(xName)
-    ax.set_ylabel(yName)
-    ax.set_zlabel(zName)
-    ax.set_title(title)
-
-    return surf
-
-def plotImg(ax, x, y, z, xName, yName, title, minZ = None, maxZ = None):
-    imSizeX = np.max(x) - np.min(x) + 1
-    imSizeY = np.max(y) - np.min(y) + 1
-
-    offsetX = np.min(x)
-    offsetY = np.min(y)
-
-    # print(x, "\n", y)
-    # print("sizes =", imSizeX, imSizeY)
-    # print("offsets =", offsetX, offsetY)
-    mat = np.zeros((imSizeY, imSizeX), dtype=float)
-    mat.fill(np.nan)
-
-    for i in range(len(x)):
-        # print("[", x[i], y[i], "] =", z[i])
-        mat[y[i] - offsetY, x[i] - offsetX] = z[i]
-
-    if minZ == None:
-        minZ = np.min(mat)
-    if maxZ == None:
-        maxZ = np.max(mat)
-
-    img = ax.imshow(mat, cmap=plt.cm.coolwarm, vmin=minZ, vmax=maxZ)
-
-    if np.max(x) - np.min(x) < 10:
-        xTick = np.arange(np.min(x), np.max(x) + 1)
-    else:
-        xTick = np.arange(np.min(x), np.max(x) + 1, 4)
-
-    if np.max(y) - np.min(y) < 10:
-        yTick = np.arange(np.min(y), np.max(y) + 1)
-    else:
-        yTick = np.arange(np.min(y), np.max(y) + 1, 4)
-
-    ax.set_xticks(xTick)
-    ax.set_yticks(yTick)
-    ax.set_xlabel(xName)
-    ax.set_ylabel(yName)
-    ax.set_title(title)
-
-    return img
 
 
 def copy_dqn():

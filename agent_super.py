@@ -328,8 +328,7 @@ class SuperAgent(BaseAgent):
             self.CreateState(obs)
             self.Learn()
             self.ChooseAction()
-            # if self.playAgent:
-            # print("\nactionChosen =", self.Action2Str(False), "\nactionActed =", self.Action2Str(True))
+
             # self.PrintState()
 
         

@@ -1,1 +1,0 @@
-{'difficulty' : '1', 'directory' : 'BuildBaseTrain', 'super': 'dqn_2l', 'base_mngr': 'naive', 'battle_mngr': 'naive', 'do_nothing': 'naive', 'army_attack': 'naive', 'base_attack': 'naive', 'build_base': 'dqn_2l', 'train_army': 'naive'}

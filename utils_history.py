@@ -67,8 +67,7 @@ class HistoryMngr(History):
     def __init__(self, params, historyFileName = '', directory = '', isMultiThreaded = False, loadFiles = True, createAllHistFiles = True):
         super(HistoryMngr, self).__init__(isMultiThreaded)
 
-        self.maxReplaySize = params.maxReplaySize
-        self.normalizeRewards = params.normalizeRewards
+        self.params = params
 
         self.isMultiThreaded = isMultiThreaded
 
@@ -129,15 +128,13 @@ class HistoryMngr(History):
         return len(self.transitions["a"])       
     
     def PopHist2ReplaySize(self):
+        toCut = len(self.transitions["a"]) - self.params.maxReplaySize
         if self.createAllHistFiles:
-            while (len(self.transitions["a"]) > self.maxReplaySize):
-                for key in self.transitionKeys:
-                    self.oldTransitions[key].append(self.transitions[key].pop(0))
-
-        else:
-            while (len(self.transitions["a"]) > self.maxReplaySize):
-                for key in self.transitionKeys:
-                    self.transitions[key].pop(0)
+            for key in self.transitionKeys:
+                self.oldTransitions[key] += self.transitions[key][:toCut]
+ 
+        for key in self.transitionKeys:
+            del self.transitions[key][:toCut]
                             
     def GetHistory(self):   
         self.histLock.acquire()
@@ -148,28 +145,31 @@ class HistoryMngr(History):
         allTransitions = self.transitions.copy()
         self.histLock.release()
 
-        size = len(allTransitions["r"])
-        if size == 0:
+        if len(allTransitions["r"]) == 0:
             emptyM = np.array([]) 
             return emptyM, emptyM, emptyM, emptyM, emptyM
 
-        idx4Shuffle = np.arange(size)
-        np.random.shuffle(idx4Shuffle)
         
-        s = np.array(allTransitions["s"], dtype = float)[idx4Shuffle]
-        a = np.array(allTransitions["a"], dtype = int)[idx4Shuffle]
-        r = np.array(allTransitions["r"], dtype = float)[idx4Shuffle]
-        s_ = np.array(allTransitions["s_"], dtype = float)[idx4Shuffle]
-        terminal = np.array(allTransitions["terminal"], dtype = bool)[idx4Shuffle]
+        s = np.array(allTransitions["s"], dtype = float)
+        a = np.array(allTransitions["a"], dtype = int)
+        r = np.array(allTransitions["r"], dtype = float)
+        s_ = np.array(allTransitions["s_"], dtype = float)
+        terminal = np.array(allTransitions["terminal"], dtype = bool)
 
+        # normalization of transition values
         s, s_ = self.NormalizeStateVals(s, s_, allTransitions)
-
-        if self.normalizeRewards:
+        if self.params.normalizeRewards:
             r = self.NormalizeRewards(r)
 
+        if self.params.numRepeatsTerminalLearning > 0:
+            s, a, r, s_, terminal = self.AddTerminalStates(s, a, r, s_, terminal)            
+        
         self.SaveHistFile(allTransitions)    
 
-        return s, a, r, s_, terminal
+        size = len(a)
+        idx4Shuffle = np.arange(size)
+        np.random.shuffle(idx4Shuffle)
+        return s[idx4Shuffle], a[idx4Shuffle], r[idx4Shuffle], s_[idx4Shuffle], terminal[idx4Shuffle]
     
     def TrimHistory(self):
         self.histLock.acquire()
@@ -216,6 +216,25 @@ class HistoryMngr(History):
 
         return (r - self.transitions["rewardMin"]) / (self.transitions["rewardMax"] - self.transitions["rewardMin"])
 
+    def AddTerminalStates(self, s, a, r, s_, terminal):
+        terminalIdx = terminal.nonzero()
+        np.set_printoptions(threshold=np.nan)
+        
+
+        sT = np.repeat(np.squeeze(s[terminalIdx, :]), self.params.numRepeatsTerminalLearning, axis=0)
+        aT = np.repeat(np.squeeze(a[terminalIdx]), self.params.numRepeatsTerminalLearning)
+        rT = np.repeat(np.squeeze(r[terminalIdx]), self.params.numRepeatsTerminalLearning)
+        s_T = np.repeat(np.squeeze(s_[terminalIdx, :]), self.params.numRepeatsTerminalLearning, axis=0)
+        terminalT = np.ones(len(aT), dtype=bool)
+
+        s = np.concatenate((s, sT))
+        a = np.concatenate((a, aT))
+        r = np.concatenate((r, rT))
+        s_ = np.concatenate((s_, s_T))
+        terminal = np.concatenate((terminal, terminalT))
+        return s, a, r, s_, terminal 
+            
+
     def GetMinReward(self):
         return self.transitions["rewardMin"]
 
@@ -237,7 +256,7 @@ class HistoryMngr(History):
                     print("\n\n\n\nError save 0 bytes\n\n\n")
             
             if self.createAllHistFiles:
-                if len(self.oldTransitions["a"]) >= self.maxReplaySize:
+                if len(self.oldTransitions["a"]) >= self.params.maxReplaySize:
                     pd.to_pickle(self.oldTransitions, self.histFileName + str(self.numOldHistFiles) + '.gz', 'gzip') 
                     
                     self.numOldHistFiles += 1

@@ -18,7 +18,7 @@ class DQN_PARAMS(ParamsBase):
     def __init__(self, stateSize, numActions, layersNum = 1, neuronsInLayerNum = 256, numTrials2CmpResults = 1000, nn_Func = None, 
                 outputGraph = False, discountFactor = 0.95, batchSize = 32, maxReplaySize = 500000, minReplaySize = 1000, 
                 explorationProb = 0.1, descendingExploration = True, exploreChangeRate = 0.001, learning_rate = 0.00001, 
-                scopeVarName = '', normalizeRewards = False):
+                scopeVarName = '', normalizeRewards = False, numRepeatsTerminalLearning = 10):
 
         super(DQN_PARAMS, self).__init__(stateSize=stateSize, numActions=numActions, discountFactor=discountFactor, 
                                             maxReplaySize=maxReplaySize, minReplaySize=minReplaySize)
@@ -46,6 +46,7 @@ class DQN_PARAMS(ParamsBase):
         self.normalizeRewards = normalizeRewards
 
         self.noiseOnTerminalRewardsPct = 0.0
+        self.numRepeatsTerminalLearning = numRepeatsTerminalLearning
 
     def ExploreProb(self, numRuns, resultRatio = 1):
         if self.descendingExploration:

@@ -1,1 +1,0 @@
-{'difficulty' : '1', 'super': 'none', 'base_mngr': 'dqn_2l', 'battle_mngr': 'none', 'do_nothing': 'naive', 'army_attack': 'none', 'base_attack': 'none', 'build_base': 'naive', 'train_army': 'naive'}

@@ -88,6 +88,7 @@ class NaiveDecisionMakerDoNothing(BaseNaiveDecisionMaker):
         self.outOfResources = False
 
     def choose_action(self, state):
+
         if state[STATE_INITIAL_GROUPING] == 0:
             action = ACTION_INITIAL_SCV_GROUPING
         elif state[STATE_NUM_IDLE_SCV] > 0 and not self.outOfResources: 
@@ -126,7 +127,6 @@ class NaiveDecisionMakerDoNothing(BaseNaiveDecisionMaker):
 
     def end_run(self, r, score = 0 ,steps = 0):
         super(NaiveDecisionMakerDoNothing, self).end_run(r, score ,steps)
-        self.outOfResources = False
 
 
 
@@ -175,6 +175,8 @@ class DoNothingSubAgent(BaseAgent):
         self.unitInQueue[Terran.Hellion] = [Terran.Factory, Terran.FactoryTechLab]
         self.unitInQueue[Terran.SiegeTank] = [Terran.Factory, Terran.FactoryTechLab]
 
+        self.error = False
+
     def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
         if dmTypes[AGENT_NAME] == "none":
             return BaseDecisionMaker(AGENT_NAME)
@@ -220,6 +222,8 @@ class DoNothingSubAgent(BaseAgent):
     def EndRun(self, reward, score, stepNum):
         if self.trainAgent:
             self.decisionMaker.end_run(reward, score, stepNum)
+        else:
+            self.decisionMaker.outOfResources = False
         
         self.resourceMngrSubAgent.EndRun(reward, score, stepNum)
 
@@ -233,6 +237,9 @@ class DoNothingSubAgent(BaseAgent):
         self.resourceMngrSubAgent.CreateState(obs)
 
         self.numIdleWorkers = obs.observation['player'][SC2_Params.IDLE_WORKER_COUNT]
+        if self.numIdleWorkers > 2:
+            print("num idle workers =", self.numIdleWorkers)
+            self.error = True
         unitType = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
         
         numCompletedRefineries = len(self.sharedData.buildingCompleted[Terran.Refinery])
@@ -360,10 +367,18 @@ class DoNothingSubAgent(BaseAgent):
         if moveNum == 0:
             if SC2_Actions.SELECT_IDLE_WORKER in obs.observation['available_actions']:
                 return actions.FunctionCall(SC2_Actions.SELECT_IDLE_WORKER, [SC2_Params.SELECT_ALL]), False
+            
+            if self.error:
+                print("1")
+                exit()
         elif moveNum == 1:
             scvStatus = GetSelectedUnits(obs)
             if len(scvStatus) > 0:
                 return actions.FunctionCall(SC2_Actions.SELECT_CONTROL_GROUP, [SC2_Params.CONTROL_GROUP_APPEND_AND_STEAL, [self.sharedData.scvMineralGroup]]), False
+            
+            if self.error:
+                print("2")
+                exit()
         elif moveNum == 2:
             if SC2_Actions.HARVEST_GATHER in obs.observation['available_actions']:
                 unitType = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
@@ -373,8 +388,13 @@ class DoNothingSubAgent(BaseAgent):
                 
                 if target[0] >= 0:
                     return actions.FunctionCall(SC2_Actions.HARVEST_GATHER, [SC2_Params.QUEUED, SwapPnt(target)]), True
+            if self.error:
+                print("3")
+                exit()
 
-
+        if self.error:
+            print("4")
+            exit()
         return SC2_Actions.DO_NOTHING_SC2_ACTION, True
 
     def ActionLandBuilding(self, obs, moveNum):
