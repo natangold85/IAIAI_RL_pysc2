@@ -1,0 +1,2 @@
+model_checkpoint_path: "dtn4Layers_TT"
+all_model_checkpoint_paths: "dtn4Layers_TT"
