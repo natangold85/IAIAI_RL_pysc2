@@ -20,7 +20,7 @@ from utils import SC2_Params
 from utils import SC2_Actions
 
 #decision makers
-from utils_decisionMaker import LearnWithReplayMngr
+from utils_decisionMaker import DecisionMakerMngr
 from utils_decisionMaker import BaseDecisionMaker
 
 from utils_results import ResultFile
@@ -139,9 +139,9 @@ class NaiveDecisionMakerBaseAttack(BaseDecisionMaker):
         super(NaiveDecisionMakerBaseAttack, self).__init__(AGENT_NAME)
         
 
-    def choose_action(self, observation):
-        buildingPnts = (observation[STATE_START_ENEMY_MAT:STATE_END_ENEMY_MAT] > 0).nonzero()[0]
-        selfLocs = (observation[STATE_START_SELF_MAT:STATE_END_SELF_MAT] > 0).nonzero()[0]
+    def choose_action(self, state, validActions, targetValues=False):
+        buildingPnts = (state[STATE_START_ENEMY_MAT:STATE_END_ENEMY_MAT] > 0).nonzero()[0]
+        selfLocs = (state[STATE_START_SELF_MAT:STATE_END_SELF_MAT] > 0).nonzero()[0]
 
         if len(selfLocs) == 0 or len(buildingPnts) == 0:
             return ACTION_DO_NOTHING
@@ -165,9 +165,9 @@ class NaiveDecisionMakerBaseAttack(BaseDecisionMaker):
 
         return minIdx + ACTIONS_START_IDX_ATTACK
 
-    def ActionValuesVec(self, state, target = True):
+    def ActionsValues(self, state, validActions, target = True):
         vals = np.zeros(NUM_ACTIONS,dtype = float)
-        vals[self.choose_action(state)] = 1.0
+        vals[self.choose_action(state, validActions)] = 1.0
 
         return vals
 
@@ -219,7 +219,7 @@ class BaseAttack(BaseAgent):
             directory = dmTypes["directory"] + "/" + AGENT_DIR
             if not os.path.isdir("./" + directory):
                 os.makedirs("./" + directory)
-            decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,
+            decisionMaker = DecisionMakerMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,
                                             resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=AGENT_DIR+runType[DIRECTORY], isMultiThreaded=isMultiThreaded)
 
         return decisionMaker
@@ -243,8 +243,9 @@ class BaseAttack(BaseAgent):
         super(BaseAttack, self).FirstStep()
 
         self.current_state = np.zeros(STATE_SIZE, dtype=np.int, order='C')
-        self.previous_state = np.zeros(STATE_SIZE, dtype=np.int, order='C')
-        
+        self.current_scaled_state = np.zeros(STATE_SIZE, dtype=np.int, order='C')
+        self.previous_scaled_state = np.zeros(STATE_SIZE, dtype=np.int, order='C')
+
         self.enemyBuildingGridLoc2ScreenLoc = {}
         self.selfLocCoord = None      
     
@@ -257,14 +258,14 @@ class BaseAttack(BaseAgent):
             reward = reward if not terminal else self.NormalizeReward(reward)
             
             if self.isActionCommitted:
-                self.history.learn(self.previous_state, self.lastActionCommitted, reward, self.current_state, terminal)
+                self.history.learn(self.previous_scaled_state, self.lastActionCommitted, reward, self.current_scaled_state, terminal)
             elif terminal:
                 # if terminal reward entire state if action is not chosen for current step
                 for a in range(NUM_ACTIONS):
-                    self.history.learn(self.previous_state, a, reward, self.terminalState, terminal)
-                    self.history.learn(self.current_state, a, reward, self.terminalState, terminal)
+                    self.history.learn(self.previous_scaled_state, a, reward, self.terminalState, terminal)
+                    self.history.learn(self.current_scaled_state, a, reward, self.terminalState, terminal)
 
-        self.previous_state[:] = self.current_state[:]
+        self.previous_scaled_state[:] = self.current_scaled_state[:]
         self.isActionCommitted = False
 
     def IsDoNothingAction(self, a):
@@ -290,22 +291,12 @@ class BaseAttack(BaseAgent):
         if self.playAgent:
             if self.illigalmoveSolveInModel:
                 validActions = self.ValidActions()
-                if self.trainAgent:
-                    targetValues = False
-                    exploreProb = self.decisionMaker.ExploreProb()              
-                else:
-                    targetValues = True
-                    exploreProb = self.decisionMaker.TargetExploreProb()    
+            else: 
+                validActions = list(range(NUM_ACTIONS))
+ 
+            targetValues = False if self.trainAgent else True
+            action = self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues)
 
-                if np.random.uniform() > exploreProb:
-                    valVec = self.decisionMaker.ActionValuesVec(self.current_state, targetValues)
-                    random.shuffle(validActions)
-                    validVal = valVec[validActions]
-                    action = validActions[validVal.argmax()]
-                else:
-                    action = np.random.choice(validActions) 
-            else:
-                action = self.decisionMaker.choose_action(self.current_state)
         else:
             action = ACTION_DO_NOTHING
 
@@ -320,6 +311,11 @@ class BaseAttack(BaseAgent):
 
         for idx in range(GRID_SIZE * GRID_SIZE):
            self.sharedData.enemyBuildingMat[idx] = self.current_state[STATE_START_ENEMY_MAT + idx]
+
+        self.ScaleState()
+
+    def ScaleState(self):
+        self.current_scaled_state[:] = self.current_state[:]
 
     def GetSelfLoc(self, obs):
         playerType = obs.observation["feature_screen"][SC2_Params.PLAYER_RELATIVE]
@@ -390,17 +386,17 @@ class BaseAttack(BaseAgent):
         return valid
 
     def PrintState(self):
-        print("\n\nstate: timeline =", self.current_state[STATE_TIME_LINE_IDX], "last attack action =", self.lastValidAttackAction)
+        print("\n\nstate: timeline =", self.current_scaled_state[STATE_TIME_LINE_IDX], "last attack action =", self.lastValidAttackAction)
         for y in range(GRID_SIZE):
             for x in range(GRID_SIZE):
                 idx = STATE_START_SELF_MAT + x + y * GRID_SIZE
-                print(int(self.current_state[idx]), end = '')
+                print(int(self.current_scaled_state[idx]), end = '')
             
             print(end = '  |  ')
             
             for x in range(GRID_SIZE):
                 idx = STATE_START_ENEMY_MAT + x + y * GRID_SIZE
-                print(int(self.current_state[idx]), end = '')
+                print(int(self.current_scaled_state[idx]), end = '')
 
             print('||')
 

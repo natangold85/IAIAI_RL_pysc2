@@ -87,7 +87,7 @@ class NaiveDecisionMakerDoNothing(BaseNaiveDecisionMaker):
         self.counterIdleEmployment = 0
         self.outOfResources = False
 
-    def choose_action(self, state):
+    def choose_action(self, state, validActions, targetValues=False):
 
         if state[STATE_INITIAL_GROUPING] == 0:
             action = ACTION_INITIAL_SCV_GROUPING
@@ -117,11 +117,11 @@ class NaiveDecisionMakerDoNothing(BaseNaiveDecisionMaker):
                 self.outOfResources = True
         else:
             self.counterIdleEmployment = 0
-        return action
+        return action if action in validActions else ACTION_DO_NOTHING
 
-    def ActionValuesVec(self, state, target = True):    
+    def ActionsValues(self, state, validActions, target = True):    
         vals = np.zeros(NUM_ACTIONS, dtype = float)
-        vals[self.choose_action(state)] = 1.0
+        vals[self.choose_action(state, validActions)] = 1.0
 
         return vals
 
@@ -141,6 +141,7 @@ class DoNothingSubAgent(BaseAgent):
             saPlayList = playList
 
         self.trainAgent = AGENT_NAME in trainList
+        self.illigalmoveSolveInModel = False
 
         if decisionMaker != None:
             self.decisionMaker = decisionMaker
@@ -174,8 +175,6 @@ class DoNothingSubAgent(BaseAgent):
         self.unitInQueue[Terran.Reaper] = [Terran.Barracks, Terran.BarracksReactor]
         self.unitInQueue[Terran.Hellion] = [Terran.Factory, Terran.FactoryTechLab]
         self.unitInQueue[Terran.SiegeTank] = [Terran.Factory, Terran.FactoryTechLab]
-
-        self.error = False
 
     def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
         if dmTypes[AGENT_NAME] == "none":
@@ -214,7 +213,8 @@ class DoNothingSubAgent(BaseAgent):
         self.realBuilding2Check = None
         
         self.current_state = np.zeros(STATE_SIZE, int)
-        self.previous_state = np.zeros(STATE_SIZE, int)
+        self.current_scaled_state = np.zeros(STATE_SIZE, int)
+        self.previous_scaled_state = np.zeros(STATE_SIZE, int)
 
         self.gasGroup2SentScv = 0
         self.numIdleWorkers = 0
@@ -237,9 +237,7 @@ class DoNothingSubAgent(BaseAgent):
         self.resourceMngrSubAgent.CreateState(obs)
 
         self.numIdleWorkers = obs.observation['player'][SC2_Params.IDLE_WORKER_COUNT]
-        if self.numIdleWorkers > 2:
-            print("num idle workers =", self.numIdleWorkers)
-            self.error = True
+
         unitType = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
         
         numCompletedRefineries = len(self.sharedData.buildingCompleted[Terran.Refinery])
@@ -254,6 +252,11 @@ class DoNothingSubAgent(BaseAgent):
         self.current_state[STATE_HAS_RESOURCES] = self.HasResources(unitType)
         self.current_state[STATE_ARMY_LVL] = self.HasArmyProductionBuildings()
 
+        self.ScaleState()
+    
+    def ScaleState(self):
+        self.current_scaled_state[:] = self.current_state[:]
+
     def SubAgentActionChosen(self, action):
         self.isActionCommitted = True
         self.lastActionCommitted = action
@@ -263,21 +266,30 @@ class DoNothingSubAgent(BaseAgent):
 
     def ChooseAction(self):
         if self.playAgent:
-            return self.decisionMaker.choose_action(self.current_state)
+            if self.illigalmoveSolveInModel:
+                validActions = self.ValidActions()
+            else: 
+                validActions = list(range(NUM_ACTIONS))
+ 
+            targetValues = False if self.trainAgent else True
+            return self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues)
         elif self.subAgentPlay == SUB_AGENT_RESOURCE_MNGR:
             return ACTION_RESOURCE_SUBAGENT
         else:
             return ACTION_DO_NOTHING
+    def ValidActions(self):
+        # todo: create valid actions for agent
+        return list(range(NUM_ACTIONS))
 
     def Learn(self, reward, terminal):            
         if self.trainAgent:
             reward = reward if not terminal else self.NormalizeReward(reward)
 
             if self.isActionCommitted:
-                self.history.learn(self.previous_state, self.lastActionCommitted, reward, self.current_state, terminal)
+                self.history.learn(self.previous_scaled_state, self.lastActionCommitted, reward, self.current_scaled_state, terminal)
 
         self.resourceMngrSubAgent.Learn(reward, terminal)
-        self.previous_state[:] = self.current_state[:]
+        self.previous_scaled_state[:] = self.current_scaled_state[:]
         self.isActionCommitted = False
 
     def Action2SC2Action(self, obs, action, moveNum):
@@ -368,17 +380,11 @@ class DoNothingSubAgent(BaseAgent):
             if SC2_Actions.SELECT_IDLE_WORKER in obs.observation['available_actions']:
                 return actions.FunctionCall(SC2_Actions.SELECT_IDLE_WORKER, [SC2_Params.SELECT_ALL]), False
             
-            if self.error:
-                print("1")
-                exit()
         elif moveNum == 1:
             scvStatus = GetSelectedUnits(obs)
             if len(scvStatus) > 0:
                 return actions.FunctionCall(SC2_Actions.SELECT_CONTROL_GROUP, [SC2_Params.CONTROL_GROUP_APPEND_AND_STEAL, [self.sharedData.scvMineralGroup]]), False
             
-            if self.error:
-                print("2")
-                exit()
         elif moveNum == 2:
             if SC2_Actions.HARVEST_GATHER in obs.observation['available_actions']:
                 unitType = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
@@ -388,13 +394,7 @@ class DoNothingSubAgent(BaseAgent):
                 
                 if target[0] >= 0:
                     return actions.FunctionCall(SC2_Actions.HARVEST_GATHER, [SC2_Params.QUEUED, SwapPnt(target)]), True
-            if self.error:
-                print("3")
-                exit()
 
-        if self.error:
-            print("4")
-            exit()
         return SC2_Actions.DO_NOTHING_SC2_ACTION, True
 
     def ActionLandBuilding(self, obs, moveNum):

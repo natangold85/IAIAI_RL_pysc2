@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 from utils_qtable import QTableParams
 from utils_dqn import DQN_PARAMS
-from utils_decisionMaker import LearnWithReplayMngr
+from utils_decisionMaker import DecisionMakerMngr
 from utils_ttable import TransitionTable
 
 from utils_dtn import DTN_PARAMS
@@ -195,7 +195,7 @@ class Simulator:
 
         typeDecision = 'QLearningTable'
         params = QTableParams(self.env.stateSize, self.env.numActions)
-        self.dqn = LearnWithReplayMngr(typeDecision, params, decisionMakerName = "maze_game_dm_Time", resultFileName = "results_Time", directory = dirName, numTrials2Learn=trials2Save)            
+        self.dqn = DecisionMakerMngr(typeDecision, params, decisionMakerName = "maze_game_dm_Time", resultFileName = "results_Time", directory = dirName, numTrials2Learn=trials2Save)            
 
         self.allDTN = []
         dtn2Params = DTN_PARAMS(self.env.stateSize, self.env.numActions, 0, self.env.stateSize, outputGraph=True, nn_Func=dtn2_2LayersFunc)
@@ -222,7 +222,7 @@ class Simulator:
         if self.illigalSolvedInModel:
             validActions = self.env.ValidActions(s)
             if np.random.uniform() > self.dqn.ExploreProb():
-                valVec = self.dqn.ActionValuesVec(s)   
+                valVec = self.dqn.ActionsValues(s)   
                 random.shuffle(validActions)
                 validVal = valVec[validActions]
                 action = validActions[validVal.argmax()]

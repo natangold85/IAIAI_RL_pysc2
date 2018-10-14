@@ -29,7 +29,7 @@ def StateValues(decisionMaker, numStates = 100):
     allValues = []
     for i in range(numStates):
         s = decisionMaker.DrawStateFromHist()
-        values = decisionMaker.ActionValuesVec(s)
+        values = decisionMaker.ActionsValues(s)
         allValues.append(values)
 
     avgValues = np.average(allValues,axis = 0)

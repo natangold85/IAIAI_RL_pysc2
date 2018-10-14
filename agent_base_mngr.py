@@ -23,7 +23,7 @@ from utils import SC2_Params
 from utils import SC2_Actions
 
 from utils_decisionMaker import BaseDecisionMaker
-from utils_decisionMaker import LearnWithReplayMngr
+from utils_decisionMaker import DecisionMakerMngr
 from utils_decisionMaker import UserPlay
 from utils_decisionMaker import BaseNaiveDecisionMaker
 
@@ -34,6 +34,7 @@ from utils_results import ResultFile
 from utils_qtable import QTableParamsExplorationDecay
 from utils_dqn import DQN_PARAMS
 from utils_dqn import DQN_PARAMS_WITH_DEFAULT_DM
+from utils_a3c import A3C_PARAMS
 
 from agent_build_base import BuildBaseSubAgent
 from agent_train_army import TrainArmySubAgent
@@ -189,6 +190,7 @@ class BASE_STATE:
 
     IDX2STR[SUPPLY_LEFT] = "Supply_left"
     IDX2STR[ARMY_POWER] = "ArmyPower"
+    IDX2STR[TIME_LINE_IDX] = "TimeLine"
 
 # possible types of play
 
@@ -196,6 +198,7 @@ QTABLE = 'q'
 DQN = 'dqn'
 DQN2L = 'dqn_2l'
 DQN2L_DFLT = 'dqn_2l_dflt'
+A3C = "A3C"
 USER_PLAY = 'play'
 NAIVE = 'naive'
 
@@ -245,6 +248,15 @@ RUN_TYPES[DQN2L_DFLT][HISTORY] = "baseMngr_replayHistory"
 RUN_TYPES[DQN2L_DFLT][RESULTS] = "baseMngr_result"
 RUN_TYPES[DQN2L_DFLT][ALL_RESULTS] = "baseMngr_results_all"
 
+RUN_TYPES[A3C] = {}
+RUN_TYPES[A3C][TYPE] = "A3C"
+RUN_TYPES[A3C][PARAMS] = A3C_PARAMS(BASE_STATE.SIZE, NUM_ACTIONS, numTrials2CmpResults=NUM_TRIALS_4_CMP)
+RUN_TYPES[A3C][DECISION_MAKER_NAME] = "baseMngr_A3C"
+RUN_TYPES[A3C][DIRECTORY] = "baseMngr_A3C"
+RUN_TYPES[A3C][HISTORY] = "baseMngr_replayHistory"
+RUN_TYPES[A3C][RESULTS] = "baseMngr_result"
+RUN_TYPES[A3C][ALL_RESULTS] = "baseMngr_results_all"
+
 RUN_TYPES[NAIVE] = {}
 RUN_TYPES[NAIVE][DIRECTORY] = "baseMngr_naive"
 RUN_TYPES[NAIVE][RESULTS] = "baseMngr_result"
@@ -263,7 +275,7 @@ def CreateDecisionMakerBaseMngr(dmTypes, isMultiThreaded, numTrials2Learn=NUM_TR
         if runType[TYPE] == "DQN_WithTargetAndDefault":
             runType[PARAMS].defaultDecisionMaker = NaiveDecisionMakerBaseMngr()
 
-        decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,  
+        decisionMaker = DecisionMakerMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,  
                             resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory, isMultiThreaded=isMultiThreaded,
                             numTrials2Learn=numTrials2Learn)
 
@@ -274,7 +286,7 @@ class NaiveDecisionMakerBaseMngr(BaseNaiveDecisionMaker):
     def __init__(self, resultFName = None, directory=None, numTrials2Save =NUM_TRIALS_2_LEARN):
         super(NaiveDecisionMakerBaseMngr, self).__init__(numTrials2Save=numTrials2Save, agentName=AGENT_NAME, resultFName=resultFName, directory=directory)
 
-    def choose_action(self, state):
+    def choose_action(self, state, validActions, targetValues=False):
         action = ACTION_DO_NOTHING
         if np.random.uniform() > 0.75:
             return action
@@ -309,11 +321,11 @@ class NaiveDecisionMakerBaseMngr(BaseNaiveDecisionMaker):
         else:
             action = ACTION_TRAIN_ARMY
 
-        return action
+        return action if action in validActions else ACTION_DO_NOTHING
 
-    def ActionValuesVec(self, state, target = True):    
+    def ActionsValues(self, state, validActions, target = True):    
         vals = np.zeros(NUM_ACTIONS,dtype = float)
-        vals[self.choose_action(state)] = 1.0
+        vals[self.choose_action(state, validActions)] = 1.0
 
         return vals
 
@@ -346,7 +358,9 @@ class BaseMngr(BaseAgent):
         else:
             self.decisionMaker = self.CreateDecisionMaker(dmTypes, isMultiThreaded)
 
-        self.initialDfltDecisionMaker = self.decisionMaker.IsWithDfltDecisionMaker()
+        decisionMakerType = self.decisionMaker.DecisionMakerType()
+        self.initialDfltDecisionMaker = decisionMakerType.find("Default") > 0
+        self.isA3CAlg = decisionMakerType == "A3C"
 
         self.history = self.decisionMaker.AddHistory()
 
@@ -379,6 +393,10 @@ class BaseMngr(BaseAgent):
 
         # model params 
         self.minPriceMinerals = 50
+
+        self.current_state = np.zeros(BASE_STATE.SIZE, dtype=np.int32, order='C')
+        self.previous_scaled_state = np.zeros(BASE_STATE.SIZE, dtype=np.int32, order='C')
+        self.current_scaled_state = np.zeros(BASE_STATE.SIZE, dtype=np.int32, order='C')
 
 
 
@@ -626,22 +644,11 @@ class BaseMngr(BaseAgent):
         if self.playAgent:
             if self.illigalmoveSolveInModel:
                 validActions = self.ValidActions()
-                if self.trainAgent:
-                    targetValues = False
-                    exploreProb = self.decisionMaker.ExploreProb()              
-                else:
-                    targetValues = True
-                    exploreProb = self.decisionMaker.TargetExploreProb()   
-
-                if np.random.uniform() > exploreProb:
-                    valVec = self.decisionMaker.ActionValuesVec(self.current_state, targetValues)   
-                    random.shuffle(validActions)
-                    validVal = valVec[validActions]
-                    action = validActions[validVal.argmax()]
-                else:
-                    action = np.random.choice(validActions) 
-            else:
-                action = self.decisionMaker.choose_action(self.current_state)
+            else: 
+                validActions = list(range(NUM_ACTIONS))
+ 
+            targetValues = False if self.trainAgent else True
+            action = self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues)
         else:
             action = self.subAgentPlay
 
@@ -655,7 +662,7 @@ class BaseMngr(BaseAgent):
         
             if self.ArmyBuildingExist():
                 valid.append(ACTION_TRAIN_ARMY)
-        
+     
         return valid
     
     def ArmyBuildingExist(self):

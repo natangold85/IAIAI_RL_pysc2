@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 from utils_qtable import QTableParams
 from utils_dqn import DQN_PARAMS
-from utils_decisionMaker import LearnWithReplayMngr
+from utils_decisionMaker import DecisionMakerMngr
 from utils_ttable import TransitionTable
 
 from utils_dtn import DTN_PARAMS

@@ -71,11 +71,18 @@ class HistoryMngr(History):
 
         self.isMultiThreaded = isMultiThreaded
 
+        self.metaDataFields = ["maxStateVals", "rewardMax", "rewardMin"]
+
         self.transitions["maxStateVals"] = np.ones(params.stateSize, int)
         self.transitions["rewardMax"] = 0.01
         self.transitions["rewardMin"] = 0.0
 
         self.createAllHistFiles = createAllHistFiles
+
+        if not self.params.accumulateHistory:
+            self.emptyTransitions = {}
+            for key in self.transitionKeys:
+                self.emptyTransitions[key] = []
 
         if createAllHistFiles:
             self.oldTransitions = {}
@@ -140,11 +147,18 @@ class HistoryMngr(History):
         self.histLock.acquire()
 
         self.JoinHistroyFromSons()
-        self.PopHist2ReplaySize()
-
-        allTransitions = self.transitions.copy()
+        if self.params.accumulateHistory:
+            self.PopHist2ReplaySize()
+            allTransitions = self.transitions.copy()
+        else:
+            allTransitions = self.transitions.copy()
+            self.transitions = self.emptyTransitions.copy()
+            for key in self.metaDataFields:
+                self.transitions[key] = allTransitions[key]
+            
         self.histLock.release()
 
+        
         if len(allTransitions["r"]) == 0:
             emptyM = np.array([]) 
             return emptyM, emptyM, emptyM, emptyM, emptyM
@@ -304,3 +318,18 @@ class HistoryMngr(History):
                 self.transitions[key] = []
         
         self.histLock.release()
+
+    def GetTransitionsSortedByIdx(self, idx):
+        self.histLock.acquire()
+        s = np.array(self.transitions["s"])
+        a = np.array(self.transitions["a"])
+        r = np.array(self.transitions["r"])
+        s_ = np.array(self.transitions["s_"])
+        terminal = np.array(self.transitions["terminal"])
+        self.histLock.release()
+
+        sortedIdx = s[:, idx].argsort()
+
+
+
+        return s[sortedIdx,:], a[sortedIdx], r[sortedIdx], s_[sortedIdx,:], terminal[sortedIdx]

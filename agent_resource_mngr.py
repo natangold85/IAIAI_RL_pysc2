@@ -23,7 +23,7 @@ from utils import SC2_Actions
 
 #decision makers
 from utils_decisionMaker import BaseNaiveDecisionMaker
-from utils_decisionMaker import LearnWithReplayMngr
+from utils_decisionMaker import DecisionMakerMngr
 from utils_decisionMaker import UserPlay
 
 from utils_results import ResultFile
@@ -180,7 +180,7 @@ class NaiveDecisionMakerResource(BaseNaiveDecisionMaker):
         self.desiredScvSize = 8 + 3+ 3
         self.maxQSize = 5
 
-    def choose_action(self, state):
+    def choose_action(self, state, validActions, targetValues=False):
         hasRes = state[RESOURCE_STATE.MINERALS_IDX] > RESOURCE_STATE.SCV_MINERALS_PRICE
         minSize = state[RESOURCE_STATE.SCV_GROUP_MINERALS_IDX]
         qSize = state[RESOURCE_STATE.SCV_BUILDING_QUEUE]
@@ -189,16 +189,16 @@ class NaiveDecisionMakerResource(BaseNaiveDecisionMaker):
         gas2Size = state[RESOURCE_STATE.SCV_GROUP_GAS2_IDX]
         
         sumScv = max(minSize + gas1Size + gas2Size + qSize, state[RESOURCE_STATE.SCV_NUM])
-
+        action = ACTIONS.ID_DO_NOTHING
         if minSize > self.desiredGroupCnt[SCV_GROUP_MINERALS]:
             if gas1Size < self.desiredGroupCnt[SCV_GROUP_GAS1]:
-                return ACTIONS.ID_ADD2_GAS1_FROM_MINERALS
+                action = ACTIONS.ID_ADD2_GAS1_FROM_MINERALS
             else:
-                return ACTIONS.ID_ADD2_GAS2_FROM_MINERALS
+                action = ACTIONS.ID_ADD2_GAS2_FROM_MINERALS
         elif sumScv < self.desiredScvSize and hasRes:
-            return ACTIONS.ID_CREATE_SCV
+            action = ACTIONS.ID_CREATE_SCV
         
-        return ACTIONS.ID_DO_NOTHING
+        return action if action in validActions else ACTIONS.ID_DO_NOTHING
 
     def GroupSmaller(self, state):
         for group, stateIdx in RESOURCE_STATE.GROUP2IDX.items():
@@ -213,9 +213,9 @@ class NaiveDecisionMakerResource(BaseNaiveDecisionMaker):
                 return group
         return -1
 
-    def ActionValuesVec(self, state, target = True):    
+    def ActionsValues(self, state, validActions, target = True):    
         vals = np.zeros(ACTIONS.NUM_ACTIONS,dtype = float)
-        vals[self.choose_action(state)] = 1.0
+        vals[self.choose_action(state, validActions)] = 1.0
 
         return vals
 
@@ -326,23 +326,13 @@ class ResourceMngrSubAgent(BaseAgent):
     def ChooseAction(self):
         if self.playAgent:
             if self.illigalmoveSolveInModel:
+                # todo: create valid actions for agent
                 validActions = self.ValidActions()
-                if self.trainAgent:
-                    targetValues = False
-                    exploreProb = self.decisionMaker.ExploreProb()              
-                else:
-                    targetValues = True
-                    exploreProb = self.decisionMaker.TargetExploreProb()   
-
-                if np.random.uniform() > exploreProb:
-                    valVec = self.decisionMaker.ActionValuesVec(self.current_scaled_state, targetValues)  
-                    random.shuffle(validActions)
-                    validVal = valVec[validActions]
-                    action = validActions[validVal.argmax()]
-                else:
-                    action = np.random.choice(validActions) 
-            else:
-                action = self.decisionMaker.choose_action(self.current_scaled_state)
+            else: 
+                validActions = list(range(ACTIONS.NUM_ACTIONS))
+ 
+            targetValues = False if self.trainAgent else True
+            return self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues)
         else:
             action = self.subAgentPlay
 

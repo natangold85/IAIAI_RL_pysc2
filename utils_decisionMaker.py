@@ -15,6 +15,8 @@ from utils_dqn import DQN
 from utils_dqn import DQN_WithTarget
 from utils_dqn import DQN_WithTargetAndDefault
 
+from utils_a3c import A3C
+
 from utils_qtable import QLearningTable
 
 from utils_history import HistoryMngr
@@ -106,13 +108,13 @@ class BaseDecisionMaker:
     def NumRuns(self):
         pass
 
-    def choose_action(self, observation):
+    def choose_action(self, state, validActions, targetValues=False):
         pass
 
     def learn(self, s, a, r, s_, terminal = False):
         pass
 
-    def ActionValuesVec(self,state, targetValues = False):
+    def ActionsValues(self,state, validActions, targetValues = False):
         pass
 
     def end_run(self, r, score = 0 ,steps = 0):
@@ -153,8 +155,8 @@ class BaseDecisionMaker:
     def SetMaxReward(self, r):
         pass
 
-    def IsWithDfltDecisionMaker(self):
-        return False
+    def DecisionMakerType(self):
+        return "Base"
 
     def NumDfltRuns(self):
         return 0
@@ -204,7 +206,7 @@ class UserPlay(BaseDecisionMaker):
         self.numActions = numActions
         self.actionDoNothing = actionDoNothing
 
-    def choose_action(self, observation):
+    def choose_action(self, state, validActions, targetValues=False):
         if self.playWithInput:
             a = input("insert action: ")
         else:
@@ -214,7 +216,7 @@ class UserPlay(BaseDecisionMaker):
     def learn(self, s, a, r, s_, terminal = False):
         return None
 
-    def ActionValuesVec(self,state, targetValues = False):
+    def ActionsValues(self,state, validActions, targetValues = False):
         return np.zeros(self.numActions,dtype = float)
 
     def end_run(self, r, score = 0 ,steps = 0):
@@ -224,9 +226,9 @@ class UserPlay(BaseDecisionMaker):
         return 0
 
 
-class LearnWithReplayMngr(BaseDecisionMaker):
+class DecisionMakerMngr(BaseDecisionMaker):
     def __init__(self, modelType, modelParams, agentName='', decisionMakerName='', resultFileName='', historyFileName='', directory='', numTrials2Learn=100, isMultiThreaded = False):
-        super(LearnWithReplayMngr, self).__init__(agentName)
+        super(DecisionMakerMngr, self).__init__(agentName)
 
         # params
         self.params = modelParams
@@ -273,11 +275,11 @@ class LearnWithReplayMngr(BaseDecisionMaker):
     def TargetExploreProb(self):
         return self.decisionMaker.TargetExploreProb()
 
-    def choose_action(self, state):
+    def choose_action(self, state, validActions, targetValues=False):
         if not self.decisionMaker.TakeDfltValues():
             state = self.historyMngr.NormalizeState(state)
 
-        return self.decisionMaker.choose_action(state)     
+        return self.decisionMaker.choose_action(state, validActions, targetValues)     
 
     def NumRuns(self):
         return self.decisionMaker.NumRuns()
@@ -323,7 +325,7 @@ class LearnWithReplayMngr(BaseDecisionMaker):
             self.decisionMaker.learn(s, a, r, s_, terminal, self.trial2LearnDQN)
             self.endRunLock.acquire()
             numRuns2Learn = self.trial2LearnDQN
-            self.decisionMaker.SaveDQN(self.trial2LearnDQN)
+            self.decisionMaker.Save(self.trial2LearnDQN)
             self.endRunLock.release()
 
             diff = datetime.datetime.now() - start
@@ -350,11 +352,11 @@ class LearnWithReplayMngr(BaseDecisionMaker):
             self.resultFile.Reset()
 
 
-    def ActionValuesVec(self, s, targetValues = False):
+    def ActionsValues(self, state, validActions, targetValues = False):
         if not self.decisionMaker.TakeDfltValues():
-            s = self.historyMngr.NormalizeState(s)
+            state = self.historyMngr.NormalizeState(state)
 
-        return self.decisionMaker.ActionValuesVec(s, targetValues)
+        return self.decisionMaker.ActionsValues(state, targetValues)
 
     def CopyTarget2Dm(self, numRuns):
         print("\t", threading.current_thread().getName(), ":", self.agentName,"->Copy Target 2 DQN")
@@ -378,8 +380,8 @@ class LearnWithReplayMngr(BaseDecisionMaker):
     def SetMaxReward(self, r):
         self.historyMngr.SetMaxReward(r)
 
-    def IsWithDfltDecisionMaker(self):
-        return self.decisionMaker.IsWithDfltDecisionMaker()
+    def DecisionMakerType(self):
+        return self.decisionMaker.DecisionMakerType()
 
     def NumDfltRuns(self):
         return self.decisionMaker.NumDfltRuns()

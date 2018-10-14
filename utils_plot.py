@@ -16,8 +16,10 @@ def create_nnGraphs(superAgent, agent2Check, statesIdx, actions2Check, plotTarge
     agent = superAgent.GetAgentByName(agent2Check)
     dm = agent.GetDecisionMaker()
 
-    numRuns = numTrials if numTrials >= 0 else dm.decisionMaker.NumRuns()
-    numRunsTarget = dm.decisionMaker.NumRunsTarget()
+    if plotTarget:
+        numRuns = dm.decisionMaker.NumRunsTarget()
+    else:
+        numRuns = numTrials if numTrials >= 0 else dm.decisionMaker.NumRuns()
 
     xName = agent.StateIdx2Str(idxX)
     yName = agent.StateIdx2Str(idxY)
@@ -33,10 +35,10 @@ def create_nnGraphs(superAgent, agent2Check, statesIdx, actions2Check, plotTarge
     size2Plot = min(sizeHist, maxSize2Plot)
     for i in range(size2Plot):
         s = dm.DrawStateFromHist()
-        vals = dm.ActionValuesVec(s, targetValues=plotTarget)
+        validActions = agent.ValidActions()
+        vals = dm.ActionsValues(s, validActions, targetValues=plotTarget)
 
         agent.current_scaled_state = s
-        validActions = agent.ValidActions()
         
         if xName == "min" or xName == "MIN":
             s[idxX] = int(s[idxX] / 25) 

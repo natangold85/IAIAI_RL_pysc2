@@ -260,10 +260,10 @@ def check_dqn():
 
         print("\n\n")
 
+    agent2Check = checkList[0]
     
     plotGraphs = eval(flags.FLAGS.plot)
     if plotGraphs:
-        agent2Check = checkList[0]
         statesIdx = flags.FLAGS.stateIdx2Check.split(",")
         for i in range(len(statesIdx)):
             statesIdx[i] = int(statesIdx[i])
@@ -279,7 +279,7 @@ def check_dqn():
 def avg_values(dm, states, targetVals=False):
     vals = []
     for s in states:
-        vals.append(dm.ActionValuesVec(s, targetVals))
+        vals.append(dm.ActionsValues(s, targetVals))
 
     return np.average(vals, axis=0)
 

@@ -64,7 +64,7 @@ def NormalizeStateVals(histDict, s):
 
 def PrintValues(dqn, allStates):
     for i in range(allStates.shape[0]):
-        values = dqn.ActionValuesVec(allStates[i, :])
+        values = dqn.ActionsValues(allStates[i, :])
         print("s =", allStates[i, :], "values =", end = ' [')
         for v in values:
             print(v, end = ', ')
@@ -80,7 +80,7 @@ def MinMaxValues(dqn, states, size):
     sumMax = 0.0
     sumMin = 0.0
     for i in range(size):
-        values = dqn.ActionValuesVec(states[i, :])
+        values = dqn.ActionsValues(states[i, :])
         sumMax += max(values)
         sumMin += min(values)    
 

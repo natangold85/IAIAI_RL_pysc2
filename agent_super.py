@@ -20,7 +20,7 @@ from utils import SC2_Params
 from utils import SC2_Actions
 
 from utils_decisionMaker import BaseDecisionMaker
-from utils_decisionMaker import LearnWithReplayMngr
+from utils_decisionMaker import DecisionMakerMngr
 
 from utils_qtable import QTableParamsExplorationDecay
 from utils_dqn import DQN_PARAMS
@@ -266,7 +266,7 @@ class SuperAgent(BaseAgent):
         if not os.path.isdir("./" + directory):
             os.makedirs("./" + directory)
 
-        decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,
+        decisionMaker = DecisionMakerMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,
                                             resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY], isMultiThreaded=isMultiThreaded,
                                             numTrials2Learn=20)
 
@@ -410,23 +410,14 @@ class SuperAgent(BaseAgent):
 
         if self.playAgent:
             if self.illigalmoveSolveInModel:
+                # todo: create valid actions for agent
                 validActions = self.ValidActions()
-                if self.trainAgent:
-                    targetValues = False
-                    exploreProb = self.decisionMaker.ExploreProb()              
-                else:
-                    targetValues = True
-                    exploreProb = self.decisionMaker.TargetExploreProb()      
+            else: 
+                validActions = list(range(ACTIONS.SIZE))
+ 
+            targetValues = False if self.trainAgent else True
+            return self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues)
 
-                if np.random.uniform() > exploreProb:
-                    valVec = self.decisionMaker.ActionValuesVec(self.current_state, targetValues)   
-                    random.shuffle(validActions)
-                    validVal = valVec[validActions]
-                    action = validActions[validVal.argmax()]
-                else:
-                    action = np.random.choice(validActions) 
-            else:
-                action = self.decisionMaker.choose_action(self.current_state)
         else:
             if self.subAgentPlay == SUB_AGENT_ID_ATTACK:
                 action = ACTIONS.ACTION_ATTACK_START

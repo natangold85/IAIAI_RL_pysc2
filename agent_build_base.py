@@ -21,7 +21,7 @@ from utils import BaseAgent
 
 #decision makers
 from utils_decisionMaker import BaseDecisionMaker
-from utils_decisionMaker import LearnWithReplayMngr
+from utils_decisionMaker import DecisionMakerMngr
 from utils_decisionMaker import UserPlay
 from utils_decisionMaker import BaseNaiveDecisionMaker
 
@@ -32,6 +32,9 @@ from utils_results import PlotResults
 from utils_dqn import DQN_PARAMS
 from utils_dqn import DQN_EMBEDDING_PARAMS
 from utils_dqn import DQN_PARAMS_WITH_DEFAULT_DM
+
+from utils_a3c import A3C_PARAMS
+
 from utils_qtable import QTableParams
 from utils_qtable import QTableParamsExplorationDecay
 
@@ -56,6 +59,7 @@ QTABLE = 'q'
 DQN = 'dqn'
 DQN2L = 'dqn_2l'
 DQN2L_DFLT = 'dqn_2l_dflt'
+A3C = "A3C"
 DQN_EMBEDDING_LOCATIONS = 'dqn_Embedding' 
 NAIVE = "naive"
 USER_PLAY = 'play'
@@ -226,6 +230,14 @@ RUN_TYPES[DQN2L_DFLT][DIRECTORY] = "buildBase_dqn2l_dflt"
 RUN_TYPES[DQN2L_DFLT][HISTORY] = "replayHistory"
 RUN_TYPES[DQN2L_DFLT][RESULTS] = "result"
 
+RUN_TYPES[A3C] = {}
+RUN_TYPES[A3C][TYPE] = "A3C"
+RUN_TYPES[A3C][PARAMS] = A3C_PARAMS(BUILD_STATE.SIZE, ACTIONS.NUM_ACTIONS, numTrials2CmpResults=NUM_TRIALS_4_CMP)
+RUN_TYPES[A3C][DECISION_MAKER_NAME] = "build_A3C"
+RUN_TYPES[A3C][DIRECTORY] = "buildBase_A3C"
+RUN_TYPES[A3C][HISTORY] = "replayHistory"
+RUN_TYPES[A3C][RESULTS] = "results"
+
 RUN_TYPES[NAIVE] = {}
 RUN_TYPES[NAIVE][DIRECTORY] = "buildBase_naive"
 RUN_TYPES[NAIVE][RESULTS] = "buildBase_result"
@@ -297,7 +309,7 @@ def CreateDecisionMakerBuildBase(dmTypes, isMultiThreaded, numTrials2Learn=NUM_T
         if runType[TYPE] == "DQN_WithTargetAndDefault":
             runType[PARAMS].defaultDecisionMaker = NaiveDecisionMakerBuilder()
 
-        decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,
+        decisionMaker = DecisionMakerMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,
                                             resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY], isMultiThreaded=isMultiThreaded,
                                             numTrials2Learn=numTrials2Learn)
 
@@ -310,7 +322,7 @@ class NaiveDecisionMakerBuilder(BaseNaiveDecisionMaker):
         self.CCSupply = 15
 
 
-    def choose_action(self, state):
+    def choose_action(self, state, validActions, targetValues=False):
         action = 0
 
         numSDAll = state[BUILD_STATE.SUPPLY_DEPOT_IDX] + state[BUILD_STATE.IN_PROGRESS_SUPPLY_DEPOT_IDX]
@@ -345,11 +357,11 @@ class NaiveDecisionMakerBuilder(BaseNaiveDecisionMaker):
         elif supplyLeft < 6:
             action = ACTIONS.ID_BUILD_SUPPLY_DEPOT
 
-        return action
+        return action if action in validActions else ACTIONS.ID_DO_NOTHING
 
-    def ActionValuesVec(self, state, target = True):    
+    def ActionsValues(self, state, validActions, target = True):    
         vals = np.zeros(ACTIONS.NUM_ACTIONS,dtype = float)
-        vals[self.choose_action(state)] = 1.0
+        vals[self.choose_action(state, validActions)] = 1.0
         vals[ACTIONS.ID_DO_NOTHING] = 0.1
         return vals
 
@@ -586,22 +598,11 @@ class BuildBaseSubAgent(BaseAgent):
         if self.playAgent:
             if self.illigalmoveSolveInModel:
                 validActions = self.ValidActions()
-                if self.trainAgent:
-                    targetValues = False
-                    exploreProb = self.decisionMaker.ExploreProb()              
-                else:
-                    targetValues = True
-                    exploreProb = self.decisionMaker.TargetExploreProb()   
-
-                if np.random.uniform() > exploreProb:
-                    valVec = self.decisionMaker.ActionValuesVec(self.current_state, targetValues)
-                    random.shuffle(validActions)
-                    validVal = valVec[validActions]
-                    action = validActions[validVal.argmax()]
-                else:
-                    action = np.random.choice(validActions) 
-            else:
-                action = self.decisionMaker.choose_action(self.current_state)
+            else: 
+                validActions = list(range(ACTIONS.NUM_ACTIONS))
+ 
+            targetValues = False if self.trainAgent else True
+            action = self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues)
         else:
             action = ACTIONS.ID_DO_NOTHING
         

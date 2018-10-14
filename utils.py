@@ -104,10 +104,11 @@ class BaseAgent(base_agent.BaseAgent):
 
 # params base
 class ParamsBase:
-    def __init__(self, stateSize, numActions, discountFactor = 0.95, maxReplaySize = 500000, minReplaySize = 1000):
+    def __init__(self, stateSize, numActions, discountFactor = 0.95, accumulateHistory = True, maxReplaySize = 500000, minReplaySize = 1000):
         self.stateSize = stateSize
         self.numActions = numActions
         self.discountFactor = discountFactor
+        self.accumulateHistory = accumulateHistory
         self.maxReplaySize = maxReplaySize
         self.minReplaySize = minReplaySize
 

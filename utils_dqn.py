@@ -15,10 +15,10 @@ from utils import EmptyLock
 
 # dqn params
 class DQN_PARAMS(ParamsBase):
-    def __init__(self, stateSize, numActions, layersNum = 1, neuronsInLayerNum = 256, numTrials2CmpResults = 1000, nn_Func = None, 
-                outputGraph = False, discountFactor = 0.95, batchSize = 32, maxReplaySize = 500000, minReplaySize = 1000, 
-                explorationProb = 0.1, descendingExploration = True, exploreChangeRate = 0.001, learning_rate = 0.00001, 
-                scopeVarName = '', normalizeRewards = False, numRepeatsTerminalLearning = 10):
+    def __init__(self, stateSize, numActions, layersNum=1, neuronsInLayerNum=256, numTrials2CmpResults=1000, nn_Func=None, 
+                outputGraph=False, discountFactor=0.95, batchSize=32, maxReplaySize=500000, minReplaySize=1000, 
+                explorationProb=0.1, descendingExploration=True, exploreChangeRate=0.001, learning_rate=0.00001, 
+                scopeVarName='', normalizeRewards=False, numRepeatsTerminalLearning=10, accumulateHistory=True):
 
         super(DQN_PARAMS, self).__init__(stateSize=stateSize, numActions=numActions, discountFactor=discountFactor, 
                                             maxReplaySize=maxReplaySize, minReplaySize=minReplaySize)
@@ -57,11 +57,12 @@ class DQN_PARAMS(ParamsBase):
 class DQN_EMBEDDING_PARAMS(DQN_PARAMS):
     def __init__(self, stateSize, embeddingInputSize, numActions, numTrials2CmpResults = 1000, nn_Func = None, outputGraph = False, 
                 discountFactor = 0.95, batchSize = 32, maxReplaySize = 500000, minReplaySize = 1000, explorationProb = 0.1, descendingExploration = True, 
-                exploreChangeRate = 0.0005, scopeVarName = ''):
+                exploreChangeRate = 0.0005, scopeVarName = '', accumulateHistory=True):
         
         super(DQN_EMBEDDING_PARAMS, self).__init__(stateSize=stateSize, numActions=numActions, numTrials2CmpResults=numTrials2CmpResults, nn_Func=nn_Func, 
                                                     outputGraph=outputGraph, discountFactor=discountFactor, batchSize=batchSize, maxReplaySize=maxReplaySize, minReplaySize=minReplaySize, 
-                                                    explorationProb=explorationProb, descendingExploration=descendingExploration, exploreChangeRate=exploreChangeRate, scopeVarName=scopeVarName)
+                                                    explorationProb=explorationProb, descendingExploration=descendingExploration, exploreChangeRate=exploreChangeRate, scopeVarName=scopeVarName, 
+                                                    accumulateHistory=accumulateHistory)
         
         self.embeddingInputSize = embeddingInputSize
         self.type = "DQN_Embedding"
@@ -69,11 +70,11 @@ class DQN_EMBEDDING_PARAMS(DQN_PARAMS):
 class DQN_PARAMS_WITH_DEFAULT_DM(DQN_PARAMS):
     def __init__(self, stateSize, numActions, numTrials2CmpResults = 1000, nn_Func = None, outputGraph = False, 
                 discountFactor = 0.95, batchSize = 32, maxReplaySize = 500000, minReplaySize = 1000, explorationProb = 0.1, descendingExploration = True, 
-                exploreChangeRate = 0.0005, scopeVarName = '', layersNum = 1, neuronsInLayerNum = 256):
+                exploreChangeRate = 0.0005, scopeVarName = '', layersNum = 1, neuronsInLayerNum = 256, accumulateHistory=True):
         
         super(DQN_PARAMS_WITH_DEFAULT_DM, self).__init__(stateSize=stateSize, numActions=numActions, numTrials2CmpResults=numTrials2CmpResults, nn_Func=nn_Func, layersNum=layersNum, neuronsInLayerNum=neuronsInLayerNum,
                                                     outputGraph=outputGraph, discountFactor=discountFactor, batchSize=batchSize, maxReplaySize=maxReplaySize, minReplaySize=minReplaySize, 
-                                                    explorationProb=explorationProb, descendingExploration=descendingExploration, exploreChangeRate=exploreChangeRate, scopeVarName=scopeVarName)
+                                                    explorationProb=explorationProb, descendingExploration=descendingExploration, exploreChangeRate=exploreChangeRate, scopeVarName=scopeVarName, accumulateHistory=accumulateHistory)
 
         self.defaultDecisionMaker = None
 
@@ -144,7 +145,7 @@ class DQN:
             if os.path.isfile(fnameNNMeta) and loadNN:
                 self.saver.restore(self.sess, self.directoryName)
             else:
-                self.SaveDQN()
+                self.Save()
         else:
             self.saver = None
 
@@ -198,19 +199,20 @@ class DQN:
     def TargetExploreProb(self):
         return self.ExploreProb()    
 
-    def choose_action(self, observation):
+    def choose_action(self, state, validActions, targetValues=False):
         if np.random.uniform() > self.params.ExploreProb(self.numRuns.eval(session = self.sess)):
-            vals = self.outputLayer.eval({self.inputLayer: observation.reshape(1,self.num_input)}, session=self.sess)
+            vals = self.outputLayer.eval({self.inputLayer: state.reshape(1,self.num_input)}, session=self.sess)
 
-            maxArgs = np.argwhere(vals[0] == np.amax(vals[0]))
-            a = np.random.choice(maxArgs[0])      
+            maxArgs = list(np.argwhere(vals[0] == np.amax(vals[0][validActions]))[0])
+            maxArgsValid = [x for x in maxArgs if x in validActions]
+            a = np.random.choice(maxArgsValid)      
         else:
-            a = np.random.randint(0, self.numActions)
+            a = np.random.choice(validActions)
 
         return a
 
 
-    def ActionValuesVec(self, state, targetValues = False):
+    def ActionsValues(self, state, validActions, targetValues = False):
         allVals = self.outputLayer.eval({self.inputLayer: state.reshape(1,self.num_input)}, session=self.sess)
         return allVals[0]
 
@@ -243,7 +245,7 @@ class DQN:
     def Close(self):
         self.sess.close()
         
-    def SaveDQN(self, numRuns2Save = None, toPrint = True):
+    def Save(self, numRuns2Save = None, toPrint = True):
         
         if numRuns2Save == None:
             self.saver.save(self.sess, self.directoryName)
@@ -274,8 +276,8 @@ class DQN:
     def Reset(self):
         self.sess.run(self.init_op) 
     
-    def IsWithDfltDecisionMaker(self):
-        return False
+    def DecisionMakerType(self):
+        return "DQN"
 
     def NumDfltRuns(self):
         return 0
@@ -308,7 +310,7 @@ class DQN:
 
     def actionValuesSpecific(self, state, dmId): # dmId = target, curr
         isTarget = dmId == "target"
-        return self.ActionValuesVec(state, isTarget)
+        return self.ActionsValues(state, isTarget)
 
 
 class DQN_WithTarget(DQN):
@@ -345,7 +347,7 @@ class DQN_WithTarget(DQN):
                 self.saver.restore(self.sess, self.directoryName)
             else:
                 self.CopyDqn2Target(0)
-                self.SaveDQN()
+                self.Save()
 
         if modelParams.outputGraph:
             # $ tensorboard --logdir=logs
@@ -384,19 +386,33 @@ class DQN_WithTarget(DQN):
 
         assign = self.numRuns.assign(numRuns)
         self.sess.run(assign)
-        self.SaveDQN()
+        self.Save()
         
         self.rewardHistLock.acquire()
         self.rewardHist = []
         self.rewardHistLock.release()
 
+    def choose_action(self, state, validActions, targetValues=False):
+        if targetValues:   
+            if np.random.uniform() > self.TargetExploreProb():
+                vals = self.targetOutput.eval({self.inputLayer: state.reshape(1,self.num_input)}, session=self.sess)
 
-    def ActionValuesVec(self, state, targetValues = False):
+                maxArgs = list(np.argwhere(vals[0] == np.amax(vals[0][validActions]))[0])
+                maxArgsValid = [x for x in maxArgs if x in validActions]
+                action = np.random.choice(maxArgsValid)      
+            else:
+                action = np.random.choice(validActions)
+        else:
+            action = super(DQN_WithTarget, self).choose_action(state, validActions, targetValues)
+
+        return action
+
+    def ActionsValues(self, state, validActions, targetValues = False):
         if targetValues:
             allVals = self.targetOutput.eval({self.inputLayer: state.reshape(1,self.num_input)}, session=self.sess)
             return allVals[0]
         else:
-            return super(DQN_WithTarget, self).ActionValuesVec(state, targetValues)
+            return super(DQN_WithTarget, self).ActionsValues(state, targetValues)
 
 
     def TargetExploreProb(self):
@@ -441,6 +457,9 @@ class DQN_WithTarget(DQN):
             self.rewardHist.pop(0)
         
         self.rewardHistLock.release()
+
+    def DecisionMakerType(self):
+        return "DQN_WithTarget"
         
 
 class DQN_WithTargetAndDefault(DQN_WithTarget):
@@ -472,28 +491,34 @@ class DQN_WithTargetAndDefault(DQN_WithTarget):
                 self.saver.restore(self.sess, self.directoryName)
             else:
                 self.CopyDqn2Target(0)
-                self.SaveDQN()
+                self.Save()
 
-    def choose_action(self, observation):
-        if self.ValueDefault() == self.initValDflt:
-            super(DQN_WithTargetAndDefault, self).choose_action(observation)
+    def choose_action(self, state, validActions, targetValues=False):
+        if targetValues:
+            if self.ValueDefault() > self.ValueTarget():
+                return self.defaultDecisionMaker.choose_action(state, validActions, targetValues)
+            else:
+                return super(DQN_WithTargetAndDefault, self).choose_action(state, validActions, targetValues)
         else:
-            self.defaultDecisionMaker.choose_action(observation)
+            if self.ValueDefault() == self.initValDflt:
+                super(DQN_WithTargetAndDefault, self).choose_action(state, validActions)
+            else:
+                self.defaultDecisionMaker.choose_action(state, validActions)
     
     def ValueDefault(self):
         return self.valueDefaultDm.eval(session = self.sess)
 
-    def ActionValuesVec(self, state, targetValues = False):
+    def ActionsValues(self, state, validActions, targetValues = False):
         if targetValues:
             if self.ValueDefault() > self.ValueTarget():
-                return self.defaultDecisionMaker.ActionValuesVec(state, targetValues)
+                return self.defaultDecisionMaker.ActionsValues(state, targetValues)
             else:
-                return super(DQN_WithTargetAndDefault, self).ActionValuesVec(state, targetValues)
+                return super(DQN_WithTargetAndDefault, self).ActionsValues(state, targetValues)
         else:
             if self.ValueDefault() == self.initValDflt:
-                return self.defaultDecisionMaker.ActionValuesVec(state, targetValues)
+                return self.defaultDecisionMaker.ActionsValues(state, targetValues)
             else:
-                return super(DQN_WithTargetAndDefault, self).ActionValuesVec(state, targetValues)
+                return super(DQN_WithTargetAndDefault, self).ActionsValues(state, targetValues)
 
     def ExploreProb(self):
         if self.ValueDefault() == self.initValDflt:
@@ -510,7 +535,7 @@ class DQN_WithTargetAndDefault(DQN_WithTarget):
                 avgReward = np.average(np.array(self.rewardHistDefault))
                 assign = self.valueDefaultDm.assign(avgReward)
                 self.sess.run(assign)
-                self.SaveDQN()
+                self.Save()
             
             self.rewardHistDfltLock.release()
             
@@ -518,8 +543,8 @@ class DQN_WithTargetAndDefault(DQN_WithTarget):
         else:
             super(DQN_WithTargetAndDefault, self).end_run(r, toSave)
 
-    def IsWithDfltDecisionMaker(self):
-        return True
+    def DecisionMakerType(self):
+        return "DQN_WithTargetAndDefault"
     
     def TakeDfltValues(self):
         return self.ValueDefault() > self.ValueTarget()
@@ -532,7 +557,7 @@ class DQN_WithTargetAndDefault(DQN_WithTarget):
 
     def actionValuesSpecific(self, state, dmId): # dmId = dflt, target, curr
         if dmId == "dflt":
-            return self.defaultDecisionMaker.ActionValuesVec(state)
+            return self.defaultDecisionMaker.ActionsValues(state)
         else:
             return super(DQN_WithTargetAndDefault, self).actionValuesSpecific(state, dmId)
             

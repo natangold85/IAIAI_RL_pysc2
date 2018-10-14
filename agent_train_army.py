@@ -20,7 +20,7 @@ from utils import SC2_Actions
 
 #decision makers
 from utils_decisionMaker import BaseDecisionMaker
-from utils_decisionMaker import LearnWithReplayMngr
+from utils_decisionMaker import DecisionMakerMngr
 from utils_decisionMaker import UserPlay
 from utils_decisionMaker import BaseNaiveDecisionMaker
 
@@ -31,6 +31,7 @@ from utils_dqn import DQN_PARAMS
 from utils_dqn import DQN_EMBEDDING_PARAMS
 from utils_dqn import DQN_PARAMS_WITH_DEFAULT_DM
 
+from utils_a3c import A3C_PARAMS
 
 from utils_qtable import QTableParams
 from utils_qtable import QTableParamsExplorationDecay
@@ -56,6 +57,7 @@ QTABLE = 'q'
 DQN = 'dqn'
 DQN2L = 'dqn_2l' 
 DQN2L_DFLT = 'dqn_2l_dflt'
+A3C = "A3C"
 NAIVE = "naive"
 USER_PLAY = 'play'
 
@@ -142,6 +144,7 @@ class TRAIN_STATE:
     IDX2STR[QUEUE_FACTORY_WITH_TECHLAB] = "tl_q"
 
     IDX2STR[ARMY_POWER] = "power"
+    IDX2STR[TIME_LINE_IDX] = "TimeLine"
 
     BUILDING_2_STATE_TRANSITION = {}
     BUILDING_2_STATE_TRANSITION[Terran.Barracks] = BARRACKS_IDX
@@ -218,6 +221,14 @@ RUN_TYPES[DQN2L_DFLT][DIRECTORY] = "trainArmy_dqn2l_dflt"
 RUN_TYPES[DQN2L_DFLT][HISTORY] = "replayHistory"
 RUN_TYPES[DQN2L_DFLT][RESULTS] = "result"
 
+RUN_TYPES[A3C] = {}
+RUN_TYPES[A3C][TYPE] = "A3C"
+RUN_TYPES[A3C][PARAMS] = A3C_PARAMS(TRAIN_STATE.SIZE, NUM_ACTIONS, numTrials2CmpResults=NUM_TRIALS_4_CMP)
+RUN_TYPES[A3C][DECISION_MAKER_NAME] = "train_A3C"
+RUN_TYPES[A3C][DIRECTORY] = "trainArmy_A3C"
+RUN_TYPES[A3C][HISTORY] = "replayHistory"
+RUN_TYPES[A3C][RESULTS] = "results"
+
 RUN_TYPES[NAIVE] = {}
 RUN_TYPES[NAIVE][DIRECTORY] = "trainArmy_naive"
 RUN_TYPES[NAIVE][RESULTS] = "trainArmy_result"
@@ -237,7 +248,7 @@ def CreateDecisionMakerTrainArmy(dmTypes, isMultiThreaded, numTrials2Learn=NUM_T
         if runType[TYPE] == "DQN_WithTargetAndDefault":
             runType[PARAMS].defaultDecisionMaker = NaiveDecisionMakerTrain()
 
-        decisionMaker = LearnWithReplayMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME],  agentName=AGENT_NAME, 
+        decisionMaker = DecisionMakerMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME],  agentName=AGENT_NAME, 
                                             resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY], isMultiThreaded=isMultiThreaded,
                                             numTrials2Learn=numTrials2Learn)
     return decisionMaker, runType
@@ -246,7 +257,7 @@ class NaiveDecisionMakerTrain(BaseNaiveDecisionMaker):
     def __init__(self, resultFName = None, directory = None, numTrials2Save=NUM_TRIALS_2_LEARN):
         super(NaiveDecisionMakerTrain, self).__init__(numTrials2Save=numTrials2Save, resultFName=resultFName, directory=directory, agentName=AGENT_NAME)
 
-    def ActionValuesVec(self, state, target = True):  
+    def ActionsValues(self, state, validActions, target = True):  
         vals = np.zeros(NUM_ACTIONS,dtype = float)
            
         if state[TRAIN_STATE.ARMY_POWER] < 20:
@@ -452,7 +463,7 @@ class TrainArmySubAgent(BaseAgent):
                     exploreProb = self.decisionMaker.TargetExploreProb()   
 
                 if np.random.uniform() > exploreProb:
-                    valVec = self.decisionMaker.ActionValuesVec(self.current_scaled_state, targetValues)  
+                    valVec = self.decisionMaker.ActionsValues(self.current_scaled_state, targetValues)  
                     random.shuffle(validActions)
                     validVal = valVec[validActions]
                     action = validActions[validVal.argmax()]

@@ -98,8 +98,8 @@ class QLearningTable:
     def ExploreProb(self):
         return self.params.ExploreProb(self.numTotRuns)
 
-    def choose_action(self, observation):
-        state = str(observation)
+    def choose_action(self, state, validActions, targetValues=False):
+        state = str(state)
         exploreProb = self.params.ExploreProb(self.numTotRuns)
 
         if np.random.uniform() > exploreProb:
@@ -109,7 +109,10 @@ class QLearningTable:
             # some actions have the same value
             state_action = state_action.reindex(np.random.permutation(state_action.index))
             
-            action = state_action.idxmax()
+            # todo : not checked properly (should disregard non valid actions)
+            maxArgs = list(np.argwhere(state_action == np.amax(state_action[validActions])))
+            maxArgsValid = [x for x in maxArgs if x in validActions]    
+            action = np.random.choice(maxArgsValid) 
         else:
             # choose random action
             action = np.random.choice(self.actions)
@@ -117,10 +120,11 @@ class QLearningTable:
         return action
 
 
-    def ActionValuesVec(self, s, targetValues = False):
-        state = str(s)
-        self.check_state_exist(state)
-        state_action = self.table.ix[state, :]
+    def ActionsValues(self, state, validActions, targetValues = False):
+        s = str(state)
+        self.check_state_exist(s)
+        state_action = self.table.ix[s, :]
+        # todo: insert valid actions calculations
         vals = np.zeros(len(self.actions), dtype=float)
         for a in range(len(self.actions)):
             vals[a] = state_action[self.actions[a]]
