@@ -104,13 +104,20 @@ class BaseAgent(base_agent.BaseAgent):
 
 # params base
 class ParamsBase:
-    def __init__(self, stateSize, numActions, discountFactor = 0.95, accumulateHistory = True, maxReplaySize = 500000, minReplaySize = 1000):
+    def __init__(self, stateSize, numActions, discountFactor = 0.95, accumulateHistory = True, maxReplaySize=500000, minReplaySize=1000, numTrials2Learn=None, numTrials2Save=100):
         self.stateSize = stateSize
         self.numActions = numActions
         self.discountFactor = discountFactor
         self.accumulateHistory = accumulateHistory
         self.maxReplaySize = maxReplaySize
         self.minReplaySize = minReplaySize
+        
+        self.numTrials2Save = numTrials2Save
+        self.numTrials2Learn = numTrials2Learn if numTrials2Learn != None else numTrials2Save
+
+        self.normalizeRewards = False
+        self.normalizeState = False
+        self.numRepeatsTerminalLearning = 0
 
 class SC2_Params:
     # minimap feature

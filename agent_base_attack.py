@@ -20,16 +20,16 @@ from utils import SC2_Params
 from utils import SC2_Actions
 
 #decision makers
-from utils_decisionMaker import DecisionMakerMngr
-from utils_decisionMaker import BaseDecisionMaker
+from algo_decisionMaker import DecisionMakerExperienceReplay
+from algo_decisionMaker import BaseDecisionMaker
 
 from utils_results import ResultFile
 
 # params
-from utils_dqn import DQN_PARAMS
-from utils_dqn import DQN_EMBEDDING_PARAMS
-from utils_qtable import QTableParams
-from utils_qtable import QTableParamsExplorationDecay
+from algo_dqn import DQN_PARAMS
+from algo_dqn import DQN_EMBEDDING_PARAMS
+from algo_qtable import QTableParams
+from algo_qtable import QTableParamsExplorationDecay
 
 from utils import SwapPnt
 from utils import DistForCmp
@@ -172,7 +172,7 @@ class NaiveDecisionMakerBaseAttack(BaseDecisionMaker):
         return vals
 
 class BaseAttack(BaseAgent):
-    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList):        
+    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList, dmCopy=None):        
         super(BaseAttack, self).__init__(STATE_SIZE)
 
         self.sharedData = sharedData
@@ -206,7 +206,9 @@ class BaseAttack(BaseAgent):
         self.lastValidAttackAction = None
         self.enemyBuildingGridLoc2ScreenLoc = {}
 
-    def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
+    def CreateDecisionMaker(self, dmTypes, isMultiThreaded, dmCopy=None):
+        dmCopy = "" if dmCopy==None else "_" + str(dmCopy)
+
         if dmTypes[AGENT_NAME] == "none":
             return BaseDecisionMaker(AGENT_NAME)
             
@@ -219,8 +221,8 @@ class BaseAttack(BaseAgent):
             directory = dmTypes["directory"] + "/" + AGENT_DIR
             if not os.path.isdir("./" + directory):
                 os.makedirs("./" + directory)
-            decisionMaker = DecisionMakerMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,
-                                            resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=AGENT_DIR+runType[DIRECTORY], isMultiThreaded=isMultiThreaded)
+            decisionMaker = DecisionMakerExperienceReplay(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,
+                                            resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=AGENT_DIR+runType[DIRECTORY]+dmCopy, isMultiThreaded=isMultiThreaded)
 
         return decisionMaker
 
@@ -290,7 +292,7 @@ class BaseAttack(BaseAgent):
     def ChooseAction(self):
         if self.playAgent:
             if self.illigalmoveSolveInModel:
-                validActions = self.ValidActions()
+                validActions = self.ValidActions(self.current_scaled_state)
             else: 
                 validActions = list(range(NUM_ACTIONS))
  
@@ -378,10 +380,12 @@ class BaseAttack(BaseAgent):
         else:
             return p2
     
-    def ValidActions(self):
+    def ValidActions(self, state):
         valid = [ACTION_DO_NOTHING]
-        for key in self.enemyBuildingGridLoc2ScreenLoc.keys():
-            valid.append(key + ACTIONS_START_IDX_ATTACK)
+        valid = [ACTION_DO_NOTHING]
+        enemiesLoc = (state[STATE_START_ENEMY_MAT:STATE_END_ENEMY_MAT] > 0).nonzero()
+        for loc in enemiesLoc[0]:
+            valid.append(loc + ACTIONS_START_IDX_ATTACK)
 
         return valid
 

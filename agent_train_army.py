@@ -19,22 +19,22 @@ from utils import SC2_Params
 from utils import SC2_Actions
 
 #decision makers
-from utils_decisionMaker import BaseDecisionMaker
-from utils_decisionMaker import DecisionMakerMngr
-from utils_decisionMaker import UserPlay
-from utils_decisionMaker import BaseNaiveDecisionMaker
+from algo_decisionMaker import BaseDecisionMaker
+from algo_decisionMaker import DecisionMakerExperienceReplay
+from algo_decisionMaker import UserPlay
+from algo_decisionMaker import BaseNaiveDecisionMaker
 
 from utils_results import ResultFile
 from utils_results import PlotResults
 # params
-from utils_dqn import DQN_PARAMS
-from utils_dqn import DQN_EMBEDDING_PARAMS
-from utils_dqn import DQN_PARAMS_WITH_DEFAULT_DM
+from algo_dqn import DQN_PARAMS
+from algo_dqn import DQN_EMBEDDING_PARAMS
+from algo_dqn import DQN_PARAMS_WITH_DEFAULT_DM
 
-from utils_a3c import A3C_PARAMS
+from algo_a2c import A2C_PARAMS
 
-from utils_qtable import QTableParams
-from utils_qtable import QTableParamsExplorationDecay
+from algo_qtable import QTableParams
+from algo_qtable import QTableParamsExplorationDecay
 
 from utils import EmptySharedData
 from utils import SupplyCap
@@ -57,7 +57,7 @@ QTABLE = 'q'
 DQN = 'dqn'
 DQN2L = 'dqn_2l' 
 DQN2L_DFLT = 'dqn_2l_dflt'
-A3C = "A3C"
+A2C = "A2C"
 NAIVE = "naive"
 USER_PLAY = 'play'
 
@@ -190,7 +190,7 @@ RUN_TYPES = {}
 
 RUN_TYPES[QTABLE] = {}
 RUN_TYPES[QTABLE][TYPE] = "QLearningTable"
-RUN_TYPES[QTABLE][PARAMS] = QTableParamsExplorationDecay(TRAIN_STATE.SIZE, NUM_ACTIONS)
+RUN_TYPES[QTABLE][PARAMS] = QTableParamsExplorationDecay(TRAIN_STATE.SIZE, NUM_ACTIONS, numTrials2Learn=NUM_TRIALS_2_LEARN)
 RUN_TYPES[QTABLE][DIRECTORY] = "trainArmy_qtable"
 RUN_TYPES[QTABLE][DECISION_MAKER_NAME] = "qtable"
 RUN_TYPES[QTABLE][HISTORY] = "replayHistory"
@@ -198,7 +198,7 @@ RUN_TYPES[QTABLE][RESULTS] = "result"
 
 RUN_TYPES[DQN] = {}
 RUN_TYPES[DQN][TYPE] = "DQN_WithTarget"
-RUN_TYPES[DQN][PARAMS] = DQN_PARAMS(TRAIN_STATE.SIZE, NUM_ACTIONS)
+RUN_TYPES[DQN][PARAMS] = DQN_PARAMS(TRAIN_STATE.SIZE, NUM_ACTIONS, numTrials2Learn=NUM_TRIALS_2_LEARN)
 RUN_TYPES[DQN][DECISION_MAKER_NAME] = "train_dqn"
 RUN_TYPES[DQN][DIRECTORY] = "trainArmy_dqn"
 RUN_TYPES[DQN][HISTORY] = "replayHistory"
@@ -206,7 +206,7 @@ RUN_TYPES[DQN][RESULTS] = "result"
 
 RUN_TYPES[DQN2L] = {}
 RUN_TYPES[DQN2L][TYPE] = "DQN_WithTarget"
-RUN_TYPES[DQN2L][PARAMS] = DQN_PARAMS(TRAIN_STATE.SIZE, NUM_ACTIONS, layersNum=2, numTrials2CmpResults=NUM_TRIALS_4_CMP, descendingExploration=False)
+RUN_TYPES[DQN2L][PARAMS] = DQN_PARAMS(TRAIN_STATE.SIZE, NUM_ACTIONS, layersNum=2, numTrials2CmpResults=NUM_TRIALS_4_CMP, numTrials2Learn=NUM_TRIALS_2_LEARN, descendingExploration=False)
 RUN_TYPES[DQN2L][DECISION_MAKER_NAME] = "train_dqn2l"
 RUN_TYPES[DQN2L][DIRECTORY] = "trainArmy_dqn2l"
 RUN_TYPES[DQN2L][HISTORY] = "replayHistory"
@@ -215,26 +215,28 @@ RUN_TYPES[DQN2L][RESULTS] = "result"
 
 RUN_TYPES[DQN2L_DFLT] = {}
 RUN_TYPES[DQN2L_DFLT][TYPE] = "DQN_WithTargetAndDefault"
-RUN_TYPES[DQN2L_DFLT][PARAMS] = DQN_PARAMS_WITH_DEFAULT_DM(TRAIN_STATE.SIZE, NUM_ACTIONS, layersNum=2, numTrials2CmpResults=NUM_TRIALS_4_CMP, descendingExploration=False)
+RUN_TYPES[DQN2L_DFLT][PARAMS] = DQN_PARAMS_WITH_DEFAULT_DM(TRAIN_STATE.SIZE, NUM_ACTIONS, layersNum=2, numTrials2CmpResults=NUM_TRIALS_4_CMP, numTrials2Learn=NUM_TRIALS_2_LEARN, descendingExploration=False)
 RUN_TYPES[DQN2L_DFLT][DECISION_MAKER_NAME] = "train_dqn2l_dflt"
 RUN_TYPES[DQN2L_DFLT][DIRECTORY] = "trainArmy_dqn2l_dflt"
 RUN_TYPES[DQN2L_DFLT][HISTORY] = "replayHistory"
 RUN_TYPES[DQN2L_DFLT][RESULTS] = "result"
 
-RUN_TYPES[A3C] = {}
-RUN_TYPES[A3C][TYPE] = "A3C"
-RUN_TYPES[A3C][PARAMS] = A3C_PARAMS(TRAIN_STATE.SIZE, NUM_ACTIONS, numTrials2CmpResults=NUM_TRIALS_4_CMP)
-RUN_TYPES[A3C][DECISION_MAKER_NAME] = "train_A3C"
-RUN_TYPES[A3C][DIRECTORY] = "trainArmy_A3C"
-RUN_TYPES[A3C][HISTORY] = "replayHistory"
-RUN_TYPES[A3C][RESULTS] = "results"
+RUN_TYPES[A2C] = {}
+RUN_TYPES[A2C][TYPE] = "A2C"
+RUN_TYPES[A2C][PARAMS] = A2C_PARAMS(TRAIN_STATE.SIZE, NUM_ACTIONS, numTrials2CmpResults=NUM_TRIALS_4_CMP, numTrials2Learn=NUM_TRIALS_2_LEARN)
+RUN_TYPES[A2C][DECISION_MAKER_NAME] = "train_A2C"
+RUN_TYPES[A2C][DIRECTORY] = "trainArmy_A2C"
+RUN_TYPES[A2C][HISTORY] = "replayHistory"
+RUN_TYPES[A2C][RESULTS] = "results"
 
 RUN_TYPES[NAIVE] = {}
 RUN_TYPES[NAIVE][DIRECTORY] = "trainArmy_naive"
 RUN_TYPES[NAIVE][RESULTS] = "trainArmy_result"
 
 
-def CreateDecisionMakerTrainArmy(dmTypes, isMultiThreaded, numTrials2Learn=NUM_TRIALS_2_LEARN):
+def CreateDecisionMakerTrainArmy(dmTypes, isMultiThreaded, dmCopy=None):
+    dmCopy = "" if dmCopy==None else "_" + str(dmCopy)
+
     if dmTypes[AGENT_NAME] == "none":
         return BaseDecisionMaker(AGENT_NAME), []
     
@@ -243,14 +245,13 @@ def CreateDecisionMakerTrainArmy(dmTypes, isMultiThreaded, numTrials2Learn=NUM_T
     directory = dmTypes["directory"] + "/" + AGENT_DIR
 
     if dmTypes[AGENT_NAME] == "naive":
-        decisionMaker = NaiveDecisionMakerTrain(resultFName=runType[RESULTS], directory=directory + runType[DIRECTORY])
+        decisionMaker = NaiveDecisionMakerTrain(resultFName=runType[RESULTS], directory=directory + runType[DIRECTORY] + dmCopy)
     else:
         if runType[TYPE] == "DQN_WithTargetAndDefault":
             runType[PARAMS].defaultDecisionMaker = NaiveDecisionMakerTrain()
 
-        decisionMaker = DecisionMakerMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME],  agentName=AGENT_NAME, 
-                                            resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY], isMultiThreaded=isMultiThreaded,
-                                            numTrials2Learn=numTrials2Learn)
+        decisionMaker = DecisionMakerExperienceReplay(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME],  agentName=AGENT_NAME, 
+                                            resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY] + dmCopy, isMultiThreaded=isMultiThreaded)
     return decisionMaker, runType
 
 class NaiveDecisionMakerTrain(BaseNaiveDecisionMaker):
@@ -291,7 +292,7 @@ class NaiveDecisionMakerTrain(BaseNaiveDecisionMaker):
 
 
 class TrainArmySubAgent(BaseAgent):
-    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList):     
+    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList, dmCopy=None):     
         super(TrainArmySubAgent, self).__init__(TRAIN_STATE.SIZE)     
 
         self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
@@ -453,41 +454,30 @@ class TrainArmySubAgent(BaseAgent):
     def ChooseAction(self):
         if self.playAgent:
             if self.illigalmoveSolveInModel:
-                validActions = self.ValidActions()
+                validActions = self.ValidActions(self.current_scaled_state)
+            else: 
+                validActions = list(range(NUM_ACTIONS))
             
-                if self.trainAgent:
-                    targetValues = False
-                    exploreProb = self.decisionMaker.ExploreProb()              
-                else:
-                    targetValues = True
-                    exploreProb = self.decisionMaker.TargetExploreProb()   
-
-                if np.random.uniform() > exploreProb:
-                    valVec = self.decisionMaker.ActionsValues(self.current_scaled_state, targetValues)  
-                    random.shuffle(validActions)
-                    validVal = valVec[validActions]
-                    action = validActions[validVal.argmax()]
-                else:
-                    action = np.random.choice(validActions) 
-            else:
-                action = self.decisionMaker.choose_action(self.current_scaled_state)
+            targetValues = False if self.trainAgent else True
+            action = self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues)
         else:
             action = self.subAgentPlay
 
+        self.current_action = action
         return action
 
-    def ValidActions(self):
+    def ValidActions(self, state):
         valid = [ID_ACTION_DO_NOTHING]
         for key, requirement in self.actionsRequirement.items():
-            if self.ValidSingleAction(requirement):
+            if self.ValidSingleAction(state, requirement):
                 valid.append(key)
         return valid
 
-    def ValidSingleAction(self, requirement):
-        hasMinerals = self.current_scaled_state[TRAIN_STATE.MINERALS_IDX] >= requirement.mineralsPrice
-        hasGas = self.current_scaled_state[TRAIN_STATE.GAS_IDX] >= requirement.gasPrice
+    def ValidSingleAction(self, state, requirement):
+        hasMinerals = state[TRAIN_STATE.MINERALS_IDX] >= requirement.mineralsPrice
+        hasGas = state[TRAIN_STATE.GAS_IDX] >= requirement.gasPrice
         idx = TRAIN_STATE.BUILDING_2_STATE_TRANSITION[requirement.buildingDependency]
-        otherReq = self.current_scaled_state[idx] > 0
+        otherReq = state[idx] > 0
         return hasMinerals & hasGas & otherReq
 
     def Action2Str(self, a, onlyAgent=False):

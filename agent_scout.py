@@ -18,7 +18,7 @@ from utils import SC2_Params
 from utils import SC2_Actions
 
 #decision makers
-from utils_decisionMaker import BaseDecisionMaker
+from algo_decisionMaker import BaseDecisionMaker
 
 from utils import EmptySharedData
 # params
@@ -61,7 +61,7 @@ class SharedDataScout(EmptySharedData):
         self.scoutGroupIdx = CONTROL_GROUP_ID_SCOUT
 
 class ScoutAgent(BaseAgent):
-    def __init__(self,  sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList): 
+    def __init__(self,  sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList, dmCopy=None): 
         super(ScoutAgent, self).__init__()       
 
         self.sharedData = sharedData

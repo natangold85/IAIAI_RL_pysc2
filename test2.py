@@ -3,15 +3,15 @@ import numpy as np
 import random
 import matplotlib.pyplot as plt
 
-from utils_qtable import QTableParams
-from utils_dqn import DQN_PARAMS
-from utils_decisionMaker import DecisionMakerMngr
+from algo_qtable import QTableParams
+from algo_dqn import DQN_PARAMS
+from algo_decisionMaker import DecisionMakerExperienceReplay
 from utils_ttable import TransitionTable
 
-from utils_dtn import DTN_PARAMS
-from utils_dtn import DTN2
-from utils_dtn import DTN
-from utils_dtn import Filtered_DTN
+from algo_dtn import DTN_PARAMS
+from algo_dtn import DTN2
+from algo_dtn import DTN
+from algo_dtn import Filtered_DTN
 
 from maze_game import SimpleMazeGame
 from maze_game import MazeGame
@@ -34,10 +34,23 @@ def dtn_2LayersFunc(inputLayerState, inputLayerActions, num_output, scope):
         fc1 = tf.contrib.layers.fully_connected(inputLayer, 256)
         fc2 = tf.contrib.layers.fully_connected(fc1, 256)
         output = tf.contrib.layers.fully_connected(fc2, num_output)
-        outputSoftmax = tf.nn.softmax(output, name="softmax_tensor")
+        outputSoftmax = tf.nn.softmax(output, name="probability")
 
     return outputSoftmax
 
+def dtn_2LayersFuncEmbedding(inputLayerState, inputLayerActions, num_output, scope):      
+    with tf.variable_scope(scope):
+        
+        fe1State = tf.contrib.layers.fully_connected(inputLayerState, 256)
+        fe1Action = tf.contrib.layers.fully_connected(inputLayerActions, 256)
+
+        inputLayer = tf.concat([fe1State, fe1Action], 1)
+        fc1 = tf.contrib.layers.fully_connected(inputLayer, 256)
+        fc2 = tf.contrib.layers.fully_connected(fc1, 256)
+        output = tf.contrib.layers.fully_connected(fc2, num_output)
+        outputSoftmax = tf.nn.softmax(output, name="probability")
+
+    return outputSoftmax
 
 def dtn_3LayersFunc(inputLayerState, inputLayerActions, num_output, scope):      
     with tf.variable_scope(scope):
@@ -195,11 +208,11 @@ class Simulator:
 
         typeDecision = 'QLearningTable'
         params = QTableParams(self.env.stateSize, self.env.numActions)
-        self.dqn = DecisionMakerMngr(typeDecision, params, decisionMakerName = "maze_game_dm_Time", resultFileName = "results_Time", directory = dirName, numTrials2Learn=trials2Save)            
+        self.dqn = DecisionMakerExperienceReplay(typeDecision, params, decisionMakerName = "maze_game_dm_Time", resultFileName = "results_Time", directory = dirName, numTrials2Learn=trials2Save)            
 
         self.allDTN = []
-        dtn2Params = DTN_PARAMS(self.env.stateSize, self.env.numActions, 0, self.env.stateSize, outputGraph=True, nn_Func=dtn2_2LayersFunc)
-        self.allDTN.append(DTN2(dtn2Params, "dtn2_2Layers", directory = fullDir + 'maze_dtn2_2Layers/'))
+        # dtn2Params = DTN_PARAMS(self.env.stateSize, self.env.numActions, 0, self.env.stateSize, outputGraph=True, nn_Func=dtn2_2LayersFunc)
+        # self.allDTN.append(DTN2(dtn2Params, "dtn2_2Layers", directory = fullDir + 'maze_dtn2_2Layers/'))
 
         dtnParams = DTN_PARAMS(self.env.stateSize, self.env.numActions, 0, self.env.stateSize, outputGraph=True, nn_Func=dtn_2LayersFunc)
         self.allDTN.append(DTN(dtnParams, "dtn_2Layers", directory = fullDir + 'maze_dtn_2Layers/'))
@@ -377,6 +390,11 @@ def plot_mean_and_CI(mean, lb, ub, color_mean=None):
 
 if __name__ == "__main__":
     
+    dtnParams = DTN_PARAMS(10, 5, 0, 10, outputGraph=True, nn_Func=dtn_2LayersFuncEmbedding)
+    dtn = DTN(dtnParams, "dtn_2Layers", directory = './test2/maze_dtn_2Layers/')
+
+    print("\n\nfinished\n\n")
+    exit()
     dirName = "maze_game"
     fMsePlotName = "./" + dirName + "/maze_dtn_layers.png"
 

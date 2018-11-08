@@ -10,15 +10,15 @@ import threading
 
 import tensorflow as tf
 
-from utils_dqn import DQN
+from algo_dqn import DQN
 
 import matplotlib.pyplot as plt
 
 from multiprocessing import Process, Lock, Value, Array, Manager
 
-from utils import ParamsBase
+from utils_plot import PlotMeanWithInterval
 
-def PlotResults(agentName, agentDir, runTypes, runDirectoryNames, grouping, subAgentsGroups = [""], keyResults = "results", additionPlots=[]):
+def PlotResults(agentName, agentDir, runTypes, runDirectoryNames, grouping, subAgentsGroups = [""], keyResults = "results", additionPlots=[], maxTrials2Plot=None, multipleDm=False):
     runDirectoryNames.sort()
 
     resultFnames = []
@@ -42,11 +42,11 @@ def PlotResults(agentName, agentDir, runTypes, runDirectoryNames, grouping, subA
     
     print(resultFnames)
     print(fullDirectoryNames)
-    plot = PlotMngr(resultFnames, fullDirectoryNames, groupNames, agentDir, subAgentsGroups)
-    plot.Plot(grouping, additionPlots)
+    plot = PlotMngr(resultFnames, fullDirectoryNames, groupNames, agentDir, subAgentsGroups, multipleDm)
+    plot.Plot(grouping, additionPlots, maxTrials2Plot, multipleDm)
 
 class PlotMngr:
-    def __init__(self, resultFilesNamesList, resultFilesDirectories, legendList, directory2Save, subAgentsGroups):
+    def __init__(self, resultFilesNamesList, resultFilesDirectories, legendList, directory2Save, subAgentsGroups, multipleDm):
         self.resultFileList = []
         self.legendList = legendList
 
@@ -55,15 +55,29 @@ class PlotMngr:
         self.scriptName = self.scriptName.replace(".py", "")
 
         for i in range(len(resultFilesNamesList)):
-            if resultFilesDirectories[i] != '':
-                name = './' + resultFilesDirectories[i] + '/' + resultFilesNamesList[i]
+            if multipleDm:
+                name = './' + resultFilesDirectories[i]
+                resultsInstances = []
+                dmInstance = 0
+                currName = name + "_" + str(dmInstance)
+
+                if os.path.isdir(name):
+                    resultFile = ReadOnlyResults(name + '/' + resultFilesNamesList[i])
+                    resultsInstances.append(resultFile)
+                
+                while os.path.isdir(currName):
+                    resultFile = ReadOnlyResults(currName + '/' + resultFilesNamesList[i])
+                    resultsInstances.append(resultFile)
+                    dmInstance += 1
+                    currName = name + "_" + str(dmInstance)
+                
+                self.resultFileList.append(resultsInstances)
             else:
-                name = resultFilesNamesList[i]
+                name = './' + resultFilesDirectories[i] + '/' + resultFilesNamesList[i]
 
-            resultFile = ReadOnlyResults(name)
+                resultFile = ReadOnlyResults(name)
 
-            self.resultFileList.append(resultFile)
-
+                self.resultFileList.append(resultFile)
 
         if directory2Save != '':
             if not os.path.isdir("./" + directory2Save):
@@ -79,8 +93,7 @@ class PlotMngr:
 
         self.subAgentsGroups = subAgentsGroups
 
-
-    def Plot(self, grouping, additionPlots):
+    def Plot(self, grouping, additionPlots, maxTrials2Plots, multipleDm):
         tableCol = ['count', 'reward', 'score', '# of steps']
         idxReward = 1
 
@@ -94,30 +107,40 @@ class PlotMngr:
         
         legend = []  
         results4Addition = {}
-        for iTable in range(len(self.resultFileList)):
-            results, t = self.ResultsFromTable(self.resultFileList[iTable].table, grouping, idxReward) 
-
-            switchingSubAgentsIdx = self.FindSwitchingLocations(self.resultFileList[iTable].table, t, grouping)
+        for idxResults in range(len(self.resultFileList)):
+            if multipleDm:
+                results, t, switchingSubAgentsIdx, stdResults = self.AvgResultsFromMultipleTables(idxResults, grouping, idxReward, maxTrials2Plots)
+            else:
+                results, t = self.ResultsFromTable(self.resultFileList[idxResults].table, grouping, idxReward, maxTrials2Plots) 
+                switchingSubAgentsIdx = self.FindSwitchingLocations(self.resultFileList[idxResults].table, t, grouping)
 
             for subAgentGroup in self.subAgentsGroups:
                 allIdx = switchingSubAgentsIdx[subAgentGroup]
                 if len(allIdx) > 0:
                     if subAgentGroup != "":
-                        legend.append(self.legendList[iTable] + "_" + subAgentGroup)
+                        legend.append(self.legendList[idxResults] + "_" + subAgentGroup)
                     else:
-                        legend.append(self.legendList[iTable])
+                        legend.append(self.legendList[idxResults])
 
                     resultsTmp = np.zeros(len(results), float)
                     resultsTmp[:] = np.nan
                     resultsTmp[allIdx] = results[allIdx]
 
-                    plt.plot(t, resultsTmp)
+
+                    if multipleDm:
+                        stdTmp = np.zeros(len(stdResults), float)
+                        stdTmp[:] = np.nan
+                        stdTmp[allIdx] = stdResults[allIdx] 
+                        PlotMeanWithInterval(t, resultsTmp, stdTmp)
+                    else:
+                        plt.plot(t, resultsTmp)
+
 
                     if subAgentGroup in additionPlots:
                         results4Addition[subAgentGroup] = results[allIdx]
 
                 
-            plt.ylabel('avg results for ' + str(grouping) + ' trials')
+            plt.ylabel('avg reward for ' + str(grouping) + ' trials')
             plt.xlabel('#trials')
             plt.title('Average ' + tableCol[idxPlot])
             plt.grid(True)
@@ -128,18 +151,41 @@ class PlotMngr:
                     idxPlot += 1
                     plt.subplot(numRows,2,idxPlot)
                     plt.plot(results4Addition[subAgentGroup])
-                    plt.ylabel('avg results for ' + str(grouping) + ' trials')
+                    plt.ylabel('avg reward for ' + str(grouping) + ' trials')
                     plt.xlabel('#trials')
                     plt.title('Average results for sub agent ' + subAgentGroup)
                     plt.grid(True)
 
-
-
-
-
         fig.savefig(self.plotFName)
         print("results graph saved in:", self.plotFName)
 
+    def AvgResultsFromMultipleTables(self, idxResults, grouping, idxReward, maxTrials2Plots):
+        allResults = []
+        allT = []
+        maxLen = 0
+        maxLenIdx = -1
+        tableIdx = 0
+        for singleTable in self.resultFileList[idxResults]:
+            results, t = self.ResultsFromTable(singleTable.table, grouping, idxReward, maxTrials2Plots) 
+            if len(t) > 0:
+                allResults.append(results)
+                allT.append(t)
+                if len(t) > maxLen:
+                    maxLen = len(t)
+                    maxLenIdx = len(allT) - 1
+
+            tableIdx += 1
+        
+        for i in range(len(allResults)):
+            newResults = np.zeros(maxLen)
+            newResults.fill(np.nan)
+            newResults[:len(allResults[i])] = allResults[i]
+            allResults[i] = newResults
+            allT[i] = allT[maxLenIdx]
+
+        switchingSubAgentsIdx = self.FindSwitchingLocations(self.resultFileList[idxResults][maxLenIdx].table, allT[maxLenIdx], grouping)
+        return np.nanmean(allResults, axis=0), allT[maxLenIdx], switchingSubAgentsIdx, np.nanstd(allResults, axis=0)
+        
     def FindSwitchingLocations(self, table, t, grouping):
         switchingSubAgents = {}
         
@@ -194,7 +240,7 @@ class PlotMngr:
 
 
 
-    def ResultsFromTable(self, table, grouping, dataIdx, groupSizeIdx = 0):
+    def ResultsFromTable(self, table, grouping, dataIdx, maxTrials2Plot, groupSizeIdx = 0):
         names = list(table.index)
         tableSize = len(names) -1
         
@@ -213,6 +259,8 @@ class PlotMngr:
 
                 sumRuns += subGroupSize
                 realSize += 1
+                if maxTrials2Plot != None and maxTrials2Plot < sumRuns:
+                    break
   
         
         results = np.zeros( int(sumRuns / minSubGrouping) , dtype  = float)
@@ -247,13 +295,13 @@ class ReadOnlyResults():
         self.table = pd.DataFrame(columns=self.rewardCol, dtype=np.float)
         print(tableName)
         if os.path.isfile(tableName + ".gz"):
-            self.table = pd.read_pickle(tableName + ".gz", compression='gzip')    
+            self.table = pd.read_pickle(tableName + ".gz", compression='gzip')   
         else:
-            print("\n\nERROR!!")
+            print("\n\nERROR!!, did not found result file -", tableName)
             exit()
 
 class ResultFile:
-    def __init__(self, tableName, numToWrite = 100, loadFile = True, agentName = ''):
+    def __init__(self, tableName, numToWrite = 100, agentName = ''):
         self.saveFileName = tableName + '.gz'
                 
         self.numToWrite = numToWrite
@@ -261,8 +309,6 @@ class ResultFile:
 
         self.rewardCol = list(range(4))
         self.result_table = pd.DataFrame(columns=self.rewardCol, dtype=np.float)
-        if os.path.isfile(self.saveFileName) and loadFile:
-            self.result_table = pd.read_pickle(self.saveFileName, compression='gzip')
 
         self.countCompleteKey = 'countComplete'
         self.check_state_exist(self.countCompleteKey)
@@ -278,6 +324,14 @@ class ResultFile:
         self.sumScore = 0
         self.sumSteps = 0
         self.numRuns = 0
+
+    def Load(self):
+        if os.path.isfile(self.saveFileName):
+            self.result_table = pd.read_pickle(self.saveFileName, compression='gzip')
+            self.countComplete = int(self.result_table.ix[self.countCompleteKey, 0])
+
+    def Save(self):
+        self.result_table.to_pickle(self.saveFileName, 'gzip') 
 
     def check_state_exist(self, state):
         if state not in self.result_table.index:
@@ -320,7 +374,8 @@ class ResultFile:
             self.insertEndRun2Table()
             
         if saveTable:
-            self.result_table.to_pickle(self.saveFileName, 'gzip') 
+            self.Save()
+            
     
     def AddSwitchSlot(self, slotName):
        

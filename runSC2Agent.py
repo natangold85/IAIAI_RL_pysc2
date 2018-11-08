@@ -25,6 +25,9 @@ from agent_super import SuperAgent
 from utils import SC2_Params
 from utils_plot import create_nnGraphs
 
+from paramsCalibration import GenProgCalibration
+
+
 RUN = True
 
 NUM_CRASHES = 0
@@ -36,17 +39,17 @@ SCREEN_SIZE = SC2_Params.SCREEN_SIZE
 MINIMAP_SIZE = SC2_Params.MINIMAP_SIZE
 
 # general params
-flags.DEFINE_string("do", "run", "what to  do: options =[run, check, copyNN]") 
+flags.DEFINE_string("do", "run", "what to  do: options =[run, check, copyNN, gpTrain]") 
 flags.DEFINE_string("device", "gpu", "Which device to run nn on.")
 flags.DEFINE_string("runDir", "none", "directory of the decision maker (should contain config file name config.txt)")
 
 # for run:
 flags.DEFINE_string("trainAgent", "none", "Which agent to train.")
 flags.DEFINE_string("playAgent", "none", "Which agent to play.")
-flags.DEFINE_string("train", "True", "open multiple threads for train.")
 flags.DEFINE_string("map", "none", "Which map to run.")
 flags.DEFINE_string("numSteps", "0", "num steps of map.")
-flags.DEFINE_string("numGameThreads", "8", "num of game threads.")
+flags.DEFINE_string("numGameThreads", "1", "num of game threads.")
+flags.DEFINE_string("numEpisodes", "none", "num of episodes agent to run.")
 
 # for check:
 flags.DEFINE_string("checkAgent", "none", "Which agent to check.")
@@ -55,68 +58,79 @@ flags.DEFINE_string("stateIdx2Check", "0,1", "Which agent to check.")
 flags.DEFINE_string("actions2Check", "0", "Which agent to check.")
 flags.DEFINE_string("plot", "False", "Which agent to check.")
 
+flags.DEFINE_string("resetModel", "False", "if to reset data(dm params, history and results)")
+
 # for copy network
 flags.DEFINE_string("copyAgent", "none", "Which agent to copy.")
 
 
 nonRelevantRewardMap = ["BaseMngr"]
 singlePlayerMaps = ["ArmyAttack5x5", "AttackBase", "AttackMngr"]
-
-
-"""Script for starting all agents (a3c, very simple and slightly smarter).
-
-This scripts is the starter for all agents, it has one command line parameter (--agent), that denotes which agent to run.
-By default it runs the A3C agent.
-"""
         
-def run_thread(agent, display, players, numSteps):
+def run_thread(agent, sess, display, players, numSteps):
     """Runs an agent thread."""
 
-    while RUN:
-        try:
+    with sess.as_default(), sess.graph.as_default():
 
-            agent_interface_format=sc2_env.AgentInterfaceFormat(feature_dimensions=sc2_env.Dimensions(screen=SCREEN_SIZE,minimap=MINIMAP_SIZE))
+        while RUN:
+            try:
 
-            with sc2_env.SC2Env(map_name=flags.FLAGS.map,
-                                players=players,
-                                game_steps_per_episode=numSteps,
-                                agent_interface_format=agent_interface_format,
-                                visualize=display) as env:
-                run_loop.run_loop([agent], env)
+                agent_interface_format=sc2_env.AgentInterfaceFormat(feature_dimensions=sc2_env.Dimensions(screen=SCREEN_SIZE,minimap=MINIMAP_SIZE))
 
-        
-        except Exception as e:
-            print(e)
-            print(traceback.format_exc())
-            logging.error(traceback.format_exc())
-        
-        # remove crahsed terminal history
-        # agent.RemoveNonTerminalHistory()
+                with sc2_env.SC2Env(map_name=flags.FLAGS.map,
+                                    players=players,
+                                    game_steps_per_episode=numSteps,
+                                    agent_interface_format=agent_interface_format,
+                                    visualize=display) as env:
+                    run_loop.run_loop([agent], env)
 
-        global NUM_CRASHES
-        NUM_CRASHES += 1
+            
+            except Exception as e:
+                print(e)
+                print(traceback.format_exc())
+                logging.error(traceback.format_exc())
+            
+            # remove crahsed terminal history
+            # agent.RemoveNonTerminalHistory()
+
+            global NUM_CRASHES
+            NUM_CRASHES += 1
 
 
 def start_agent():
     """Starts the pysc2 agent."""
+    
+    dmTypesOrg = eval(open("./" + flags.FLAGS.runDir + "/config.txt", "r+").read())
+    dmTypes = dmTypesOrg.copy()
+    dmTypes["directory"] = flags.FLAGS.runDir
 
-    training = eval(flags.FLAGS.train)  
-    if not training:
-        parallel = 1
-        show_render = True
+    trainList = flags.FLAGS.trainAgent
+    trainList = trainList.split(",")
+
+    training = trainList != ["none"]
+    
+    if flags.FLAGS.numEpisodes == "none":
+        numEpisodes = None
     else:
-        parallel = int(flags.FLAGS.numGameThreads)
-        show_render = RENDER
+        numEpisodes = int(flags.FLAGS.numEpisodes)
 
-    # tables
-    dm_Types = eval(open("./" + flags.FLAGS.runDir + "/config.txt", "r+").read())
-    dm_Types["directory"] = flags.FLAGS.runDir
-
-    if flags.FLAGS.trainAgent == "none":
-        trainList = ["super"]
+    if "numRun" in dmTypes.keys():
+        numRun = dmTypes["numRun"]
     else:
-        trainList = flags.FLAGS.trainAgent
-        trainList = trainList.split(",")
+        numRun = None
+
+    if "numGameThreads" in dmTypes.keys():
+        numDmThreads = dmTypes["numGameThreads"]
+    else:
+        numDmThreads = int(flags.FLAGS.numGameThreads)
+
+    numGameThreads = numDmThreads if training else 1
+
+    if "sharedDM" in dmTypes.keys():
+        sharedDM = dmTypes["sharedDM"]
+    else:
+        sharedDM = True
+
 
     if flags.FLAGS.playAgent == "none":
         playList = trainList
@@ -129,78 +143,108 @@ def start_agent():
     
     isPlotThread = eval(flags.FLAGS.plot)
     
-    isMultiThreaded = parallel > 1
+    isMultiThreaded = numGameThreads > 1
     useMapRewards = flags.FLAGS.map not in nonRelevantRewardMap
 
+    allDecisionMakers = []
     decisionMaker = None
     agents = []
-    for i in range(parallel + isPlotThread):
-        print("\n\n\n running thread #", i, "\n\n\n")
-        agent = SuperAgent(decisionMaker=decisionMaker, isMultiThreaded=isMultiThreaded, dmTypes = dm_Types, playList=playList, trainList=trainList, useMapRewards=useMapRewards)
+    for i in range(numDmThreads + isPlotThread):
+        dmCopy = None
+        if not sharedDM:
+            dmCopy = i
+        else:
+            dmCopy = numRun
+
+        print("\n\n\n init decision maker instance #", i, "\n\n\n")
+        agent = SuperAgent(decisionMaker=decisionMaker, isMultiThreaded=isMultiThreaded, dmTypes=dmTypes, playList=playList, trainList=trainList, useMapRewards=useMapRewards, dmCopy=dmCopy)
         
-        if i == 0:
+        if not sharedDM:
+            allDecisionMakers.append(agent.GetDecisionMaker())
+        elif i == 0:
             decisionMaker = agent.GetDecisionMaker()
+            allDecisionMakers.append(decisionMaker)
 
         agents.append(agent)
 
-    threads = []
-    show = show_render
-    
-
-    difficulty = int(dm_Types["difficulty"])
-    players = [sc2_env.Agent(race=sc2_env.Race.terran)]
-    if flags.FLAGS.map not in singlePlayerMaps:
-        players.append(sc2_env.Bot(race=sc2_env.Race.terran, difficulty=difficulty))
-
-    
-    numSteps = int(flags.FLAGS.numSteps)
-
-    idx = 0
-    for i in range(parallel):
-        thread_args = (agents[i], show, players, numSteps)
-        t = threading.Thread(target=run_thread, args=thread_args, daemon=True)
-        t.setName("GameThread_" + str(idx))
-
-        threads.append(t)
-        t.start()
-        time.sleep(5)
-        show = False
-        idx += 1
-
-    
-    numTrials2Learn = [-1]
-    if isPlotThread:
-        dir2Save = "./" + dm_Types["directory"] + "/nnGraphs/"
-        if not os.path.isdir(dir2Save):
-            os.makedirs(dir2Save)
-        thread_args = (agents[parallel], trainList[0], dir2Save, numTrials2Learn)
-        t = threading.Thread(target=plot_thread, args=thread_args, daemon=True)
-        t.setName("PlotThread")
-        threads.append(t)
-        t.start()
 
 
-    runThreadAlive = True
-    threading.current_thread().setName("TrainThread")
-    
+    with tf.Session() as sess:
+        # create savers
+        resetModel = eval(flags.FLAGS.resetModel)
+        for dm in allDecisionMakers:
+            dm.InitModel(sess, resetModel)
 
-    while runThreadAlive:
-        # train  when flag of training is on
-        numTrials = decisionMaker.TrainAll()
-        if numTrials >= 0:
-            numTrials2Learn[0] = numTrials
+        threads = []        
 
-        time.sleep(1)
+        difficulty = int(dmTypes["difficulty"])
+        players = [sc2_env.Agent(race=sc2_env.Race.terran)]
+        if flags.FLAGS.map not in singlePlayerMaps:
+            players.append(sc2_env.Bot(race=sc2_env.Race.terran, difficulty=difficulty))
+
         
-        # if at least one thread is alive continue running
-        runThreadAlive = False
+        numSteps = int(flags.FLAGS.numSteps)
 
-        for t in threads:
-            isAlive = t.isAlive()
-            if isAlive:
-                runThreadAlive = True
-            else:
-                t.join() 
+        idx = 0
+        for i in range(numGameThreads):
+            print("\n\n\n init game thread #", i, "\n\n\n")
+
+            thread_args = (agents[i], sess, RENDER, players, numSteps)
+            t = threading.Thread(target=run_thread, args=thread_args, daemon=True)
+            t.setName("GameThread_" + str(idx))
+
+            threads.append(t)
+            t.start()
+            time.sleep(5)
+            idx += 1
+
+        
+        numTrials2Learn = [-1]
+        if isPlotThread:
+            dir2Save = "./" + dmTypes["directory"] + "/nnGraphs/"
+            if not os.path.isdir(dir2Save):
+                os.makedirs(dir2Save)
+            thread_args = (agents[numGameThreads], trainList[0], dir2Save, numTrials2Learn)
+            t = threading.Thread(target=plot_thread, args=thread_args, daemon=True)
+            t.setName("PlotThread")
+            threads.append(t)
+            t.start()
+
+
+        contRun = True
+        threading.current_thread().setName("TrainThread")
+        
+
+        while contRun:
+            # train  when flag of training is on
+            for dm in allDecisionMakers:
+                numTrials = dm.TrainAll()
+                if numTrials >= 0:
+                    numTrials2Learn[0] = numTrials
+
+            time.sleep(0.5)
+            
+            # if at least one thread is alive continue running
+            contRun = False
+
+            for t in threads:
+                isAlive = t.isAlive()
+                if isAlive:
+                    contRun = True
+                else:
+                    t.join() 
+
+            if numEpisodes != None:
+                minRuns = numEpisodes + 1
+                for dm in allDecisionMakers:
+                    dmAgent = dm.GetDecisionMakerByName(trainList[0])
+                    minRuns = min(dmAgent.NumRuns(), minRuns)
+                
+                if minRuns > numEpisodes:
+                    print("\n\nending run #", dmTypes["numRun"], "!!!\n\n")
+                    dmTypesOrg["numRun"] += 1
+                    open("./" + flags.FLAGS.runDir + "/config.txt", "w+").write(str(dmTypesOrg))
+                    contRun = False
 
 def plot_thread(agent, agent2Train, dir2Save, numTrials2Learn):
     statesIdx = flags.FLAGS.stateIdx2Check.split(",")
@@ -218,62 +262,78 @@ def plot_thread(agent, agent2Train, dir2Save, numTrials2Learn):
             create_nnGraphs(agent, agent2Train, statesIdx=statesIdx, actions2Check=actions2Check, numTrials=numTrials, saveGraphs=True, dir2Save = dir2Save)
         time.sleep(1)
 
-def check_dqn():
-    dm_Types = eval(open("./" + flags.FLAGS.runDir + "/config.txt", "r+").read())
-    dm_Types["directory"] = flags.FLAGS.runDir
-    
-    checkList = flags.FLAGS.checkAgent.split(",")
+def check_model():
+    dmTypes = eval(open("./" + flags.FLAGS.runDir + "/config.txt", "r+").read())
+    dmTypes["directory"] = flags.FLAGS.runDir
 
-    superAgent = SuperAgent(dmTypes = dm_Types)
-    decisionMaker = superAgent.GetDecisionMaker()
+    checkList = flags.FLAGS.checkAgent.split(",")
+    sharedDM = True if "sharedDM" not in dmTypes.keys() else dmTypes["sharedDM"]
+    dmCopy = None if sharedDM else 0
+    superAgent = SuperAgent(dmTypes=dmTypes, dmCopy=dmCopy)
 
     print("\n\nagent 2 check:", checkList, end='\n\n')
-    np.set_printoptions(precision=2, suppress=True)
-    for agentName in checkList:
-        dm = decisionMaker.GetDecisionMakerByName(agentName)
-        historyMngr = dm.historyMngr
-        print(agentName, "hist size =", len(historyMngr.transitions["a"]))
-        print(agentName, "old hist size", len(historyMngr.oldTransitions["a"]))
-        print(agentName, "all history size", len(historyMngr.GetAllHist()["a"]))
+    with tf.Session() as sess:
+        # create savers
+        decisionMaker = superAgent.GetDecisionMaker()
+        decisionMaker.InitModel(sess, resetModel=False)    
 
-        print(agentName, "maxVals =", historyMngr.transitions["maxStateVals"])
-        print(agentName, "maxReward =", historyMngr.GetMaxReward(), "minReward =", historyMngr.GetMinReward())
-        print("\n")
+        for agentName in checkList:
+            agent = superAgent.GetAgentByName(agentName)
+            plotGraphs = eval(flags.FLAGS.plot)
+
+            statesIdx = list(map(int, flags.FLAGS.stateIdx2Check.split(",")))
+            actions2Check = list(map(int, flags.FLAGS.actions2Check.split(",")))
+
+            withDfltVals = flags.FLAGS.runDir.find("Dflt") >= 0
+
+            agent = superAgent.GetAgentByName(agentName)
+            decisionMaker = agent.decisionMaker
+            decisionMaker.CheckModel(agent, plotGraphs=plotGraphs, withDfltModel=withDfltVals, statesIdx2Check=statesIdx, actions2Check=actions2Check)
+
+
+    #     historyMngr = dm.historyMngr
+    #     print(agentName, "hist size =", len(historyMngr.transitions["a"]))
+    #     print(agentName, "old hist size", len(historyMngr.oldTransitions["a"]))
+    #     print(agentName, "all history size", len(historyMngr.GetAllHist()["a"]))
+
+    #     print(agentName, "maxVals =", historyMngr.transitions["maxStateVals"])
+    #     print(agentName, "maxReward =", historyMngr.GetMaxReward(), "minReward =", historyMngr.GetMinReward())
+    #     print("\n")
     
-    numStates2Check = 100
-    numEpochs = 10
-    for sa in checkList:
-        dm = decisionMaker.GetDecisionMakerByName(sa)
+    # numStates2Check = 100
+    # numEpochs = 10
+    # for sa in checkList:
+    #     dm = decisionMaker.GetDecisionMakerByName(sa)
 
-        states2Check = []
-        for i in range(numStates2Check):
-            s = dm.DrawStateFromHist()
-            if len(s) > 0:
-                states2Check.append(s)
-        print(sa, ": current dqn num runs = ", dm.decisionMaker.NumRuns()," avg values =", avg_values(dm, states2Check))
-        print(sa, ": target dqn num runs = ", dm.decisionMaker.NumRunsTarget()," avg values =", avg_values(dm, states2Check, True))
+    #     states2Check = []
+    #     for i in range(numStates2Check):
+    #         s = dm.DrawStateFromHist()
+    #         if len(s) > 0:
+    #             states2Check.append(s)
+    #     print(sa, ": current dqn num runs = ", dm.decisionMaker.NumRuns()," avg values =", avg_values(dm, states2Check))
+    #     print(sa, ": target dqn num runs = ", dm.decisionMaker.NumRunsTarget()," avg values =", avg_values(dm, states2Check, True))
         
-        if flags.FLAGS.runDir.find("Dflt") >= 0:
-            print("dqn value =", dm.decisionMaker.ValueDqn(), "target value =", dm.decisionMaker.ValueTarget(), "heuristic values =", dm.decisionMaker.ValueDefault())
-        else:
-            print("dqn value =", dm.decisionMaker.ValueDqn(), "target value =", dm.decisionMaker.ValueTarget())
+    #     if flags.FLAGS.runDir.find("Dflt") >= 0:
+    #         print("dqn value =", dm.decisionMaker.ValueDqn(), "target value =", dm.decisionMaker.ValueTarget(), "heuristic values =", dm.decisionMaker.ValueDefault())
+    #     else:
+    #         print("dqn value =", dm.decisionMaker.ValueDqn(), "target value =", dm.decisionMaker.ValueTarget())
 
-        print("\n\n")
+    #     print("\n\n")
 
-    agent2Check = checkList[0]
+    # agent2Check = checkList[0]
     
-    plotGraphs = eval(flags.FLAGS.plot)
-    if plotGraphs:
-        statesIdx = flags.FLAGS.stateIdx2Check.split(",")
-        for i in range(len(statesIdx)):
-            statesIdx[i] = int(statesIdx[i])
+    # plotGraphs = eval(flags.FLAGS.plot)
+    # if plotGraphs:
+    #     statesIdx = flags.FLAGS.stateIdx2Check.split(",")
+    #     for i in range(len(statesIdx)):
+    #         statesIdx[i] = int(statesIdx[i])
 
-        actions2Check = flags.FLAGS.actions2Check.split(",")   
-        for i in range(len(actions2Check)):
-            actions2Check[i] = int(actions2Check[i])
+    #     actions2Check = flags.FLAGS.actions2Check.split(",")   
+    #     for i in range(len(actions2Check)):
+    #         actions2Check[i] = int(actions2Check[i])
 
-        create_nnGraphs(superAgent, agent2Check, statesIdx=statesIdx, actions2Check=actions2Check)
-        create_nnGraphs(superAgent, agent2Check, statesIdx=statesIdx, actions2Check=actions2Check, plotTarget=True, showGraphs=True)
+    #     create_nnGraphs(superAgent, agent2Check, statesIdx=statesIdx, actions2Check=actions2Check)
+    #     create_nnGraphs(superAgent, agent2Check, statesIdx=statesIdx, actions2Check=actions2Check, plotTarget=True, showGraphs=True)
 
 
 def avg_values(dm, states, targetVals=False):
@@ -313,6 +373,119 @@ def copy_dqn():
             print("source =", type(currDmSource))
             print("target =", type(currDmTarget))
         
+
+def gp_train():    
+    dmTypesOrg = eval(open("./" + flags.FLAGS.runDir + "/config.txt", "r+").read())
+    dmTypes = dmTypesOrg.copy()
+    dmTypes["directory"] = flags.FLAGS.runDir
+
+    trainAgent = flags.FLAGS.trainAgent
+    trainAgent = trainList.split(",")
+    if len(trainAgent) != 1:
+        print("ERROR: can train only one agent!!")
+        exit()
+
+    GenProgCalibration(dmTypes, trainAgent)
+
+    allDecisionMakers = []
+    decisionMaker = None
+    agents = []
+    for i in range(numDmThreads + isPlotThread):
+        dmCopy = None
+        if not sharedDM:
+            dmCopy = i
+        else:
+            dmCopy = numRun
+
+        print("\n\n\n init decision maker instance #", i, "\n\n\n")
+        agent = SuperAgent(decisionMaker=decisionMaker, isMultiThreaded=isMultiThreaded, dmTypes=dmTypes, playList=playList, trainList=trainList, useMapRewards=useMapRewards, dmCopy=dmCopy)
+        
+        if not sharedDM:
+            allDecisionMakers.append(agent.GetDecisionMaker())
+        elif i == 0:
+            decisionMaker = agent.GetDecisionMaker()
+            allDecisionMakers.append(decisionMaker)
+
+        agents.append(agent)
+
+
+
+    with tf.Session() as sess:
+        # create savers
+        resetModel = eval(flags.FLAGS.resetModel)
+        for dm in allDecisionMakers:
+            dm.InitModel(sess, resetModel)
+
+        threads = []        
+
+        difficulty = int(dmTypes["difficulty"])
+        players = [sc2_env.Agent(race=sc2_env.Race.terran)]
+        if flags.FLAGS.map not in singlePlayerMaps:
+            players.append(sc2_env.Bot(race=sc2_env.Race.terran, difficulty=difficulty))
+
+        
+        numSteps = int(flags.FLAGS.numSteps)
+
+        idx = 0
+        for i in range(numGameThreads):
+            print("\n\n\n init game thread #", i, "\n\n\n")
+
+            thread_args = (agents[i], sess, RENDER, players, numSteps)
+            t = threading.Thread(target=run_thread, args=thread_args, daemon=True)
+            t.setName("GameThread_" + str(idx))
+
+            threads.append(t)
+            t.start()
+            time.sleep(5)
+            idx += 1
+
+        
+        numTrials2Learn = [-1]
+        if isPlotThread:
+            dir2Save = "./" + dmTypes["directory"] + "/nnGraphs/"
+            if not os.path.isdir(dir2Save):
+                os.makedirs(dir2Save)
+            thread_args = (agents[numGameThreads], trainList[0], dir2Save, numTrials2Learn)
+            t = threading.Thread(target=plot_thread, args=thread_args, daemon=True)
+            t.setName("PlotThread")
+            threads.append(t)
+            t.start()
+
+
+        contRun = True
+        threading.current_thread().setName("TrainThread")
+        
+
+        while contRun:
+            # train  when flag of training is on
+            for dm in allDecisionMakers:
+                numTrials = dm.TrainAll()
+                if numTrials >= 0:
+                    numTrials2Learn[0] = numTrials
+
+            time.sleep(0.5)
+            
+            # if at least one thread is alive continue running
+            contRun = False
+
+            for t in threads:
+                isAlive = t.isAlive()
+                if isAlive:
+                    contRun = True
+                else:
+                    t.join() 
+
+            if numEpisodes != None:
+                minRuns = numEpisodes + 1
+                for dm in allDecisionMakers:
+                    dmAgent = dm.GetDecisionMakerByName(trainList[0])
+                    minRuns = min(dmAgent.NumRuns(), minRuns)
+                
+                if minRuns > numEpisodes:
+                    print("\n\nending run #", dmTypes["numRun"], "!!!\n\n")
+                    dmTypesOrg["numRun"] += 1
+                    open("./" + flags.FLAGS.runDir + "/config.txt", "w+").write(str(dmTypesOrg))
+                    contRun = False
 def main(argv):
     """Main function.
 
@@ -331,9 +504,11 @@ def main(argv):
     if flags.FLAGS.do == "run":
         start_agent()
     elif flags.FLAGS.do == "check":
-        check_dqn()
+        check_model()
     elif flags.FLAGS.do == "copyNN":
         copy_dqn()
+    elif flags.FLAGS.do == "gpTrain":
+        gp_train()
 
 
 if __name__ == '__main__':

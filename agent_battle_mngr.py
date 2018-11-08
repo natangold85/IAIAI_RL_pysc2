@@ -28,19 +28,19 @@ from utils import SC2_Params
 from utils import SC2_Actions
 
 #decision makers
-from utils_decisionMaker import DecisionMakerMngr
-from utils_decisionMaker import UserPlay
-from utils_decisionMaker import BaseDecisionMaker
+from algo_decisionMaker import DecisionMakerExperienceReplay
+from algo_decisionMaker import UserPlay
+from algo_decisionMaker import BaseDecisionMaker
 
 
 from utils_results import ResultFile
 from utils_results import PlotResults
 
 # params
-from utils_dqn import DQN_PARAMS
-from utils_dqn import DQN_EMBEDDING_PARAMS
-from utils_qtable import QTableParams
-from utils_qtable import QTableParamsExplorationDecay
+from algo_dqn import DQN_PARAMS
+from algo_dqn import DQN_EMBEDDING_PARAMS
+from algo_qtable import QTableParams
+from algo_qtable import QTableParamsExplorationDecay
 
 from utils import SwapPnt
 from utils import DistForCmp
@@ -170,7 +170,7 @@ class NaiveDecisionMakerBattleMngr(BaseDecisionMaker):
 
 
 class BattleMngr(BaseAgent):
-    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList):        
+    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList, dmCopy=None):        
         super(BattleMngr, self).__init__(STATE.SIZE)
         self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
         if self.playAgent:
@@ -194,7 +194,7 @@ class BattleMngr(BaseAgent):
         for key, name in SUBAGENTS_NAMES.items():
             saClass = eval(name)
             saDM = self.decisionMaker.GetSubAgentDecisionMaker(key)
-            self.subAgents[key] = saClass(sharedData, dmTypes, saDM, isMultiThreaded, saPlayList, trainList)
+            self.subAgents[key] = saClass(sharedData, dmTypes, saDM, isMultiThreaded, saPlayList, trainList, dmCopy=dmCopy)
             self.decisionMaker.SetSubAgentDecisionMaker(key, self.subAgents[key].GetDecisionMaker())
 
         if not self.playAgent:
@@ -219,7 +219,9 @@ class BattleMngr(BaseAgent):
         self.terminalState = np.zeros(self.state_size, dtype=np.int, order='C')
     
 
-    def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
+    def CreateDecisionMaker(self, dmTypes, isMultiThreaded, dmCopy=None):
+        dmCopy = "" if dmCopy==None else "_" + str(dmCopy)
+
         if dmTypes[AGENT_NAME] == "none":
             return BaseDecisionMaker(AGENT_NAME)
 
@@ -232,8 +234,8 @@ class BattleMngr(BaseAgent):
             directory = dmTypes["directory"] + "/" + AGENT_DIR
             if not os.path.isdir("./" + directory):
                 os.makedirs("./" + directory)
-            decisionMaker = DecisionMakerMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,  
-                                            resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=AGENT_DIR+runType[DIRECTORY], isMultiThreaded=isMultiThreaded)
+            decisionMaker = DecisionMakerExperienceReplay(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,  
+                                            resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=AGENT_DIR+runType[DIRECTORY]+dmCopy, isMultiThreaded=isMultiThreaded)
 
         return decisionMaker
 
@@ -292,22 +294,17 @@ class BattleMngr(BaseAgent):
 
             if self.isActionCommitted:
                 self.history.learn(self.previous_scaled_state, self.lastActionCommitted, reward, self.current_scaled_state, terminal)
-            elif terminal:
-                # if terminal reward entire state if action is not chosen for current step
-                for a in range(NUM_ACTIONS):
-                    self.history.learn(self.previous_scaled_state, a, reward, self.terminalState, terminal)
-                    self.history.learn(self.current_scaled_state, a, reward, self.terminalState, terminal)
 
         self.previous_scaled_state[:] = self.current_scaled_state[:]
         self.isActionCommitted = False
 
     def ChooseAction(self):
         for sa in self.activeSubAgents:
-           self.subAgents[sa].ChooseAction()       
+           self.subAgentsActions[sa] = self.subAgents[sa].ChooseAction()       
     
         if self.playAgent:
             if self.illigalmoveSolveInModel:
-                validActions = self.ValidActions()
+                validActions = self.ValidActions(self.current_scaled_state)
             else: 
                 validActions = list(range(NUM_ACTIONS))
  
@@ -329,10 +326,9 @@ class BattleMngr(BaseAgent):
         return self.subAgents[a].IsDoNothingAction(self.subAgentsActions[a])
 
     def Action2SC2Action(self, obs, moveNum):
-        print("\n\nBattle mngr action\n\n")
         if moveNum == 0:
             self.CreateState(obs)
-            self.Learn()
+            self.Learn(obs.reward, False)
             self.ChooseAction()
 
         self.isActionCommitted = True
@@ -341,7 +337,7 @@ class BattleMngr(BaseAgent):
 
     def CreateState(self, obs):
         for sa in ALL_SUB_AGENTS:
-            self.subAgents[sa].CreateState()
+            self.subAgents[sa].CreateState(obs)
 
         self.current_state = np.zeros(self.state_size, dtype=np.int, order='C')
         
@@ -436,11 +432,15 @@ class BattleMngr(BaseAgent):
         else:
             return p2
     
-    def ValidActions(self):
+    def ValidActions(self, state):
         valid = [ACTION_DO_NOTHING]
-        if self.armyExist:
+
+        armyExist = (state[STATE.START_ENEMY_ARMY_MAT:STATE.END_ENEMY_ARMY_MAT] > 0).any()
+        buildingExist = (state[STATE.START_ENEMY_BUILDING_MAT:STATE.END_ENEMY_BUILDING_MAT] > 0).any()
+
+        if armyExist:
             valid.append(ACTION_ARMY_BATTLE)
-        if self.buildingsExist:
+        if buildingExist:
             valid.append(ACTION_BASE_BATTLE)
         
         return valid

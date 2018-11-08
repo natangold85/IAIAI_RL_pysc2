@@ -3,14 +3,13 @@ import numpy as np
 import random
 import matplotlib.pyplot as plt
 
-from utils_qtable import QTableParams
-from utils_dqn import DQN_PARAMS
-from utils_decisionMaker import DecisionMakerMngr
+from algo_qtable import QTableParams
+from algo_dqn import DQN_PARAMS
+from algo_decisionMaker import DecisionMakerExperienceReplay
 from utils_ttable import TransitionTable
 
-from utils_dtn import DTN_PARAMS
-from utils_dtn import DTN
-from utils_dtn import Filtered_DTN
+from algo_dtn import DTN
+from algo_dtn import Filtered_DTN
 
 class Maze:
     def __init__(self, gridSize):

@@ -22,18 +22,18 @@ from utils import SC2_Actions
 
 
 #decision makers
-from utils_decisionMaker import BaseNaiveDecisionMaker
-from utils_decisionMaker import DecisionMakerMngr
-from utils_decisionMaker import UserPlay
+from algo_decisionMaker import BaseNaiveDecisionMaker
+from algo_decisionMaker import DecisionMakerExperienceReplay
+from algo_decisionMaker import UserPlay
 
 from utils_results import ResultFile
 from utils_results import PlotResults
 
 # params
-from utils_dqn import DQN_PARAMS
-from utils_dqn import DQN_EMBEDDING_PARAMS
-from utils_qtable import QTableParams
-from utils_qtable import QTableParamsExplorationDecay
+from algo_dqn import DQN_PARAMS
+from algo_dqn import DQN_EMBEDDING_PARAMS
+from algo_qtable import QTableParams
+from algo_qtable import QTableParamsExplorationDecay
 
 # utils functions
 from utils import GatherResource
@@ -222,7 +222,7 @@ class NaiveDecisionMakerResource(BaseNaiveDecisionMaker):
 
 
 class ResourceMngrSubAgent(BaseAgent):
-    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList):
+    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList, dmCopy=None):
         super(ResourceMngrSubAgent, self).__init__(RESOURCE_STATE.SIZE)
 
         self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
@@ -257,7 +257,7 @@ class ResourceMngrSubAgent(BaseAgent):
         for req in self.numScvReq4Group.values():
             self.numScvRequired += req
 
-    def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
+    def CreateDecisionMaker(self, dmTypes, isMultiThreaded, dmCopy=None):
         decisionMaker = NaiveDecisionMakerResource()
         return decisionMaker
 
@@ -310,13 +310,13 @@ class ResourceMngrSubAgent(BaseAgent):
         if self.trainAgent:
             self.decisionMaker.end_run(reward, score, stepNum)
 
-    def ValidActions(self):
+    def ValidActions(self, state):
         valid = [ACTIONS.ID_DO_NOTHING]
-        if self.current_scaled_state[RESOURCE_STATE.MINERALS_IDX] >= self.scvMineralPrice:
+        if state[RESOURCE_STATE.MINERALS_IDX] >= self.scvMineralPrice:
             valid.append(ACTIONS.ID_CREATE_SCV)
         
         for fromGroup in ALL_SCV_GROUPS:
-            if self.current_scaled_state[RESOURCE_STATE.GROUP2IDX[fromGroup]] > 0:
+            if state[RESOURCE_STATE.GROUP2IDX[fromGroup]] > 0:
                 for toGroup in ALL_SCV_GROUPS:
                     if fromGroup != toGroup:
                         valid.append(ACTIONS.GROUP2ACTION[toGroup, fromGroup])
@@ -327,7 +327,7 @@ class ResourceMngrSubAgent(BaseAgent):
         if self.playAgent:
             if self.illigalmoveSolveInModel:
                 # todo: create valid actions for agent
-                validActions = self.ValidActions()
+                validActions = self.ValidActions(self.current_scaled_state)
             else: 
                 validActions = list(range(ACTIONS.NUM_ACTIONS))
  

@@ -19,11 +19,12 @@ from utils import TerranUnit
 from utils import SC2_Params
 from utils import SC2_Actions
 
-from utils_decisionMaker import BaseDecisionMaker
-from utils_decisionMaker import DecisionMakerMngr
+from algo_decisionMaker import BaseDecisionMaker
+from algo_decisionMaker import DecisionMakerExperienceReplay
 
-from utils_qtable import QTableParamsExplorationDecay
-from utils_dqn import DQN_PARAMS
+from algo_qtable import QTableParamsExplorationDecay
+from algo_dqn import DQN_PARAMS
+from algo_a2c import A2C_PARAMS
 
 from utils_results import PlotResults
 
@@ -52,6 +53,8 @@ AGENT_DIR = "SuperAgent/"
 
 AGENT_NAME = "super"
 
+NUM_TRIALS_2_LEARN = 20
+
 STEP_DURATION = 0
 
 SUB_AGENT_ID_DONOTHING = 0
@@ -71,6 +74,7 @@ SUBAGENTS_NAMES[SUB_AGENT_ID_ATTACK] = "AttackAgent"
 QTABLE = 'q'
 DQN = 'dqn'
 DQN_2L = "dqn_2l"
+A2C = "A2C"
 
 USER_PLAY = 'play'
 
@@ -81,8 +85,6 @@ HISTORY = "hist"
 RESULTS = "results"
 PARAMS = 'params'
 DIRECTORY = 'directory'
-
-ALL_TYPES = set([USER_PLAY, QTABLE, DQN])
 
 # state details
 class STATE:
@@ -159,7 +161,7 @@ RUN_TYPES = {}
 
 RUN_TYPES[QTABLE] = {}
 RUN_TYPES[QTABLE][TYPE] = "QLearningTable"
-RUN_TYPES[QTABLE][PARAMS] = QTableParamsExplorationDecay(STATE.SIZE, ACTIONS.SIZE)
+RUN_TYPES[QTABLE][PARAMS] = QTableParamsExplorationDecay(STATE.SIZE, ACTIONS.SIZE, numTrials2Learn=NUM_TRIALS_2_LEARN)
 RUN_TYPES[QTABLE][DIRECTORY] = "superAgent_qtable"
 RUN_TYPES[QTABLE][DECISION_MAKER_NAME] = "qtable"
 RUN_TYPES[QTABLE][HISTORY] = "replayHistory"
@@ -167,7 +169,7 @@ RUN_TYPES[QTABLE][RESULTS] = "result"
 
 RUN_TYPES[DQN] = {}
 RUN_TYPES[DQN][TYPE] = "DQN_WithTarget"
-RUN_TYPES[DQN][PARAMS] = DQN_PARAMS(STATE.SIZE, ACTIONS.SIZE)
+RUN_TYPES[DQN][PARAMS] = DQN_PARAMS(STATE.SIZE, ACTIONS.SIZE, numTrials2Learn=NUM_TRIALS_2_LEARN)
 RUN_TYPES[DQN][DECISION_MAKER_NAME] = "superAgent_dqn"
 RUN_TYPES[DQN][DIRECTORY] = "superAgent_dqn"
 RUN_TYPES[DQN][HISTORY] = "replayHistory"
@@ -175,13 +177,19 @@ RUN_TYPES[DQN][RESULTS] = "result"
 
 RUN_TYPES[DQN_2L] = {}
 RUN_TYPES[DQN_2L][TYPE] = "DQN_WithTarget"
-RUN_TYPES[DQN_2L][PARAMS] = DQN_PARAMS(STATE.SIZE, ACTIONS.SIZE, nn_Func=dqn_2layers)
+RUN_TYPES[DQN_2L][PARAMS] = DQN_PARAMS(STATE.SIZE, ACTIONS.SIZE, layersNum=2, numTrials2Learn=NUM_TRIALS_2_LEARN)
 RUN_TYPES[DQN_2L][DIRECTORY] = "superAgent_dqn2l"
 RUN_TYPES[DQN_2L][DECISION_MAKER_NAME] = "superAgent_dqn2l"
 RUN_TYPES[DQN_2L][HISTORY] = "replayHistory"
 RUN_TYPES[DQN_2L][RESULTS] = "result"
 
-
+RUN_TYPES[A2C] = {}
+RUN_TYPES[A2C][TYPE] = "A2C"
+RUN_TYPES[A2C][PARAMS] = A2C_PARAMS(STATE.SIZE, ACTIONS.SIZE, numTrials2Learn=NUM_TRIALS_2_LEARN)
+RUN_TYPES[A2C][DECISION_MAKER_NAME] = "superAgent_A2C"
+RUN_TYPES[A2C][DIRECTORY] = "superAgent_A2C"
+RUN_TYPES[A2C][HISTORY] = "superAgent_replayHistory"
+RUN_TYPES[A2C][RESULTS] = "superAgent_result"
 
 RUN_TYPES[USER_PLAY] = {}
 RUN_TYPES[USER_PLAY][TYPE] = "play"
@@ -201,7 +209,7 @@ NORMALIZATION_TRAIN_LOCAL_REWARD = 2 * BASE_MNGR_MAX_NAIVE_REWARD
 BATTLE_TYPES = set(["battle_mngr", "attack_army", "attack_base"])
 
 class SuperAgent(BaseAgent):
-    def __init__(self, dmTypes, useMapRewards = True, decisionMaker = None, isMultiThreaded = False, playList = [], trainList = []):
+    def __init__(self, dmTypes, useMapRewards = True, decisionMaker = None, isMultiThreaded = False, playList = [], trainList = [], dmCopy=None):
         super(SuperAgent, self).__init__(STATE.SIZE)
 
         self.sharedData = SharedDataSuper()
@@ -220,7 +228,7 @@ class SuperAgent(BaseAgent):
         if decisionMaker != None:
             self.decisionMaker = decisionMaker
         else:
-            self.decisionMaker = self.CreateDecisionMaker(dmTypes, isMultiThreaded)
+            self.decisionMaker = self.CreateDecisionMaker(dmTypes, isMultiThreaded, dmCopy=dmCopy)
 
         self.history = self.decisionMaker.AddHistory()
         
@@ -230,7 +238,7 @@ class SuperAgent(BaseAgent):
         for key, name in SUBAGENTS_NAMES.items():
             saClass = eval(name)
             saDM = self.decisionMaker.GetSubAgentDecisionMaker(key)
-            self.subAgents[key] = saClass(self.sharedData, dmTypes, saDM, isMultiThreaded, saPlayList, trainList)
+            self.subAgents[key] = saClass(self.sharedData, dmTypes, saDM, isMultiThreaded, saPlayList, trainList, dmCopy=dmCopy)
             self.decisionMaker.SetSubAgentDecisionMaker(key, self.subAgents[key].GetDecisionMaker())
 
         if not self.playAgent:
@@ -254,8 +262,9 @@ class SuperAgent(BaseAgent):
         self.move_number = 0
         self.discountForLocalReward = 0.999
 
-    def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
-        
+    def CreateDecisionMaker(self, dmTypes, isMultiThreaded, dmCopy=None):
+        dmCopy = "" if dmCopy==None else "_" + str(dmCopy)
+
         if dmTypes[AGENT_NAME] == "none":
             return BaseDecisionMaker(AGENT_NAME)
 
@@ -266,9 +275,8 @@ class SuperAgent(BaseAgent):
         if not os.path.isdir("./" + directory):
             os.makedirs("./" + directory)
 
-        decisionMaker = DecisionMakerMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,
-                                            resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY], isMultiThreaded=isMultiThreaded,
-                                            numTrials2Learn=20)
+        decisionMaker = DecisionMakerExperienceReplay(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,
+                                            resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY] + dmCopy, isMultiThreaded=isMultiThreaded)
 
         return decisionMaker
 
@@ -368,11 +376,12 @@ class SuperAgent(BaseAgent):
             self.subAgentsActions[sa] = None
             self.subAgents[sa].FirstStep(obs)
         
-        coord = self.sharedData.commandCenterLoc[0]
+        if len(self.sharedData.commandCenterLoc) >= 1:
+            self.go2BaseAction = actions.FunctionCall(SC2_Actions.MOVE_CAMERA, [SwapPnt(self.sharedData.commandCenterLoc[0])])
+        else:
+            self.go2BaseAction = SC2_Actions.DO_NOTHING_SC2_ACTION
 
-        self.go2BaseAction = actions.FunctionCall(SC2_Actions.MOVE_CAMERA, [SwapPnt(coord)])
-
-        self.maxSupply = False
+        self.maxSupply = False  
 
     def LastStep(self, obs):
         if self.useMapRewards:
@@ -411,7 +420,7 @@ class SuperAgent(BaseAgent):
         if self.playAgent:
             if self.illigalmoveSolveInModel:
                 # todo: create valid actions for agent
-                validActions = self.ValidActions()
+                validActions = self.ValidActions(self.current_scaled_state)
             else: 
                 validActions = list(range(ACTIONS.SIZE))
  
@@ -426,16 +435,16 @@ class SuperAgent(BaseAgent):
 
         self.current_action = action
         return action
-
-    def ValidActions(self):
+    
+    def ValidActions(self, state):
         
         valid = [ACTIONS.ACTION_DO_NOTHING, ACTIONS.ACTION_DEVELOP_BASE]
 
-        if self.current_scaled_state[STATE.BASE.ARMY_POWER] > 0:
+        if state[STATE.BASE.ARMY_POWER] > 0:
             for i in range(STATE.GRID_SIZE * STATE.GRID_SIZE):
-                if self.current_scaled_state[STATE.FOG_MAT_START + i] < STATE.VAL_IS_SCOUTED:
+                if state[STATE.FOG_MAT_START + i] < STATE.VAL_IS_SCOUTED:
                     valid.append(ACTIONS.ACTION_SCOUT_START + i)
-                if self.current_scaled_state[STATE.ENEMY_ARMY_MAT_START + i] > 0:
+                if state[STATE.ENEMY_ARMY_MAT_START + i] > 0:
                     valid.append(ACTIONS.ACTION_ATTACK_START + i)
 
         return valid
@@ -473,25 +482,27 @@ class SuperAgent(BaseAgent):
             self.subAgents[sa].MonitorObservation(obs)
                      
     def CreateState(self, obs):
-        self.maxSupply = (obs.observation['player'][SC2_Params.SUPPLY_USED] == obs.observation['player'][SC2_Params.SUPPLY_CAP])
 
         for subAgent in self.subAgents.values():
             subAgent.CreateState(obs)
 
-        for si in range(STATE.BASE_START, STATE.BASE_END):
-            self.current_state[si] = self.sharedData.currBaseState[si]
+        
+        if self.playAgent:
+            self.maxSupply = (obs.observation['player'][SC2_Params.SUPPLY_USED] == obs.observation['player'][SC2_Params.SUPPLY_CAP])
+            for si in range(STATE.BASE_START, STATE.BASE_END):
+                self.current_state[si] = self.sharedData.currBaseState[si]
 
-        for y in range(STATE.GRID_SIZE):
-            for x in range(STATE.GRID_SIZE):
-                idx = x + y * STATE.GRID_SIZE
-               
-                self.current_state[idx + STATE.ENEMY_ARMY_MAT_START] = self.sharedData.enemyMatObservation[y, x]
-                self.current_state[idx + STATE.FOG_MAT_START] = int( self.sharedData.fogRatioMat[y, x] * STATE.MAX_SCOUT_VAL)
-                self.current_state[idx + STATE.FOG_COUNTER_MAT_START] = self.sharedData.fogCounterMat[y, x]
+            for y in range(STATE.GRID_SIZE):
+                for x in range(STATE.GRID_SIZE):
+                    idx = x + y * STATE.GRID_SIZE
+                
+                    self.current_state[idx + STATE.ENEMY_ARMY_MAT_START] = self.sharedData.enemyMatObservation[y, x]
+                    self.current_state[idx + STATE.FOG_MAT_START] = int( self.sharedData.fogRatioMat[y, x] * STATE.MAX_SCOUT_VAL)
+                    self.current_state[idx + STATE.FOG_COUNTER_MAT_START] = self.sharedData.fogCounterMat[y, x]
 
-        self.current_state[STATE.TIME_LINE_IDX] = self.sharedData.numStep    
-    
-        self.ScaleCurrState()
+            self.current_state[STATE.TIME_LINE_IDX] = self.sharedData.numStep    
+        
+            self.ScaleCurrState()
 
     def AdjustAction2SubAgents(self):
         subAgentIdx = ACTIONS.ACTIONS2SUB_AGENTSID[self.current_action]

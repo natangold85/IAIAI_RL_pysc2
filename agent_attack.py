@@ -18,7 +18,7 @@ from utils import SC2_Params
 from utils import SC2_Actions
 
 #decision makers
-from utils_decisionMaker import BaseDecisionMaker
+from algo_decisionMaker import BaseDecisionMaker
 
 from agent_battle_mngr import BattleMngr
 from agent_battle_mngr import SharedDataBattle
@@ -54,7 +54,7 @@ class SharedDataAttack(SharedDataBattle):
         self.armyInAttack = {}
 
 class AttackAgent(BaseAgent):
-    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList): 
+    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList, dmCopy=None): 
         super(AttackAgent, self).__init__()  
 
         self.sharedData = sharedData
@@ -74,7 +74,7 @@ class AttackAgent(BaseAgent):
         for key, name in SUBAGENTS_NAMES.items():
             saClass = eval(name)
             saDM = self.decisionMaker.GetSubAgentDecisionMaker(key)
-            self.subAgents[key] = saClass(sharedData, dmTypes, saDM, isMultiThreaded, saPlayList, trainList)
+            self.subAgents[key] = saClass(sharedData, dmTypes, saDM, isMultiThreaded, saPlayList, trainList, dmCopy=dmCopy)
             self.decisionMaker.SetSubAgentDecisionMaker(key, self.subAgents[key].GetDecisionMaker())
 
         if not self.playAgent:
@@ -101,7 +101,14 @@ class AttackAgent(BaseAgent):
        
     def EndRun(self, reward, score, stepNum):     
         for sa in self.activeSubAgents:
+            if reward > 0:
+                reward = 1.0
+            else:
+                reward = -1.0
+                
+            self.subAgents[sa].Learn(reward, True)
             self.subAgents[sa].EndRun(reward, score, stepNum) 
+
 
     def UpdateEnemyMat(self, obs):
         miniMapEnemy = obs.observation['feature_minimap'][SC2_Params.PLAYER_RELATIVE_MINIMAP] == SC2_Params.PLAYER_HOSTILE
@@ -157,7 +164,14 @@ class AttackAgent(BaseAgent):
 
     def IsDoNothingAction(self, a):
         return False
-
+    
+    def ChooseAction(self):
+        if not self.playAgent:
+            if self.subAgentPlay >= 0:
+                return self.subAgents[self.subAgentPlay].ChooseAction()
+        
+        return 0
+        
     def Action2SC2Action(self, obs, a, moveNum):
         if self.playAgent:
             if moveNum == 0:

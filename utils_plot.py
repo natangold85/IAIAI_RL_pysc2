@@ -4,11 +4,31 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 
+# def PlotMeanWithInterval(mean, interval, color_mean=None):
+#     # plot the shaded range of the confidence intervals
+#     plt.fill_between(range(mean.shape[0]), mean + interval, mean - interval, alpha=.5)
+#     # plot the mean on top
+#     plt.plot(mean)
+
+def PlotMeanWithInterval(x, y, interval, color=None):
+    if color != None:
+        # plot the shaded range of the confidence intervals
+        plt.fill_between(x, y + interval, y - interval, color=color, alpha=.5)
+        # plot the mean on top
+        plt.plot(x, y, color=color)
+    else:
+        # plot the shaded range of the confidence intervals
+        plt.fill_between(x, y + interval, y - interval, alpha=.5)
+        # plot the mean on top
+        plt.plot(x, y)
+
 def create_nnGraphs(superAgent, agent2Check, statesIdx, actions2Check, plotTarget=False, numTrials = -1, saveGraphs = False, showGraphs = False, dir2Save = "./", maxSize2Plot=20000):
     plotType = "target" if plotTarget else "current"
 
     figVals = None
+    isFigVals = False
     figDiff = None
+    isFigDiff = False
 
     idxX = statesIdx[0]
     idxY = statesIdx[1]
@@ -34,7 +54,7 @@ def create_nnGraphs(superAgent, agent2Check, statesIdx, actions2Check, plotTarge
     sizeHist = len(dm.historyMngr.transitions["a"])
     size2Plot = min(sizeHist, maxSize2Plot)
     for i in range(size2Plot):
-        s = dm.DrawStateFromHist()
+        s = dm.DrawStateFromHist(realState=False)
         validActions = agent.ValidActions()
         vals = dm.ActionsValues(s, validActions, targetValues=plotTarget)
 
@@ -74,8 +94,10 @@ def create_nnGraphs(superAgent, agent2Check, statesIdx, actions2Check, plotTarge
         z = np.array(actionsPoints[a][3])
         ax = figVals.add_subplot(numRows, 2, idxPlot)
         img = plotImg(ax, x, y, z, xName, yName, "values for action = " + agent.Action2Str(a, onlyAgent=True), minZ=minVal, maxZ=maxVal)
-        figVals.colorbar(img, shrink=0.4, aspect=5)
-        idxPlot += 1
+        if img != None:
+            isFigVals = True
+            figVals.colorbar(img, shrink=0.4, aspect=5)
+            idxPlot += 1
     
     idxPlot = 1
 
@@ -89,29 +111,39 @@ def create_nnGraphs(superAgent, agent2Check, statesIdx, actions2Check, plotTarge
         a1 = actions2Check[a1Idx]
         x = np.array(actionsPoints[a1][0])
         y = np.array(actionsPoints[a1][1])
+        z1 = np.array(actionsPoints[a1][3])
+
+        if len(z1) == 0:
+            continue
 
         for a2Idx in range(a1Idx + 1, len(actions2Check)):
             a2 = actions2Check[a2Idx]
-            z1 = np.array(actionsPoints[a1][3])
             z2 = np.array(actionsPoints[a2][3])
+
             zDiff = z1 - z2
             maxZ = np.max(np.abs(zDiff))
             ax = figDiff.add_subplot(numRows, 2, idxPlot)
             title = "values for differrence = " + agent.Action2Str(a1, onlyAgent=True) + " - " + agent.Action2Str(a2, onlyAgent=True)
             img = plotImg(ax, x, y, zDiff, xName, yName, title, minZ=-maxZ, maxZ=maxZ)
-            figDiff.colorbar(img, shrink=0.4, aspect=5)
-            idxPlot += 1
+            if img != None:
+                isFigDiff = True
+                figDiff.colorbar(img, shrink=0.4, aspect=5)
+                idxPlot += 1
  
     if saveGraphs:
-        if figVals != None:
+        if isFigVals:
             figVals.savefig(dir2Save + plotType + "DQN_" + str(numRuns))
-        if figDiff != None:
+        if isFigDiff:
             figDiff.savefig(dir2Save + plotType + "DQNDiff_" + str(numRuns))
 
     if showGraphs:
         plt.show()
 
+
+
 def plotImg(ax, x, y, z, xName, yName, title, minZ = None, maxZ = None):
+    if len(x) == 0:
+        return None
     imSizeX = np.max(x) - np.min(x) + 1
     imSizeY = np.max(y) - np.min(y) + 1
 
@@ -122,7 +154,6 @@ def plotImg(ax, x, y, z, xName, yName, title, minZ = None, maxZ = None):
     mat.fill(np.nan)
 
     for i in range(len(x)):
-        # print("[", x[i], y[i], "] =", z[i])
         mat[y[i] - offsetY, x[i] - offsetX] = z[i]
 
     if minZ == None:

@@ -2,8 +2,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from utils_dqn import DQN_PARAMS
-from utils_dqn import DQN
+from algo_dqn import DQN_PARAMS
+from algo_dqn import DQN
 
 import random
 import math

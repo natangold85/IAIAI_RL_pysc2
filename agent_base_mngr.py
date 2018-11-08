@@ -22,19 +22,19 @@ from utils import TerranUnit
 from utils import SC2_Params
 from utils import SC2_Actions
 
-from utils_decisionMaker import BaseDecisionMaker
-from utils_decisionMaker import DecisionMakerMngr
-from utils_decisionMaker import UserPlay
-from utils_decisionMaker import BaseNaiveDecisionMaker
+from algo_decisionMaker import BaseDecisionMaker
+from algo_decisionMaker import DecisionMakerExperienceReplay
+from algo_decisionMaker import UserPlay
+from algo_decisionMaker import BaseNaiveDecisionMaker
 
 from utils_results import PlotResults
 from utils_results import ResultFile
 
 
-from utils_qtable import QTableParamsExplorationDecay
-from utils_dqn import DQN_PARAMS
-from utils_dqn import DQN_PARAMS_WITH_DEFAULT_DM
-from utils_a3c import A3C_PARAMS
+from algo_qtable import QTableParamsExplorationDecay
+from algo_dqn import DQN_PARAMS
+from algo_dqn import DQN_PARAMS_WITH_DEFAULT_DM
+from algo_a2c import A2C_PARAMS
 
 from agent_build_base import BuildBaseSubAgent
 from agent_train_army import TrainArmySubAgent
@@ -198,7 +198,7 @@ QTABLE = 'q'
 DQN = 'dqn'
 DQN2L = 'dqn_2l'
 DQN2L_DFLT = 'dqn_2l_dflt'
-A3C = "A3C"
+A2C = "A2C"
 USER_PLAY = 'play'
 NAIVE = 'naive'
 
@@ -224,15 +224,15 @@ RUN_TYPES[QTABLE][RESULTS] = "baseMngr_result"
 
 RUN_TYPES[DQN] = {}
 RUN_TYPES[DQN][TYPE] = "DQN_WithTarget"
-RUN_TYPES[DQN][PARAMS] = DQN_PARAMS(BASE_STATE.SIZE, NUM_ACTIONS, numTrials2CmpResults=NUM_TRIALS_4_CMP)
+RUN_TYPES[DQN][PARAMS] = DQN_PARAMS(BASE_STATE.SIZE, NUM_ACTIONS, numTrials2CmpResults=NUM_TRIALS_4_CMP, numTrials2Learn=NUM_TRIALS_2_LEARN)
 RUN_TYPES[DQN][DECISION_MAKER_NAME] = "baseMngr_dqn"
 RUN_TYPES[DQN][DIRECTORY] = "baseMngr_dqn"
 RUN_TYPES[DQN][HISTORY] = "baseMngr_replayHistory"
 RUN_TYPES[DQN][RESULTS] = "baseMngr_result"
 
 RUN_TYPES[DQN2L] = {}
-RUN_TYPES[DQN2L][TYPE] = "DQN_WithTarget"
-RUN_TYPES[DQN2L][PARAMS] = DQN_PARAMS(BASE_STATE.SIZE, NUM_ACTIONS, layersNum=2, numTrials2CmpResults=NUM_TRIALS_4_CMP, descendingExploration=False)
+RUN_TYPES[DQN2L][TYPE] = "DQN"
+RUN_TYPES[DQN2L][PARAMS] = DQN_PARAMS(BASE_STATE.SIZE, NUM_ACTIONS, layersNum=2, numTrials2CmpResults=NUM_TRIALS_4_CMP, numTrials2Learn=NUM_TRIALS_2_LEARN, descendingExploration=False)
 RUN_TYPES[DQN2L][DECISION_MAKER_NAME] = "baseMngr_dqn2l"
 RUN_TYPES[DQN2L][DIRECTORY] = "baseMngr_dqn2l"
 RUN_TYPES[DQN2L][HISTORY] = "baseMngr_replayHistory"
@@ -241,33 +241,35 @@ RUN_TYPES[DQN2L][ALL_RESULTS] = "baseMngr_results_all"
 
 RUN_TYPES[DQN2L_DFLT] = {}
 RUN_TYPES[DQN2L_DFLT][TYPE] = "DQN_WithTargetAndDefault"
-RUN_TYPES[DQN2L_DFLT][PARAMS] = DQN_PARAMS_WITH_DEFAULT_DM(BASE_STATE.SIZE, NUM_ACTIONS, layersNum=2, numTrials2CmpResults=NUM_TRIALS_4_CMP, descendingExploration = False)
+RUN_TYPES[DQN2L_DFLT][PARAMS] = DQN_PARAMS_WITH_DEFAULT_DM(BASE_STATE.SIZE, NUM_ACTIONS, layersNum=2, numTrials2CmpResults=NUM_TRIALS_4_CMP, numTrials2Learn=NUM_TRIALS_2_LEARN, descendingExploration = False)
 RUN_TYPES[DQN2L_DFLT][DECISION_MAKER_NAME] = "baseMngr_dqn2l_dflt"
 RUN_TYPES[DQN2L_DFLT][DIRECTORY] = "baseMngr_dqn2l_dflt"
 RUN_TYPES[DQN2L_DFLT][HISTORY] = "baseMngr_replayHistory"
 RUN_TYPES[DQN2L_DFLT][RESULTS] = "baseMngr_result"
 RUN_TYPES[DQN2L_DFLT][ALL_RESULTS] = "baseMngr_results_all"
 
-RUN_TYPES[A3C] = {}
-RUN_TYPES[A3C][TYPE] = "A3C"
-RUN_TYPES[A3C][PARAMS] = A3C_PARAMS(BASE_STATE.SIZE, NUM_ACTIONS, numTrials2CmpResults=NUM_TRIALS_4_CMP)
-RUN_TYPES[A3C][DECISION_MAKER_NAME] = "baseMngr_A3C"
-RUN_TYPES[A3C][DIRECTORY] = "baseMngr_A3C"
-RUN_TYPES[A3C][HISTORY] = "baseMngr_replayHistory"
-RUN_TYPES[A3C][RESULTS] = "baseMngr_result"
-RUN_TYPES[A3C][ALL_RESULTS] = "baseMngr_results_all"
+RUN_TYPES[A2C] = {}
+RUN_TYPES[A2C][TYPE] = "A2C"
+RUN_TYPES[A2C][PARAMS] = A2C_PARAMS(BASE_STATE.SIZE, NUM_ACTIONS, numTrials2CmpResults=NUM_TRIALS_4_CMP, numTrials2Learn=NUM_TRIALS_2_LEARN)
+RUN_TYPES[A2C][DECISION_MAKER_NAME] = "baseMngr_A2C"
+RUN_TYPES[A2C][DIRECTORY] = "baseMngr_A2C"
+RUN_TYPES[A2C][HISTORY] = "baseMngr_replayHistory"
+RUN_TYPES[A2C][RESULTS] = "baseMngr_result"
+RUN_TYPES[A2C][ALL_RESULTS] = "baseMngr_results_all"
 
 RUN_TYPES[NAIVE] = {}
 RUN_TYPES[NAIVE][DIRECTORY] = "baseMngr_naive"
 RUN_TYPES[NAIVE][RESULTS] = "baseMngr_result"
 RUN_TYPES[NAIVE][ALL_RESULTS] = "baseMngr_AllResults"
 
-def CreateDecisionMakerBaseMngr(dmTypes, isMultiThreaded, numTrials2Learn=NUM_TRIALS_2_LEARN):
+def CreateDecisionMakerBaseMngr(dmTypes, isMultiThreaded, dmCopy=None):
+    dmCopy = "" if dmCopy==None else "_" + str(dmCopy)
+
     if dmTypes[AGENT_NAME] == "none":
         return BaseDecisionMaker(AGENT_NAME), []
 
     runType = RUN_TYPES[dmTypes[AGENT_NAME]]
-    directory = dmTypes["directory"] + "/" + AGENT_DIR + runType[DIRECTORY]
+    directory = dmTypes["directory"] + "/" + AGENT_DIR + runType[DIRECTORY] + dmCopy
 
     if dmTypes[AGENT_NAME] == "naive":
         decisionMaker = NaiveDecisionMakerBaseMngr(resultFName=runType[RESULTS], directory=directory)
@@ -275,9 +277,8 @@ def CreateDecisionMakerBaseMngr(dmTypes, isMultiThreaded, numTrials2Learn=NUM_TR
         if runType[TYPE] == "DQN_WithTargetAndDefault":
             runType[PARAMS].defaultDecisionMaker = NaiveDecisionMakerBaseMngr()
 
-        decisionMaker = DecisionMakerMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,  
-                            resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory, isMultiThreaded=isMultiThreaded,
-                            numTrials2Learn=numTrials2Learn)
+        decisionMaker = DecisionMakerExperienceReplay(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,  
+                            resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory, isMultiThreaded=isMultiThreaded)
 
     return decisionMaker, runType
 
@@ -335,7 +336,7 @@ class NaiveDecisionMakerBaseMngr(BaseNaiveDecisionMaker):
 
 
 class BaseMngr(BaseAgent):
-    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList):
+    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList, dmCopy=None):
         super(BaseMngr, self).__init__(BASE_STATE.SIZE)
         
         self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
@@ -354,13 +355,13 @@ class BaseMngr(BaseAgent):
 
         if decisionMaker != None:
             self.decisionMaker = decisionMaker
-            self.allResultFile = self.decisionMaker.GetResultFile()
+            if self.trainSubAgentsSimultaneously or self.trainAll:
+                self.allResultFile = self.decisionMaker.GetResultFile()
         else:
             self.decisionMaker = self.CreateDecisionMaker(dmTypes, isMultiThreaded)
 
         decisionMakerType = self.decisionMaker.DecisionMakerType()
         self.initialDfltDecisionMaker = decisionMakerType.find("Default") > 0
-        self.isA3CAlg = decisionMakerType == "A3C"
 
         self.history = self.decisionMaker.AddHistory()
 
@@ -370,7 +371,7 @@ class BaseMngr(BaseAgent):
         for key, name in SUBAGENTS_NAMES.items():
             saClass = eval(name)
             saDM = self.decisionMaker.GetSubAgentDecisionMaker(key)     
-            self.subAgents[key] = saClass(sharedData, dmTypes, saDM, isMultiThreaded, saPlayList, trainList)
+            self.subAgents[key] = saClass(sharedData, dmTypes, saDM, isMultiThreaded, saPlayList, trainList, dmCopy=dmCopy)
             self.decisionMaker.SetSubAgentDecisionMaker(key, self.subAgents[key].GetDecisionMaker())
 
 
@@ -400,7 +401,9 @@ class BaseMngr(BaseAgent):
 
 
 
-    def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
+    def CreateDecisionMaker(self, dmTypes, isMultiThreaded, dmCopy=None):
+        dmCopy = "" if dmCopy==None else "_" + str(dmCopy)
+        
         decisionMaker, runType = CreateDecisionMakerBaseMngr(dmTypes, isMultiThreaded)
         if dmTypes[AGENT_NAME] == "none":
             return decisionMaker
@@ -409,8 +412,8 @@ class BaseMngr(BaseAgent):
         
         fullDirectoryName = "./" + directory +"/"
         if ALL_RESULTS in runType:
-            loadFiles = False if "new" in sys.argv else True
-            self.allResultFile = ResultFile(fullDirectoryName + runType[ALL_RESULTS], NUM_TRIALS_2_LEARN, loadFiles, "All_" + AGENT_NAME)
+            self.allResultFile = ResultFile(fullDirectoryName + runType[ALL_RESULTS], NUM_TRIALS_2_LEARN, "All_" + AGENT_NAME)
+
         else:
             self.allResultFile = None
         
@@ -643,7 +646,7 @@ class BaseMngr(BaseAgent):
 
         if self.playAgent:
             if self.illigalmoveSolveInModel:
-                validActions = self.ValidActions()
+                validActions = self.ValidActions(self.current_scaled_state)
             else: 
                 validActions = list(range(NUM_ACTIONS))
  
@@ -655,18 +658,18 @@ class BaseMngr(BaseAgent):
         self.current_action = action
         return action
 
-    def ValidActions(self):
+    def ValidActions(self, state):
         valid = [ACTION_DO_NOTHING]
-        if self.current_scaled_state[BASE_STATE.MINERALS_IDX] >= self.minPriceMinerals:
+        if state[BASE_STATE.MINERALS_IDX] >= self.minPriceMinerals:
             valid.append(ACTION_BUILD_BASE)
         
-            if self.ArmyBuildingExist():
+            if self.ArmyBuildingExist(state):
                 valid.append(ACTION_TRAIN_ARMY)
      
         return valid
     
-    def ArmyBuildingExist(self):
-        return (self.current_scaled_state[BASE_STATE.TRAIN_BUILDING_RELATED_IDX] > 0).any()
+    def ArmyBuildingExist(self, state):
+        return (state[BASE_STATE.TRAIN_BUILDING_RELATED_IDX] > 0).any()
 
     def Action2Str(self, a, onlyAgent=False):
         if a == ACTION_DO_NOTHING or a not in self.subAgentsActions.keys() or onlyAgent:

@@ -1,0 +1,2 @@
+model_checkpoint_path: "testA3Cdqn"
+all_model_checkpoint_paths: "testA3Cdqn"

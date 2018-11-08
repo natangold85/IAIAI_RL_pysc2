@@ -21,8 +21,8 @@ from pysc2.lib.units import Terran
 
 from utils import BaseAgent
 
-from utils_decisionMaker import BaseDecisionMaker
-from utils_decisionMaker import BaseNaiveDecisionMaker
+from algo_decisionMaker import BaseDecisionMaker
+from algo_decisionMaker import BaseNaiveDecisionMaker
 
 from agent_train_army import TrainCmd
 
@@ -131,7 +131,7 @@ class NaiveDecisionMakerDoNothing(BaseNaiveDecisionMaker):
 
 
 class DoNothingSubAgent(BaseAgent):
-    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList):
+    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList, dmCopy=None):
         super(DoNothingSubAgent, self).__init__()
 
         self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
@@ -176,7 +176,7 @@ class DoNothingSubAgent(BaseAgent):
         self.unitInQueue[Terran.Hellion] = [Terran.Factory, Terran.FactoryTechLab]
         self.unitInQueue[Terran.SiegeTank] = [Terran.Factory, Terran.FactoryTechLab]
 
-    def CreateDecisionMaker(self, dmTypes, isMultiThreaded):
+    def CreateDecisionMaker(self, dmTypes, isMultiThreaded, dmCopy=None):
         if dmTypes[AGENT_NAME] == "none":
             return BaseDecisionMaker(AGENT_NAME)
   
@@ -267,7 +267,7 @@ class DoNothingSubAgent(BaseAgent):
     def ChooseAction(self):
         if self.playAgent:
             if self.illigalmoveSolveInModel:
-                validActions = self.ValidActions()
+                validActions = self.ValidActions(self.current_scaled_state)
             else: 
                 validActions = list(range(NUM_ACTIONS))
  
@@ -277,7 +277,7 @@ class DoNothingSubAgent(BaseAgent):
             return ACTION_RESOURCE_SUBAGENT
         else:
             return ACTION_DO_NOTHING
-    def ValidActions(self):
+    def ValidActions(self, state):
         # todo: create valid actions for agent
         return list(range(NUM_ACTIONS))
 

@@ -20,23 +20,23 @@ from utils import SC2_Actions
 from utils import BaseAgent
 
 #decision makers
-from utils_decisionMaker import BaseDecisionMaker
-from utils_decisionMaker import DecisionMakerMngr
-from utils_decisionMaker import UserPlay
-from utils_decisionMaker import BaseNaiveDecisionMaker
+from algo_decisionMaker import BaseDecisionMaker
+from algo_decisionMaker import DecisionMakerExperienceReplay
+from algo_decisionMaker import UserPlay
+from algo_decisionMaker import BaseNaiveDecisionMaker
 
 from utils_results import ResultFile
 from utils_results import PlotResults
 
 # params
-from utils_dqn import DQN_PARAMS
-from utils_dqn import DQN_EMBEDDING_PARAMS
-from utils_dqn import DQN_PARAMS_WITH_DEFAULT_DM
+from algo_dqn import DQN_PARAMS
+from algo_dqn import DQN_EMBEDDING_PARAMS
+from algo_dqn import DQN_PARAMS_WITH_DEFAULT_DM
 
-from utils_a3c import A3C_PARAMS
+from algo_a2c import A2C_PARAMS
 
-from utils_qtable import QTableParams
-from utils_qtable import QTableParamsExplorationDecay
+from algo_qtable import QTableParams
+from algo_qtable import QTableParamsExplorationDecay
 
 # utils functions
 from utils import EmptySharedData
@@ -59,7 +59,7 @@ QTABLE = 'q'
 DQN = 'dqn'
 DQN2L = 'dqn_2l'
 DQN2L_DFLT = 'dqn_2l_dflt'
-A3C = "A3C"
+A2C = "A2C"
 DQN_EMBEDDING_LOCATIONS = 'dqn_Embedding' 
 NAIVE = "naive"
 USER_PLAY = 'play'
@@ -216,7 +216,7 @@ RUN_TYPES[DQN][RESULTS] = "result"
 
 RUN_TYPES[DQN2L] = {}
 RUN_TYPES[DQN2L][TYPE] = "DQN_WithTarget"
-RUN_TYPES[DQN2L][PARAMS] = DQN_PARAMS_WITH_DEFAULT_DM(BUILD_STATE.SIZE, ACTIONS.NUM_ACTIONS, layersNum=2, numTrials2CmpResults=NUM_TRIALS_4_CMP, descendingExploration=False)
+RUN_TYPES[DQN2L][PARAMS] = DQN_PARAMS(BUILD_STATE.SIZE, ACTIONS.NUM_ACTIONS, layersNum=2, numTrials2CmpResults=NUM_TRIALS_4_CMP, descendingExploration=False)
 RUN_TYPES[DQN2L][DECISION_MAKER_NAME] = "build_dqn2l"
 RUN_TYPES[DQN2L][DIRECTORY] = "buildBase_dqn2l"
 RUN_TYPES[DQN2L][HISTORY] = "replayHistory"
@@ -230,13 +230,13 @@ RUN_TYPES[DQN2L_DFLT][DIRECTORY] = "buildBase_dqn2l_dflt"
 RUN_TYPES[DQN2L_DFLT][HISTORY] = "replayHistory"
 RUN_TYPES[DQN2L_DFLT][RESULTS] = "result"
 
-RUN_TYPES[A3C] = {}
-RUN_TYPES[A3C][TYPE] = "A3C"
-RUN_TYPES[A3C][PARAMS] = A3C_PARAMS(BUILD_STATE.SIZE, ACTIONS.NUM_ACTIONS, numTrials2CmpResults=NUM_TRIALS_4_CMP)
-RUN_TYPES[A3C][DECISION_MAKER_NAME] = "build_A3C"
-RUN_TYPES[A3C][DIRECTORY] = "buildBase_A3C"
-RUN_TYPES[A3C][HISTORY] = "replayHistory"
-RUN_TYPES[A3C][RESULTS] = "results"
+RUN_TYPES[A2C] = {}
+RUN_TYPES[A2C][TYPE] = "A2C"
+RUN_TYPES[A2C][PARAMS] = A2C_PARAMS(BUILD_STATE.SIZE, ACTIONS.NUM_ACTIONS, numTrials2CmpResults=NUM_TRIALS_4_CMP, outputGraph=True)
+RUN_TYPES[A2C][DECISION_MAKER_NAME] = "build_A2C"
+RUN_TYPES[A2C][DIRECTORY] = "buildBase_A2C"
+RUN_TYPES[A2C][HISTORY] = "replayHistory"
+RUN_TYPES[A2C][RESULTS] = "results"
 
 RUN_TYPES[NAIVE] = {}
 RUN_TYPES[NAIVE][DIRECTORY] = "buildBase_naive"
@@ -295,7 +295,9 @@ class BuildingCmdAddition(BuildingCmd):
         super(BuildingCmdAddition, self).__init__(screenLocation, inProgress)
         self.m_additionCoord = None
 
-def CreateDecisionMakerBuildBase(dmTypes, isMultiThreaded, numTrials2Learn=NUM_TRIALS_2_LEARN):
+def CreateDecisionMakerBuildBase(dmTypes, isMultiThreaded, dmCopy=None):
+    dmCopy = "" if dmCopy==None else "_" + str(dmCopy)
+
     if dmTypes[AGENT_NAME] == "none":
         return BaseDecisionMaker(AGENT_NAME), []
 
@@ -309,9 +311,8 @@ def CreateDecisionMakerBuildBase(dmTypes, isMultiThreaded, numTrials2Learn=NUM_T
         if runType[TYPE] == "DQN_WithTargetAndDefault":
             runType[PARAMS].defaultDecisionMaker = NaiveDecisionMakerBuilder()
 
-        decisionMaker = DecisionMakerMngr(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,
-                                            resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY], isMultiThreaded=isMultiThreaded,
-                                            numTrials2Learn=numTrials2Learn)
+        decisionMaker = DecisionMakerExperienceReplay(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,
+                                            resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY] + dmCopy, isMultiThreaded=isMultiThreaded)
 
     return decisionMaker, runType
 
@@ -367,7 +368,7 @@ class NaiveDecisionMakerBuilder(BaseNaiveDecisionMaker):
 
 
 class BuildBaseSubAgent(BaseAgent):
-    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList):        
+    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList, dmCopy=None):        
         super(BuildBaseSubAgent, self).__init__(BUILD_STATE.SIZE)
         self.discountFactor = 0.95
         
@@ -399,7 +400,11 @@ class BuildBaseSubAgent(BaseAgent):
 
         self.maxNumOilRefinery = 2
 
-        self.notAllowedDirections2CC = [[1, 0], [1, 1], [0, 1]]      
+        self.notAllowedDirections2CC = [[1, 0], [1, 1], [0, 1]] 
+
+        self.current_state = np.zeros(BUILD_STATE.SIZE, dtype=np.int32, order='C')
+        self.previous_scaled_state = np.zeros(BUILD_STATE.SIZE, dtype=np.int32, order='C')
+        self.current_scaled_state = np.zeros(BUILD_STATE.SIZE, dtype=np.int32, order='C')     
 
     def GetDecisionMaker(self):
         return self.decisionMaker
@@ -597,7 +602,7 @@ class BuildBaseSubAgent(BaseAgent):
     def ChooseAction(self):
         if self.playAgent:
             if self.illigalmoveSolveInModel:
-                validActions = self.ValidActions()
+                validActions = self.ValidActions(self.current_scaled_state)
             else: 
                 validActions = list(range(ACTIONS.NUM_ACTIONS))
  
@@ -609,23 +614,23 @@ class BuildBaseSubAgent(BaseAgent):
         self.current_action = action
         return action
 
-    def ValidActions(self):
+    def ValidActions(self, state):
         valid = [ACTIONS.ID_DO_NOTHING]
         for key, requirement in self.actionsRequirement.items():
-            if self.ValidSingleAction(requirement):
+            if self.ValidSingleAction(state, requirement):
                 valid.append(key)
         
         # special condition for oil refinery:
-        if self.current_scaled_state[BUILD_STATE.REFINERY_IDX] + self.current_scaled_state[BUILD_STATE.IN_PROGRESS_REFINERY_IDX] >= self.maxNumOilRefinery and ACTIONS.ID_BUILD_REFINERY in valid:
+        if state[BUILD_STATE.REFINERY_IDX] + state[BUILD_STATE.IN_PROGRESS_REFINERY_IDX] >= self.maxNumOilRefinery and ACTIONS.ID_BUILD_REFINERY in valid:
             valid.remove(ACTIONS.ID_BUILD_REFINERY)
 
         # for addition building need building without addition
         for addition, building in ADDITION_2_BUILDING.items():
             action = ACTIONS.BUILDING_2_ACTION_TRANSITION[addition]
             if action in valid:
-                numBuilding = self.current_scaled_state[BUILD_STATE.BUILDING_2_STATE_TRANSITION[building][0]]
-                numAddition = self.current_scaled_state[BUILD_STATE.BUILDING_2_STATE_TRANSITION[addition][0]]
-                numAddition += self.current_scaled_state[BUILD_STATE.BUILDING_2_STATE_TRANSITION[addition][1]]
+                numBuilding = state[BUILD_STATE.BUILDING_2_STATE_TRANSITION[building][0]]
+                numAddition = state[BUILD_STATE.BUILDING_2_STATE_TRANSITION[addition][0]]
+                numAddition += state[BUILD_STATE.BUILDING_2_STATE_TRANSITION[addition][1]]
                 if numBuilding == numAddition:
                     valid.remove(action)
 
@@ -636,10 +641,10 @@ class BuildBaseSubAgent(BaseAgent):
 
         return valid
 
-    def ValidSingleAction(self, requirement):
-        hasMinerals = self.current_scaled_state[BUILD_STATE.MINERALS_IDX] >= requirement.mineralsPrice
-        hasGas = self.current_scaled_state[BUILD_STATE.GAS_IDX] >= requirement.gasPrice
-        otherReq = self.current_scaled_state[requirement.buildingDependency] > 0
+    def ValidSingleAction(self, state, requirement):
+        hasMinerals = state[BUILD_STATE.MINERALS_IDX] >= requirement.mineralsPrice
+        hasGas = state[BUILD_STATE.GAS_IDX] >= requirement.gasPrice
+        otherReq = state[requirement.buildingDependency] > 0
         return hasMinerals & hasGas & otherReq
 
     def NumBeforeProgress(self, building):
