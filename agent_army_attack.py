@@ -21,6 +21,8 @@ from utils import TerranUnit
 from utils import SC2_Params
 from utils import SC2_Actions
 
+from paramsCalibration import ChangeParamsAccordingToDict
+
 #decision makers
 from algo_decisionMaker import DecisionMakerExperienceReplay
 from algo_decisionMaker import DecisionMakerOnlineAsync
@@ -86,7 +88,7 @@ ALL_TYPES = set([USER_PLAY, QTABLE, DQN, DQN_EMBEDDING_LOCATIONS])
 TYPE = "type"
 DECISION_MAKER_TYPE = "dm_type"
 DECISION_MAKER_NAME = "dm_name"
-HISTORY = "hist"
+HISTORY = "history"
 RESULTS = "results"
 PARAMS = 'params'
 DIRECTORY = 'directory'
@@ -169,30 +171,40 @@ RUN_TYPES[USER_PLAY][TYPE] = "play"
     
 STEP_DURATION = 0
 
-def CreateDecisionMaker(dmTypes, isMultiThreaded, dmCopy=None):
+def GetRunTypeArmyAttack(configDict):
+    return RUN_TYPES[configDict[AGENT_NAME]]
+
+def CreateDecisionMakerArmyAttack(configDict, isMultiThreaded, dmCopy=None, hyperParamsDict=None):
     dmCopy = "" if dmCopy==None else "_" + str(dmCopy)
     
-    if dmTypes[AGENT_NAME] == "none":
+    if configDict[AGENT_NAME] == "none":
         return BaseDecisionMaker(AGENT_NAME)
         
-    runType = RUN_TYPES[dmTypes[AGENT_NAME]]
+    runType = GetRunTypeArmyAttack(configDict)
     
     # create agent dir
-    directory = dmTypes["directory"] + "/" + AGENT_DIR
+    directory = configDict["directory"] + "/" + AGENT_DIR
     if not os.path.isdir("./" + directory):
         os.makedirs("./" + directory)
     directory += runType[DIRECTORY] + dmCopy
 
-    if dmTypes[AGENT_NAME] == "naive":
+    if configDict[AGENT_NAME] == "naive":
         decisionMaker = NaiveDecisionMakerArmyAttack(NUM_TRIALS_2_SAVE, agentName=AGENT_NAME, resultFName=runType[RESULTS], directory=directory)
     else:
         dmClass = eval(runType[DECISION_MAKER_TYPE])
-        if "learningRate" in dmTypes:
-            runType[PARAMS].learning_rate = dmTypes["learningRate"]
+        if "learningRate" in configDict:
+            runType[PARAMS].learning_rate = configDict["learningRate"]
+        
+        if hyperParamsDict != None:
+            runType[PARAMS] = ChangeParamsAccordingToDict(runType[PARAMS], hyperParamsDict)
+        elif "hyperParams" in configDict:
+            runType[PARAMS] = ChangeParamsAccordingToDict(runType[PARAMS], configDict["hyperParams"])
+
         decisionMaker = dmClass(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,
                                         resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory, isMultiThreaded=isMultiThreaded)
+                                    
 
-    return decisionMaker
+    return decisionMaker, runType
 
 class SharedDataArmyAttack(EmptySharedData):
     def __init__(self):
@@ -211,31 +223,6 @@ class NaiveDecisionMakerArmyAttack(BaseNaiveDecisionMaker):
 
         return ACTION_DO_NOTHING
 
-        # armyPnts = (state[STATE_START_ENEMY_MAT:STATE_END_ENEMY_MAT] > 0).nonzero()[0]
-        # selfLocs = (state[STATE_START_SELF_MAT:STATE_END_SELF_MAT] > 0).nonzero()[0]
-
-        # if len(selfLocs) == 0 or len(armyPnts) == 0:
-        #     return ACTION_DO_NOTHING
-
-        # self_y = int(selfLocs[0] / GRID_SIZE)
-        # self_x = selfLocs[0] % GRID_SIZE
-
-        # minDist = 1000
-        # minIdx = -1
-
-        # for idx in armyPnts:
-        #     p_y = int(idx / GRID_SIZE)
-        #     p_x = idx % GRID_SIZE
-        #     diffX = p_x - self_x
-        #     diffY = p_y - self_y
-
-        #     dist = diffX * diffX + diffY * diffY
-        #     if dist < minDist:
-        #         minDist = dist
-        #         minIdx = idx
-
-        # return minIdx + ACTIONS_START_IDX_ATTACK
-
     def ActionsValues(self, state, validActions, target = True):
         vals = np.zeros(NUM_ACTIONS,dtype = float)
         vals[self.choose_action(state, validActions)] = 1.0
@@ -243,21 +230,21 @@ class NaiveDecisionMakerArmyAttack(BaseNaiveDecisionMaker):
         return vals
 
 class ArmyAttack(BaseAgent):
-    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList, dmCopy=None):        
+    def __init__(self, sharedData, configDict, decisionMaker, isMultiThreaded, playList, trainList, testList, dmCopy=None):        
         super(ArmyAttack, self).__init__(STATE_SIZE)
 
         self.sharedData = sharedData
 
         self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
         self.trainAgent = AGENT_NAME in trainList
+        self.testAgent = AGENT_NAME in testList
 
         self.illigalmoveSolveInModel = True
 
-        self.saveAnyway = False
         if decisionMaker != None:
             self.decisionMaker = decisionMaker
         else:
-            self.decisionMaker = self.CreateDecisionMaker(dmTypes, isMultiThreaded, dmCopy=dmCopy)
+            self.decisionMaker, _ = CreateDecisionMakerArmyAttack(configDict, isMultiThreaded, dmCopy=dmCopy)
 
         self.history = self.decisionMaker.AddHistory()
         # state and actions:
@@ -269,33 +256,6 @@ class ArmyAttack(BaseAgent):
 
         self.rewardTarget = 0.0
         self.rewardNormal = 0.0
-
-
-    def CreateDecisionMaker(self, dmTypes, isMultiThreaded, dmCopy=None):
-        dmCopy = "" if dmCopy==None else "_" + str(dmCopy)
-        if dmTypes[AGENT_NAME] == "none":
-            return BaseDecisionMaker(AGENT_NAME)
-           
-        runType = RUN_TYPES[dmTypes[AGENT_NAME]]
-        
-        # create agent dir
-        directory = dmTypes["directory"] + "/" + AGENT_DIR
-        if not os.path.isdir("./" + directory):
-            os.makedirs("./" + directory)
-        directory += runType[DIRECTORY] + dmCopy
-
-        if dmTypes[AGENT_NAME] == "naive":
-            decisionMaker = NaiveDecisionMakerArmyAttack(NUM_TRIALS_2_SAVE, agentName=AGENT_NAME, resultFName=runType[RESULTS], directory=directory)
-            self.saveAnyway = True
-        else:
-            
-            dmClass = eval(runType[DECISION_MAKER_TYPE])
-            if "learningRate" in dmTypes:
-                runType[PARAMS].learning_rate = dmTypes["learningRate"]
-            decisionMaker = dmClass(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,
-                                            resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory, isMultiThreaded=isMultiThreaded)
-
-        return decisionMaker
 
     def GetDecisionMaker(self):
         return self.decisionMaker
@@ -323,11 +283,13 @@ class ArmyAttack(BaseAgent):
         self.selfLocCoord = None
 
     def EndRun(self, reward, score, stepNum):
-        if self.trainAgent or self.saveAnyway:
+        if self.trainAgent:
             self.decisionMaker.end_run(reward, score, stepNum)
+        elif self.testAgent:
+            self.decisionMaker.end_test_run(reward, score, stepNum)
 
     def Learn(self, reward, terminal):
-        if self.trainAgent:        
+        if self.trainAgent or self.testAgent:        
             if self.isActionCommitted:
                 self.history.learn(self.previous_scaled_state, self.lastActionCommitted, reward, self.current_scaled_state, terminal)
             elif terminal:
@@ -335,6 +297,8 @@ class ArmyAttack(BaseAgent):
                 for a in range(NUM_ACTIONS):
                     self.history.learn(self.previous_scaled_state, a, reward, self.terminalState, terminal)
                     self.history.learn(self.current_scaled_state, a, reward, self.terminalState, terminal)
+
+        
 
         self.previous_scaled_state[:] = self.current_scaled_state[:]
         self.isActionCommitted = False
@@ -508,3 +472,4 @@ if __name__ == "__main__":
         PlotResults(AGENT_NAME, AGENT_DIR, RUN_TYPES, runDirectoryNames=directoryNames, grouping=grouping, maxTrials2Plot=max2Plot)
     elif "multipleResults" in sys.argv:
         PlotResults(AGENT_NAME, AGENT_DIR, RUN_TYPES, runDirectoryNames=directoryNames, grouping=grouping, maxTrials2Plot=max2Plot, multipleDm=True)
+

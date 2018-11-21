@@ -69,7 +69,7 @@ ALL_TYPES = set([USER_PLAY, QTABLE, DQN, DQN_EMBEDDING_LOCATIONS, NAIVE])
 # data for run type
 TYPE = "type"
 DECISION_MAKER_NAME = "dm_name"
-HISTORY = "hist"
+HISTORY = "history"
 RESULTS = "results"
 PARAMS = 'params'
 DIRECTORY = 'directory'
@@ -295,17 +295,17 @@ class BuildingCmdAddition(BuildingCmd):
         super(BuildingCmdAddition, self).__init__(screenLocation, inProgress)
         self.m_additionCoord = None
 
-def CreateDecisionMakerBuildBase(dmTypes, isMultiThreaded, dmCopy=None):
+def CreateDecisionMakerBuildBase(configDict, isMultiThreaded, dmCopy=None):
     dmCopy = "" if dmCopy==None else "_" + str(dmCopy)
 
-    if dmTypes[AGENT_NAME] == "none":
+    if configDict[AGENT_NAME] == "none":
         return BaseDecisionMaker(AGENT_NAME), []
 
-    runType = RUN_TYPES[dmTypes[AGENT_NAME]]
+    runType = RUN_TYPES[configDict[AGENT_NAME]]
     # create agent dir
-    directory = dmTypes["directory"] + "/" + AGENT_DIR
+    directory = configDict["directory"] + "/" + AGENT_DIR
 
-    if dmTypes[AGENT_NAME] == "naive":
+    if configDict[AGENT_NAME] == "naive":
         decisionMaker = NaiveDecisionMakerBuilder(resultFName=runType[RESULTS], directory=directory + runType[DIRECTORY])
     else:    
         if runType[TYPE] == "DQN_WithTargetAndDefault":
@@ -368,12 +368,14 @@ class NaiveDecisionMakerBuilder(BaseNaiveDecisionMaker):
 
 
 class BuildBaseSubAgent(BaseAgent):
-    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList, dmCopy=None):        
+    def __init__(self, sharedData, configDict, decisionMaker, isMultiThreaded, playList, trainList, testList, dmCopy=None):        
         super(BuildBaseSubAgent, self).__init__(BUILD_STATE.SIZE)
         self.discountFactor = 0.95
         
         self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
         self.trainAgent =AGENT_NAME in trainList
+        self.testAgent = AGENT_NAME in testList
+
         self.inTraining = self.trainAgent
 
         self.illigalmoveSolveInModel = True
@@ -381,7 +383,7 @@ class BuildBaseSubAgent(BaseAgent):
         if decisionMaker != None:
             self.decisionMaker = decisionMaker
         else:
-            self.decisionMaker, _ = CreateDecisionMakerBuildBase(dmTypes, isMultiThreaded)
+            self.decisionMaker, _ = CreateDecisionMakerBuildBase(configDict, isMultiThreaded)
 
         self.history = self.decisionMaker.AddHistory()
 
@@ -449,7 +451,7 @@ class BuildBaseSubAgent(BaseAgent):
 
     def EndRun(self, reward, score, stepNum):
         saved = False
-        if self.trainAgent:
+        if self.trainAgent or self.testAgent:
             saved = self.decisionMaker.end_run(reward, score, stepNum)
 
         return saved

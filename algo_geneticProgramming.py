@@ -1,7 +1,7 @@
 import numpy as np
 
 class GP_Params:
-    def __init__(self, populationSize, topPct=0.1, bottomPct=0.1, breedPriority=False, breedProbType="uniform", pctMutation=0.02, fitnessInitVal=-1.0):
+    def __init__(self, populationSize, topPct=0.1, bottomPct=0.1, breedPriority=False, breedProbType="uniform", pctMutation=0.02, fitnessInitVal=np.nan):
         self.populationSize = populationSize
         self.topPct = topPct
         self.bottomPct = bottomPct
@@ -12,19 +12,20 @@ class GP_Params:
 
 
 class ParamsType:
-    def __init__(self, paramName, paramType):
-        self.paramName = paramName
+    def __init__(self, name, paramType):
+        self.name = name
         self.paramType = paramType
 
 
 class RationalParamType(ParamsType):
-    def __init__(self, name, minVal, maxVal, floatingValueValid=True, breedProbType="uniform"):
+    def __init__(self, name, minVal, maxVal, floatingValueValid=True, breedProbType="uniform", initOptions=None):
         super(RationalParamType, self).__init__(name, "ratio")
         self.minVal=minVal
         self.maxVal=maxVal
         self.floatingValueValid = floatingValueValid
         self.breedProbType = breedProbType
 
+        self.initOptions = initOptions
         if self.breedProbType == "normal":
             self.sigma = 0.3
 
@@ -42,12 +43,16 @@ class RationalParamType(ParamsType):
                 fromVal = minVal if v > 0 else maxVal
                 newVal = fromVal + v * diff2Half
         else:
-            newVal = np.random.uniform() * (self.maxVal-self.minVal) + self.minVal
+            newVal = self.New()
         
         return newVal if self.floatingValueValid else int(newVal)
 
     def New(self):
-        return np.random.uniform() * (self.maxVal-self.minVal) + self.minVal
+        if self.initOptions == None:
+            val = np.random.uniform() * (self.maxVal-self.minVal) + self.minVal
+            return val if self.floatingValueValid else int(val)
+        else:
+            return np.random.choice(self.initOptions)
 
 
 class TraitParamType(ParamsType):
@@ -65,9 +70,17 @@ class TraitParamType(ParamsType):
         return np.random.choice(self.allVals)
 
 class ParamsState:
-    def __init__(self, paramsList):
+    def __init__(self, paramsList = []):
         self.paramsList = paramsList
     
+    def AddParam(self, param):
+        paramExist = False
+        for i in range(len(self.paramsList)):
+            paramExist |= self.paramsList[i].name == param.name
+
+        if not paramExist:
+            self.paramsList.append(param)
+
     def InitRandomState(self):
         s = []
         for param in self.paramsList:
@@ -82,10 +95,17 @@ class ParamsState:
         return son
     
     def ParamName(self, idx):
-        return self.paramsList[idx].paramName
+        return self.paramsList[idx].name
     
     def Size(self):
         return len(self.paramsList)
+    
+    def Params2Dict(self, params):
+        paramsDict = {}
+        for i in range(len(params)):
+            paramsDict[self.paramsList[i].name] = params[i]
+
+        return paramsDict
 
 class Population:
     def __init__(self, paramsState, gpParams):
@@ -108,7 +128,21 @@ class Population:
         self.fitnessInitVal = gpParams.fitnessInitVal
 
         self.InitPopulation()
+    
+    def Size(self):
+        return len(self.population)
 
+    def Population(self, population, fitness=[]):
+        if len(population) != self.size:
+            print("population size is wrong in load")
+            return
+        
+        self.population = population
+        if len(fitness) > 0:
+            self.fitness = fitness
+        else:
+            self.fitness = np.ones(self.size, float) * self.fitnessInitVal
+    
     def InitPopulation(self):
         self.population = []
         self.fitness = np.ones(self.size, float) * self.fitnessInitVal
@@ -148,7 +182,7 @@ class Population:
         return self.paramsState.Breed(pop2Breed[idx1], pop2Breed[idx2], self.pctMutation)
 
     def Cycle(self):
-        idxSorted = np.argsort(-self.fitness)
+        idxSorted = np.argsort(-1 * self.fitness)
         self.fitness = self.fitness[idxSorted]
         self.population = [self.population[i] for i in idxSorted]
      

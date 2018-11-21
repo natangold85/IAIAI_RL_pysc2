@@ -16,7 +16,7 @@ from utils import EmptyLock
 # dqn params
 class A2C_PARAMS(ParamsBase):
     def __init__(self, stateSize, numActions, discountFactor = 0.95, batchSize = 32, maxReplaySize = 500000, minReplaySize = 1000, 
-                learning_rate=0.00001, numTrials2CmpResults=1000, outputGraph=True, accumulateHistory=False, numTrials2Learn=None, numTrials2Save=100):
+                learning_rate=0.00001, numTrials2CmpResults=1000, outputGraph=True, accumulateHistory=True, numTrials2Learn=None, numTrials2Save=100):
 
         super(A2C_PARAMS, self).__init__(stateSize=stateSize, numActions=numActions, discountFactor=discountFactor, numTrials2Learn=numTrials2Learn,
                                         numTrials2Save=numTrials2Save, maxReplaySize=maxReplaySize, minReplaySize=minReplaySize, accumulateHistory=accumulateHistory)

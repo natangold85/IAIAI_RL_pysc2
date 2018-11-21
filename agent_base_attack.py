@@ -85,7 +85,7 @@ ALL_TYPES = set([USER_PLAY, QTABLE, DQN, DQN_EMBEDDING_LOCATIONS])
 # data for run type
 TYPE = "type"
 DECISION_MAKER_NAME = "dm_name"
-HISTORY = "hist"
+HISTORY = "history"
 RESULTS = "results"
 PARAMS = 'params'
 DIRECTORY = 'directory'
@@ -172,19 +172,20 @@ class NaiveDecisionMakerBaseAttack(BaseDecisionMaker):
         return vals
 
 class BaseAttack(BaseAgent):
-    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList, dmCopy=None):        
+    def __init__(self, sharedData, configDict, decisionMaker, isMultiThreaded, playList, trainList, testList, dmCopy=None):        
         super(BaseAttack, self).__init__(STATE_SIZE)
 
         self.sharedData = sharedData
         self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
         self.trainAgent = AGENT_NAME in trainList
+        self.testAgent = AGENT_NAME in testList
 
         self.illigalmoveSolveInModel = True
 
         if decisionMaker != None:
             self.decisionMaker = decisionMaker
         else:
-            self.decisionMaker = self.CreateDecisionMaker(dmTypes, isMultiThreaded)
+            self.decisionMaker = self.CreateDecisionMaker(configDict, isMultiThreaded)
 
         self.history = self.decisionMaker.AddHistory()
 
@@ -206,19 +207,19 @@ class BaseAttack(BaseAgent):
         self.lastValidAttackAction = None
         self.enemyBuildingGridLoc2ScreenLoc = {}
 
-    def CreateDecisionMaker(self, dmTypes, isMultiThreaded, dmCopy=None):
+    def CreateDecisionMaker(self, configDict, isMultiThreaded, dmCopy=None):
         dmCopy = "" if dmCopy==None else "_" + str(dmCopy)
 
-        if dmTypes[AGENT_NAME] == "none":
+        if configDict[AGENT_NAME] == "none":
             return BaseDecisionMaker(AGENT_NAME)
             
-        if dmTypes[AGENT_NAME] == "naive":
+        if configDict[AGENT_NAME] == "naive":
             decisionMaker = NaiveDecisionMakerBaseAttack()
         else:
-            runType = RUN_TYPES[dmTypes[AGENT_NAME]]
+            runType = RUN_TYPES[configDict[AGENT_NAME]]
 
             # create agent dir
-            directory = dmTypes["directory"] + "/" + AGENT_DIR
+            directory = configDict["directory"] + "/" + AGENT_DIR
             if not os.path.isdir("./" + directory):
                 os.makedirs("./" + directory)
             decisionMaker = DecisionMakerExperienceReplay(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,
@@ -252,7 +253,7 @@ class BaseAttack(BaseAgent):
         self.selfLocCoord = None      
     
     def EndRun(self, reward, score, stepNum):
-        if self.trainAgent:
+        if self.trainAgent or self.testAgent:
             self.decisionMaker.end_run(reward, score, stepNum)
 
     def Learn(self, reward, terminal):

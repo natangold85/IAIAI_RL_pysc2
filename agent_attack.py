@@ -54,11 +54,11 @@ class SharedDataAttack(SharedDataBattle):
         self.armyInAttack = {}
 
 class AttackAgent(BaseAgent):
-    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList, dmCopy=None): 
+    def __init__(self, sharedData, configDict, decisionMaker, isMultiThreaded, playList, trainList, testList, dmCopy=None): 
         super(AttackAgent, self).__init__()  
 
         self.sharedData = sharedData
-
+        
         self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
         if self.playAgent:
             saPlayList = ["inherit"]
@@ -74,7 +74,8 @@ class AttackAgent(BaseAgent):
         for key, name in SUBAGENTS_NAMES.items():
             saClass = eval(name)
             saDM = self.decisionMaker.GetSubAgentDecisionMaker(key)
-            self.subAgents[key] = saClass(sharedData, dmTypes, saDM, isMultiThreaded, saPlayList, trainList, dmCopy=dmCopy)
+            self.subAgents[key] = saClass(sharedData=sharedData, configDict=configDict, decisionMaker=saDM, isMultiThreaded=isMultiThreaded, playList=saPlayList, 
+                                            trainList=trainList, testList=testList, dmCopy=dmCopy)
             self.decisionMaker.SetSubAgentDecisionMaker(key, self.subAgents[key].GetDecisionMaker())
 
         if not self.playAgent:

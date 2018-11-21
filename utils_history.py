@@ -8,6 +8,39 @@ import sys
 from multiprocessing import Lock
 from utils import EmptyLock
 
+def GetHistoryFromFile(name):
+    transitions = None
+    if os.path.isfile(name + '.gz') and os.path.getsize(name + '.gz') > 0:
+        transitions = pd.read_pickle(name + '.gz', compression='gzip')
+
+    return transitions
+
+def JoinTransitions(target, toJoin):
+    keyTransitions = ["s", "a", "r", "s_", "terminal"]
+    for k in keyTransitions:
+        if k in toJoin.keys():
+            if k in target.keys():
+                target[k] += toJoin [k]
+            else:
+                target[k] = toJoin [k]
+
+    if "maxStateVals" in toJoin.keys():
+        if "maxStateVals" in target.keys():
+            target["maxStateVals"] = np.maximum(target["maxStateVals"], toJoin["maxStateVals"])
+        else:
+            target["maxStateVals"] = toJoin["maxStateVals"]
+
+    if "rewardMax" in toJoin.keys():
+        if "rewardMax" in target.keys():
+            target["rewardMax"] = max(target["rewardMax"], toJoin["rewardMax"])
+        else:
+            target["rewardMax"] = toJoin["rewardMax"]
+
+    if "rewardMin" in toJoin.keys():
+        if "rewardMin" in target.keys():
+            target["rewardMin"] = min(target["rewardMin"], toJoin["rewardMin"])
+        else:
+            target["rewardMin"] = toJoin["rewardMin"]
 
 class History():
     def __init__(self, isMultiThreaded = False):
@@ -119,7 +152,7 @@ class HistoryMngr(History):
         self.historyData.append(history)
         return history
 
-    def JoinHistroyFromSons(self):
+    def JoinHistoryFromSons(self):
         size = 0
         for hist in self.historyData:
             transitions = hist.GetHistory()
@@ -129,20 +162,10 @@ class HistoryMngr(History):
 
         return size
 
-    def AddStates2HistData(self, transitions):
-        s = transitions["s"]
-        s_ = transitions["s_"]
-        r = transitions["r"]
-
-        if self.params.normalizeRewards:
-            self.NormalizeRewards(r)     
-
-        self.FindMaxStateVals(s, s_, self.transitions)  
-
-        
+    
     def Size(self):
         return len(self.transitions["a"])       
-    
+
     def PopHist2ReplaySize(self):
         toCut = len(self.transitions["a"]) - self.params.maxReplaySize
         if self.createAllHistFiles:
@@ -165,7 +188,7 @@ class HistoryMngr(History):
         self.histLock.acquire()
 
         if singleHist == None:
-            self.JoinHistroyFromSons()
+            self.JoinHistoryFromSons()
         else:
             self.GetSingleHistory(singleHist)
 
@@ -175,6 +198,8 @@ class HistoryMngr(History):
         else:
             allTransitions = self.transitions.copy()
             self.CleanHistory()
+
+        self.SaveHistFile(allTransitions)    
 
         self.histLock.release()
 
@@ -212,7 +237,7 @@ class HistoryMngr(History):
         if not self.trimmingHistory:
             self.trimmingHistory = True
             
-            self.JoinHistroyFromSons()
+            self.JoinHistoryFromSons()
             self.PopHist2ReplaySize()
             
             transitions = self.transitions.copy()
@@ -282,9 +307,11 @@ class HistoryMngr(History):
     
     def SetMaxReward(self, r):
         self.transitions["rewardMax"] = max(self.transitions["rewardMax"], r)
+    
 
     def Save(self):
         self.histLock.acquire()
+        self.JoinHistoryFromSons()
         pd.to_pickle(self.transitions, self.histFileName + '.gz', 'gzip') 
         self.histLock.release()
 
@@ -344,7 +371,7 @@ class HistoryMngr(History):
 
         return transitions
 
-    def Reset(self, dump2Old=True):
+    def Reset(self, dump2Old=True, save=False):
         self.histLock.acquire()
         if dump2Old:
             while (len(self.transitions["a"]) > 0):
@@ -354,6 +381,9 @@ class HistoryMngr(History):
             for key in self.transitionKeys:
                 self.transitions[key] = []
         
+        if save:
+            self.SaveHistFile(self.transitions)
+
         self.histLock.release()
 
     def GetTransitionsSortedByIdx(self, idx):

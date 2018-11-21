@@ -61,7 +61,7 @@ class SharedDataScout(EmptySharedData):
         self.scoutGroupIdx = CONTROL_GROUP_ID_SCOUT
 
 class ScoutAgent(BaseAgent):
-    def __init__(self,  sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList, dmCopy=None): 
+    def __init__(self,  sharedData, configDict, decisionMaker, isMultiThreaded, playList, trainList, testList, dmCopy=None): 
         super(ScoutAgent, self).__init__()       
 
         self.sharedData = sharedData

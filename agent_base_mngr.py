@@ -205,7 +205,7 @@ NAIVE = 'naive'
 # data for run type
 TYPE = "type"
 DECISION_MAKER_NAME = "dm_name"
-HISTORY = "hist"
+HISTORY = "history"
 RESULTS = "results"
 ALL_RESULTS = "all_results"
 PARAMS = 'params'
@@ -262,16 +262,16 @@ RUN_TYPES[NAIVE][DIRECTORY] = "baseMngr_naive"
 RUN_TYPES[NAIVE][RESULTS] = "baseMngr_result"
 RUN_TYPES[NAIVE][ALL_RESULTS] = "baseMngr_AllResults"
 
-def CreateDecisionMakerBaseMngr(dmTypes, isMultiThreaded, dmCopy=None):
+def CreateDecisionMakerBaseMngr(configDict, isMultiThreaded, dmCopy=None):
     dmCopy = "" if dmCopy==None else "_" + str(dmCopy)
 
-    if dmTypes[AGENT_NAME] == "none":
+    if configDict[AGENT_NAME] == "none":
         return BaseDecisionMaker(AGENT_NAME), []
 
-    runType = RUN_TYPES[dmTypes[AGENT_NAME]]
-    directory = dmTypes["directory"] + "/" + AGENT_DIR + runType[DIRECTORY] + dmCopy
+    runType = RUN_TYPES[configDict[AGENT_NAME]]
+    directory = configDict["directory"] + "/" + AGENT_DIR + runType[DIRECTORY] + dmCopy
 
-    if dmTypes[AGENT_NAME] == "naive":
+    if configDict[AGENT_NAME] == "naive":
         decisionMaker = NaiveDecisionMakerBaseMngr(resultFName=runType[RESULTS], directory=directory)
     else:        
         if runType[TYPE] == "DQN_WithTargetAndDefault":
@@ -336,7 +336,7 @@ class NaiveDecisionMakerBaseMngr(BaseNaiveDecisionMaker):
 
 
 class BaseMngr(BaseAgent):
-    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList, dmCopy=None):
+    def __init__(self, sharedData, configDict, decisionMaker, isMultiThreaded, playList, trainList, testList, dmCopy=None):
         super(BaseMngr, self).__init__(BASE_STATE.SIZE)
         
         self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
@@ -346,6 +346,7 @@ class BaseMngr(BaseAgent):
             saPlayList = playList
         
         self.trainAgent = AGENT_NAME in trainList
+        self.testAgent = AGENT_NAME in testList
         self.trainSubAgentsSimultaneously = TRAIN_SUB_AGENTS in trainList
         self.trainAll = TRAIN_ALL in trainList
 
@@ -358,7 +359,7 @@ class BaseMngr(BaseAgent):
             if self.trainSubAgentsSimultaneously or self.trainAll:
                 self.allResultFile = self.decisionMaker.GetResultFile()
         else:
-            self.decisionMaker = self.CreateDecisionMaker(dmTypes, isMultiThreaded)
+            self.decisionMaker = self.CreateDecisionMaker(configDict, isMultiThreaded)
 
         decisionMakerType = self.decisionMaker.DecisionMakerType()
         self.initialDfltDecisionMaker = decisionMakerType.find("Default") > 0
@@ -371,7 +372,8 @@ class BaseMngr(BaseAgent):
         for key, name in SUBAGENTS_NAMES.items():
             saClass = eval(name)
             saDM = self.decisionMaker.GetSubAgentDecisionMaker(key)     
-            self.subAgents[key] = saClass(sharedData, dmTypes, saDM, isMultiThreaded, saPlayList, trainList, dmCopy=dmCopy)
+            self.subAgents[key] = saClass(sharedData=sharedData, configDict=configDict, decisionMaker=saDM, isMultiThreaded=isMultiThreaded, playList=saPlayList, 
+                                            trainList=trainList, testList=testList, dmCopy=dmCopy)
             self.decisionMaker.SetSubAgentDecisionMaker(key, self.subAgents[key].GetDecisionMaker())
 
 
@@ -382,10 +384,10 @@ class BaseMngr(BaseAgent):
 
         if self.trainAll:
             trainOrder = [SUB_AGENT_BUILDER, SUB_AGENT_TRAINER, SUB_AGENT_BUILDER, SUB_AGENT_TRAINER, ID_SELF_AGENT]
-            self.SetSubAgentTrainSwitch(dmTypes["numTrial2Train"], trainOrder)
+            self.SetSubAgentTrainSwitch(configDict["numTrial2Train"], trainOrder)
             
         elif self.trainSubAgentsSimultaneously:
-            self.SetSubAgentTrainSwitch(dmTypes["numTrial2Train"], [SUB_AGENT_BUILDER, SUB_AGENT_TRAINER])
+            self.SetSubAgentTrainSwitch(configDict["numTrial2Train"], [SUB_AGENT_BUILDER, SUB_AGENT_TRAINER])
 
         self.sharedData = sharedData
         self.terminalState = np.zeros(BASE_STATE.SIZE, dtype=np.int, order='C')
@@ -401,14 +403,14 @@ class BaseMngr(BaseAgent):
 
 
 
-    def CreateDecisionMaker(self, dmTypes, isMultiThreaded, dmCopy=None):
+    def CreateDecisionMaker(self, configDict, isMultiThreaded, dmCopy=None):
         dmCopy = "" if dmCopy==None else "_" + str(dmCopy)
         
-        decisionMaker, runType = CreateDecisionMakerBaseMngr(dmTypes, isMultiThreaded)
-        if dmTypes[AGENT_NAME] == "none":
+        decisionMaker, runType = CreateDecisionMakerBaseMngr(configDict, isMultiThreaded)
+        if configDict[AGENT_NAME] == "none":
             return decisionMaker
 
-        directory = dmTypes["directory"] + "/" + AGENT_DIR + runType[DIRECTORY]
+        directory = configDict["directory"] + "/" + AGENT_DIR + runType[DIRECTORY]
         
         fullDirectoryName = "./" + directory +"/"
         if ALL_RESULTS in runType:
@@ -552,7 +554,7 @@ class BaseMngr(BaseAgent):
 
     def EndRun(self, reward, score, stepNum):
         saveTables = False
-        if self.trainAgent:
+        if self.trainAgent or self.testAgent:
             saved = self.decisionMaker.end_run(reward, score, stepNum)
             saveTables |= saved  
 

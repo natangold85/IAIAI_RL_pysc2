@@ -141,42 +141,60 @@ def create_nnGraphs(superAgent, agent2Check, statesIdx, actions2Check, plotTarge
 
 
 
-def plotImg(ax, x, y, z, xName, yName, title, minZ = None, maxZ = None):
+def plotImg(ax, x, y, z, xName, yName, title, minZ = None, maxZ = None, binX=1, binY=1):
     if len(x) == 0:
         return None
-    imSizeX = np.max(x) - np.min(x) + 1
-    imSizeY = np.max(y) - np.min(y) + 1
+    imSizeX = math.ceil((np.max(x) - np.min(x)) / binX) + 1
+    imSizeY = math.ceil((np.max(y) - np.min(y)) / binY) + 1
 
-    offsetX = np.min(x)
-    offsetY = np.min(y)
+    offsetX = int(np.min(x) / binX) * binX
+    offsetY = int(np.min(y) / binY) * binY
 
     mat = np.zeros((imSizeY, imSizeX), dtype=float)
     mat.fill(np.nan)
 
+    duplicateDict = {}
     for i in range(len(x)):
-        mat[y[i] - offsetY, x[i] - offsetX] = z[i]
+        yIdx = int(round((y[i] - offsetY) / binY))
+        xIdx = int(round((x[i] - offsetX) / binX))
+        if np.isnan(mat[yIdx, xIdx]):
+            mat[yIdx, xIdx] = z[i]
+        else:
+            key = xIdx + yIdx * imSizeX
+            if key not in duplicateDict.keys():
+                duplicateDict[key] = [mat[yIdx, xIdx]]
+            
+            duplicateDict[key].append(z[i])
+            mat[yIdx, xIdx] = np.average(duplicateDict[key])
+
+
 
     if minZ == None:
-        minZ = np.min(mat)
+        minZ = np.nanmin(mat)
     if maxZ == None:
-        maxZ = np.max(mat)
+        maxZ = np.nanmax(mat)
 
     img = ax.imshow(mat, cmap=plt.cm.coolwarm, vmin=minZ, vmax=maxZ)
 
-    if np.max(x) - np.min(x) < 10:
-        xTick = np.arange(np.min(x), np.max(x) + 1)
+    if (np.max(x) - np.min(x)) / binX < 10:
+        xTick = np.arange(0, int((np.max(x) - offsetX) / binX) + 1)
     else:
-        xTick = np.arange(np.min(x), np.max(x) + 1, 4)
+        xTick = np.arange(0, int((np.max(x) - offsetX) / binX) + 1, 4) 
 
-    if np.max(y) - np.min(y) < 10:
-        yTick = np.arange(np.min(y), np.max(y) + 1)
+    if (np.max(y) - np.min(y)) / binY < 10:
+        yTick = np.arange(int((np.max(y) - offsetY) / binY) + 1)
     else:
-        yTick = np.arange(np.min(y), np.max(y) + 1, 4)
+        yTick = np.arange(int((np.max(y) - offsetY) / binY) + 1, 4)
 
     ax.set_xticks(xTick)
+    ax.set_xticklabels(xTick * binX + offsetX)
+    
     ax.set_yticks(yTick)
+    ax.set_yticklabels(yTick * binY + offsetY)
+    
     ax.set_xlabel(xName)
     ax.set_ylabel(yName)
+    
     ax.set_title(title)
 
     return img

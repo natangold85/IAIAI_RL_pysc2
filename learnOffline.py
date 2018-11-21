@@ -115,7 +115,7 @@ def FullTrain(decisionMaker, newLearning, saveLearning):
                 rTerminalSum.append(np.average(rTerminal))
 
     if saveLearning:
-        decisionMaker.decisionMaker.SaveDQN()    
+        decisionMaker.decisionMaker.Save()    
 
     plt.subplot(2,2,1)
     plt.plot(rTerminalSum)
@@ -132,9 +132,9 @@ if __name__ == "__main__":
 
     directoryName = flags.FLAGS.directory
     
-    dmTypes = eval(open(directoryName + "\config.txt", "r+").read())
-    dmTypes["directory"] = directoryName
-    agent = SuperAgent(dmTypes=dmTypes)
+    configDict = eval(open(directoryName + "\config.txt", "r+").read())
+    configDict["directory"] = directoryName
+    agent = SuperAgent(configDict=configDict)
 
     useGpu = bool(eval(flags.FLAGS.useGpu))
     saveLearning = bool(eval(flags.FLAGS.saveLearning))

@@ -81,7 +81,7 @@ USER_PLAY = 'play'
 # data for run type
 TYPE = "type"
 DECISION_MAKER_NAME = "dm_name"
-HISTORY = "hist"
+HISTORY = "history"
 RESULTS = "results"
 PARAMS = 'params'
 DIRECTORY = 'directory'
@@ -209,12 +209,13 @@ NORMALIZATION_TRAIN_LOCAL_REWARD = 2 * BASE_MNGR_MAX_NAIVE_REWARD
 BATTLE_TYPES = set(["battle_mngr", "attack_army", "attack_base"])
 
 class SuperAgent(BaseAgent):
-    def __init__(self, dmTypes, useMapRewards = True, decisionMaker = None, isMultiThreaded = False, playList = [], trainList = [], dmCopy=None):
+    def __init__(self, configDict, useMapRewards=True, decisionMaker=None, isMultiThreaded=False, playList=[], trainList=[], testList=[], dmCopy=None):
         super(SuperAgent, self).__init__(STATE.SIZE)
 
         self.sharedData = SharedDataSuper()
 
         self.trainAgent = AGENT_NAME in trainList
+        self.testAgent = AGENT_NAME in testList
         self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
         if self.playAgent:
             saPlayList = ["inherit"]
@@ -228,7 +229,7 @@ class SuperAgent(BaseAgent):
         if decisionMaker != None:
             self.decisionMaker = decisionMaker
         else:
-            self.decisionMaker = self.CreateDecisionMaker(dmTypes, isMultiThreaded, dmCopy=dmCopy)
+            self.decisionMaker = self.CreateDecisionMaker(configDict, isMultiThreaded, dmCopy=dmCopy)
 
         self.history = self.decisionMaker.AddHistory()
         
@@ -238,7 +239,8 @@ class SuperAgent(BaseAgent):
         for key, name in SUBAGENTS_NAMES.items():
             saClass = eval(name)
             saDM = self.decisionMaker.GetSubAgentDecisionMaker(key)
-            self.subAgents[key] = saClass(self.sharedData, dmTypes, saDM, isMultiThreaded, saPlayList, trainList, dmCopy=dmCopy)
+            self.subAgents[key] = saClass(sharedData=self.sharedData, configDict=configDict, decisionMaker=saDM, isMultiThreaded=isMultiThreaded, 
+                                                playList=saPlayList, trainList=trainList, testList=testList, dmCopy=dmCopy)
             self.decisionMaker.SetSubAgentDecisionMaker(key, self.subAgents[key].GetDecisionMaker())
 
         if not self.playAgent:
@@ -262,16 +264,16 @@ class SuperAgent(BaseAgent):
         self.move_number = 0
         self.discountForLocalReward = 0.999
 
-    def CreateDecisionMaker(self, dmTypes, isMultiThreaded, dmCopy=None):
+    def CreateDecisionMaker(self, configDict, isMultiThreaded, dmCopy=None):
         dmCopy = "" if dmCopy==None else "_" + str(dmCopy)
 
-        if dmTypes[AGENT_NAME] == "none":
+        if configDict[AGENT_NAME] == "none":
             return BaseDecisionMaker(AGENT_NAME)
 
-        runType = RUN_TYPES[dmTypes[AGENT_NAME]]
+        runType = RUN_TYPES[configDict[AGENT_NAME]]
 
         # create agent dir
-        directory = dmTypes["directory"] + "/" + AGENT_DIR
+        directory = configDict["directory"] + "/" + AGENT_DIR
         if not os.path.isdir("./" + directory):
             os.makedirs("./" + directory)
 
@@ -407,7 +409,7 @@ class SuperAgent(BaseAgent):
         return sc2Action
 
     def EndRun(self, reward, score, numStep):
-        if self.trainAgent:
+        if self.trainAgent or self.testAgent:
             self.decisionMaker.end_run(reward, score, numStep)
         
         for sa in self.activeSubAgents:

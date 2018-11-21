@@ -102,7 +102,7 @@ class STATE:
 # data for run type
 TYPE = "type"
 DECISION_MAKER_NAME = "dm_name"
-HISTORY = "hist"
+HISTORY = "history"
 RESULTS = "results"
 PARAMS = 'params'
 DIRECTORY = 'directory'
@@ -170,7 +170,7 @@ class NaiveDecisionMakerBattleMngr(BaseDecisionMaker):
 
 
 class BattleMngr(BaseAgent):
-    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList, dmCopy=None):        
+    def __init__(self, sharedData, configDict, decisionMaker, isMultiThreaded, playList, trainList, testList, dmCopy=None):        
         super(BattleMngr, self).__init__(STATE.SIZE)
         self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
         if self.playAgent:
@@ -179,13 +179,14 @@ class BattleMngr(BaseAgent):
             saPlayList = playList
 
         self.trainAgent = AGENT_NAME in trainList
+        self.testAgent = AGENT_NAME in testList
 
         self.illigalmoveSolveInModel = True
 
         if decisionMaker != None:
             self.decisionMaker = decisionMaker
         else:
-            self.decisionMaker = self.CreateDecisionMaker(dmTypes, isMultiThreaded)
+            self.decisionMaker = self.CreateDecisionMaker(configDict, isMultiThreaded)
 
         self.history = self.decisionMaker.AddHistory()
 
@@ -194,7 +195,8 @@ class BattleMngr(BaseAgent):
         for key, name in SUBAGENTS_NAMES.items():
             saClass = eval(name)
             saDM = self.decisionMaker.GetSubAgentDecisionMaker(key)
-            self.subAgents[key] = saClass(sharedData, dmTypes, saDM, isMultiThreaded, saPlayList, trainList, dmCopy=dmCopy)
+            self.subAgents[key] = saClass(sharedData=sharedData, configDict=configDict, decisionMaker=saDM, isMultiThreaded=isMultiThreaded, playList=saPlayList, 
+                                            trainList=trainList, testList=testList, dmCopy=dmCopy)
             self.decisionMaker.SetSubAgentDecisionMaker(key, self.subAgents[key].GetDecisionMaker())
 
         if not self.playAgent:
@@ -219,19 +221,19 @@ class BattleMngr(BaseAgent):
         self.terminalState = np.zeros(self.state_size, dtype=np.int, order='C')
     
 
-    def CreateDecisionMaker(self, dmTypes, isMultiThreaded, dmCopy=None):
+    def CreateDecisionMaker(self, configDict, isMultiThreaded, dmCopy=None):
         dmCopy = "" if dmCopy==None else "_" + str(dmCopy)
 
-        if dmTypes[AGENT_NAME] == "none":
+        if configDict[AGENT_NAME] == "none":
             return BaseDecisionMaker(AGENT_NAME)
 
-        if dmTypes[AGENT_NAME] == "naive":
+        if configDict[AGENT_NAME] == "naive":
             decisionMaker = NaiveDecisionMakerBattleMngr()
         else:
-            runType = RUN_TYPES[dmTypes[AGENT_NAME]]
+            runType = RUN_TYPES[configDict[AGENT_NAME]]
 
             # create agent dir
-            directory = dmTypes["directory"] + "/" + AGENT_DIR
+            directory = configDict["directory"] + "/" + AGENT_DIR
             if not os.path.isdir("./" + directory):
                 os.makedirs("./" + directory)
             decisionMaker = DecisionMakerExperienceReplay(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,  
@@ -278,7 +280,7 @@ class BattleMngr(BaseAgent):
             self.subAgentsActions[sa] = self.subAgents[sa].FirstStep(obs) 
 
     def EndRun(self, reward, score, stepNum):
-        if self.trainAgent:
+        if self.trainAgent or self.testAgent:
             self.decisionMaker.end_run(reward, score, stepNum)
         
         for sa in ALL_SUB_AGENTS:

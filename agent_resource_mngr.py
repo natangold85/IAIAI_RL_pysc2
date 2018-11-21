@@ -68,7 +68,7 @@ USER_PLAY = 'play'
 # data for run type
 TYPE = "type"
 DECISION_MAKER_NAME = "dm_name"
-HISTORY = "hist"
+HISTORY = "history"
 RESULTS = "results"
 PARAMS = 'params'
 DIRECTORY = 'directory'
@@ -222,18 +222,19 @@ class NaiveDecisionMakerResource(BaseNaiveDecisionMaker):
 
 
 class ResourceMngrSubAgent(BaseAgent):
-    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList, dmCopy=None):
+    def __init__(self, sharedData, configDict, decisionMaker, isMultiThreaded, playList, trainList, testList, dmCopy=None):
         super(ResourceMngrSubAgent, self).__init__(RESOURCE_STATE.SIZE)
 
         self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
         self.trainAgent = AGENT_NAME in trainList
+        self.testAgent = AGENT_NAME in testList
 
         self.illigalmoveSolveInModel = True
 
         if decisionMaker != None:
             self.decisionMaker = decisionMaker
         else:
-            self.decisionMaker = self.CreateDecisionMaker(dmTypes, isMultiThreaded)
+            self.decisionMaker = self.CreateDecisionMaker(configDict, isMultiThreaded)
 
         self.history = self.decisionMaker.AddHistory()
 
@@ -257,7 +258,7 @@ class ResourceMngrSubAgent(BaseAgent):
         for req in self.numScvReq4Group.values():
             self.numScvRequired += req
 
-    def CreateDecisionMaker(self, dmTypes, isMultiThreaded, dmCopy=None):
+    def CreateDecisionMaker(self, configDict, isMultiThreaded, dmCopy=None):
         decisionMaker = NaiveDecisionMakerResource()
         return decisionMaker
 
@@ -307,7 +308,7 @@ class ResourceMngrSubAgent(BaseAgent):
         self.isActionCommitted = False
 
     def EndRun(self, reward, score, stepNum):
-        if self.trainAgent:
+        if self.trainAgent or self.testAgent:
             self.decisionMaker.end_run(reward, score, stepNum)
 
     def ValidActions(self, state):

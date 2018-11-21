@@ -7,6 +7,7 @@ import time
 import datetime
 import sys
 import threading
+import os
 
 import tensorflow as tf
 
@@ -17,6 +18,20 @@ import matplotlib.pyplot as plt
 from multiprocessing import Process, Lock, Value, Array, Manager
 
 from utils_plot import PlotMeanWithInterval
+
+def AvgResults(path, name, idxDir=None, key4Results=None):
+    if idxDir == None:
+        results = ReadOnlyResults(path + '/' + name)
+    else:
+        results = ReadOnlyResults(path + '_' + str(idxDir) + '/' + name)
+
+    return results.AvgReward(key4Results)
+
+def GoToNextResultFile(path, name, idxDir, idx2CurrentFile):
+    fName = path + '_' + str(idxDir) + '/' + name + ".gz"
+    newFName = path + '_' + str(idxDir) + '/' + name + "_" + str(idx2CurrentFile) +".gz"
+    if os.path.isfile(fName):
+        os.rename(fName, newFName)
 
 def PlotResults(agentName, agentDir, runTypes, runDirectoryNames, grouping, subAgentsGroups = [""], keyResults = "results", additionPlots=[], maxTrials2Plot=None, multipleDm=False):
     runDirectoryNames.sort()
@@ -292,46 +307,89 @@ class PlotMngr:
 class ReadOnlyResults():
     def __init__(self, tableName):
         self.rewardCol = list(range(4))
-        self.table = pd.DataFrame(columns=self.rewardCol, dtype=np.float)
-        print(tableName)
-        if os.path.isfile(tableName + ".gz"):
-            self.table = pd.read_pickle(tableName + ".gz", compression='gzip')   
-        else:
-            print("\n\nERROR!!, did not found result file -", tableName)
-            exit()
-
-class ResultFile:
-    def __init__(self, tableName, numToWrite = 100, agentName = ''):
-        self.saveFileName = tableName + '.gz'
-                
-        self.numToWrite = numToWrite
-        self.agentName = agentName
-
-        self.rewardCol = list(range(4))
-        self.result_table = pd.DataFrame(columns=self.rewardCol, dtype=np.float)
-
-        self.countCompleteKey = 'countComplete'
-        self.check_state_exist(self.countCompleteKey)
-
+        
         self.countIdx = 0
         self.rewardIdx = 1
         self.scoreIdx = 2
         self.stepsIdx = 3
 
-        self.countComplete = int(self.result_table.ix[self.countCompleteKey, 0])
+        self.tableName = tableName
+        self.table = pd.DataFrame(columns=self.rewardCol, dtype=np.float)
+        if os.path.isfile(tableName + ".gz"):
+            self.table = pd.read_pickle(tableName + ".gz", compression='gzip')   
+    
+    def AvgReward(self, key = None):
+        names = list(self.table.index)
+        if len(names) == 0:
+            return None
+            
+        if key != None:
+            start = int(self.table.ix[key, 0])
+
+            allKeys = [k for k in names if '_key' in k]
+            end = len(names)
+            for key in allKeys:
+                idxCurr = self.table.ix[key, 0]
+                if idxCurr > start and idxCurr < end:
+                    end = int(idxCurr)
+        else:
+            start = 0
+            end = len(names)
+
+        sumVal = 0.0
+        count = 0
+        for i in range(start, end):
+            k = str(i)
+            if k in self.table.index:
+                v = self.table.ix[k, self.rewardIdx]
+                c = self.table.ix[k, self.countIdx]
+                sumVal += v * c
+                count += c
+        
+        count = count if count > 0 else 0.01
+        return sumVal / count
+
+            
+
+
+class ResultFile:
+    def __init__(self, tableName, numToWrite = 100, agentName = ''):
+        self.saveFileName = tableName
+                
+        self.numToWrite = numToWrite
+        self.agentName = agentName
+
+        self.rewardCol = list(range(4))
+        self.countCompleteKey = 'countComplete'
+        self.countIdx = 0
+        self.rewardIdx = 1
+        self.scoreIdx = 2
+        self.stepsIdx = 3
 
         self.sumReward = 0
         self.sumScore = 0
         self.sumSteps = 0
         self.numRuns = 0
 
+        self.numRunFromStart = 0
+
+        self.InitTable()
+
+    def InitTable(self):
+        self.result_table = pd.DataFrame(columns=self.rewardCol, dtype=np.float)
+        self.check_state_exist(self.countCompleteKey)
+        self.countComplete = int(self.result_table.ix[self.countCompleteKey, 0])
+
     def Load(self):
-        if os.path.isfile(self.saveFileName):
-            self.result_table = pd.read_pickle(self.saveFileName, compression='gzip')
+        if os.path.isfile(self.saveFileName + '.gz'):
+            self.result_table = pd.read_pickle(self.saveFileName + '.gz', compression='gzip')
             self.countComplete = int(self.result_table.ix[self.countCompleteKey, 0])
 
     def Save(self):
-        self.result_table.to_pickle(self.saveFileName, 'gzip') 
+        self.result_table.to_pickle(self.saveFileName + '.gz', 'gzip') 
+    
+    def NumRuns(self):
+        return self.numRunFromStart
 
     def check_state_exist(self, state):
         if state not in self.result_table.index:
@@ -362,13 +420,15 @@ class ResultFile:
             self.sumScore = 0
             self.numRuns = 0
             self.sumSteps = 0
-            print("\t\t", threading.current_thread().getName(), ":", self.agentName, "->avg results for", self.numToWrite, "trials: reward =", avgReward, "score =",  avgScore)
+
+            print("\t\t", threading.current_thread().getName(), ":", self.agentName, "->avg results for", self.numToWrite, "trials: reward =", avgReward, "score =", avgScore, "numRun =", self.NumRuns())
 
     def end_run(self, r, score, steps, saveTable):
         self.sumSteps += steps
         self.sumReward += r
         self.sumScore += score
         self.numRuns += 1
+        self.numRunFromStart += 1
 
         if self.numRuns == self.numToWrite:
             self.insertEndRun2Table()
@@ -376,8 +436,11 @@ class ResultFile:
         if saveTable:
             self.Save()
             
-    
-    def AddSwitchSlot(self, slotName):
+    def GoToNextFile(self, numFile):
+        self.result_table.to_pickle(self.saveFileName + "_" + str(numFile) + '.gz', 'gzip') 
+        self.InitTable()
+
+    def AddSlot(self, slotName):
        
         if self.check_state_exist(slotName):
             self.result_table.ix[slotName, 0] = self.countComplete

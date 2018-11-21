@@ -19,7 +19,7 @@ class EmptyLock:
         return
     def release(self):
         return
-
+    
 class BaseAgent(base_agent.BaseAgent):
     def __init__(self, stateSize = None):
         super(BaseAgent, self).__init__()

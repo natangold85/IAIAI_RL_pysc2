@@ -131,7 +131,7 @@ class NaiveDecisionMakerDoNothing(BaseNaiveDecisionMaker):
 
 
 class DoNothingSubAgent(BaseAgent):
-    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList, dmCopy=None):
+    def __init__(self, sharedData, configDict, decisionMaker, isMultiThreaded, playList, trainList, testList, dmCopy=None):
         super(DoNothingSubAgent, self).__init__()
 
         self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
@@ -141,18 +141,21 @@ class DoNothingSubAgent(BaseAgent):
             saPlayList = playList
 
         self.trainAgent = AGENT_NAME in trainList
+        self.testAgent = AGENT_NAME in testList
+
         self.illigalmoveSolveInModel = False
 
         if decisionMaker != None:
             self.decisionMaker = decisionMaker
         else:
-            self.decisionMaker = self.CreateDecisionMaker(dmTypes, isMultiThreaded)
+            self.decisionMaker = self.CreateDecisionMaker(configDict, isMultiThreaded)
         
         self.history = self.decisionMaker.AddHistory()
 
         # create sub agents and get decision makers
         resMngrDM = self.decisionMaker.GetSubAgentDecisionMaker(SUB_AGENT_RESOURCE_MNGR)  
-        self.resourceMngrSubAgent = ResourceMngrSubAgent(sharedData, dmTypes, resMngrDM, isMultiThreaded, saPlayList, trainList)
+        self.resourceMngrSubAgent = ResourceMngrSubAgent(sharedData, configDict=configDict, decisionMaker=resMngrDM, isMultiThreaded=isMultiThreaded, 
+                                                        playList=saPlayList, trainList=trainList, testList=testList, dmCopy=dmCopy)
         self.decisionMaker.SetSubAgentDecisionMaker(SUB_AGENT_RESOURCE_MNGR, self.resourceMngrSubAgent.GetDecisionMaker())
 
         if not self.playAgent:
@@ -176,8 +179,8 @@ class DoNothingSubAgent(BaseAgent):
         self.unitInQueue[Terran.Hellion] = [Terran.Factory, Terran.FactoryTechLab]
         self.unitInQueue[Terran.SiegeTank] = [Terran.Factory, Terran.FactoryTechLab]
 
-    def CreateDecisionMaker(self, dmTypes, isMultiThreaded, dmCopy=None):
-        if dmTypes[AGENT_NAME] == "none":
+    def CreateDecisionMaker(self, configDict, isMultiThreaded, dmCopy=None):
+        if configDict[AGENT_NAME] == "none":
             return BaseDecisionMaker(AGENT_NAME)
   
         decisionMaker = NaiveDecisionMakerDoNothing()
@@ -220,7 +223,7 @@ class DoNothingSubAgent(BaseAgent):
         self.numIdleWorkers = 0
 
     def EndRun(self, reward, score, stepNum):
-        if self.trainAgent:
+        if self.trainAgent or self.testAgent:
             self.decisionMaker.end_run(reward, score, stepNum)
         else:
             self.decisionMaker.outOfResources = False

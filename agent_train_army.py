@@ -64,7 +64,7 @@ USER_PLAY = 'play'
 # data for run type
 TYPE = "type"
 DECISION_MAKER_NAME = "dm_name"
-HISTORY = "hist"
+HISTORY = "history"
 RESULTS = "results"
 PARAMS = 'params'
 DIRECTORY = 'directory'
@@ -234,17 +234,17 @@ RUN_TYPES[NAIVE][DIRECTORY] = "trainArmy_naive"
 RUN_TYPES[NAIVE][RESULTS] = "trainArmy_result"
 
 
-def CreateDecisionMakerTrainArmy(dmTypes, isMultiThreaded, dmCopy=None):
+def CreateDecisionMakerTrainArmy(configDict, isMultiThreaded, dmCopy=None):
     dmCopy = "" if dmCopy==None else "_" + str(dmCopy)
 
-    if dmTypes[AGENT_NAME] == "none":
+    if configDict[AGENT_NAME] == "none":
         return BaseDecisionMaker(AGENT_NAME), []
     
-    runType = RUN_TYPES[dmTypes[AGENT_NAME]]
+    runType = RUN_TYPES[configDict[AGENT_NAME]]
     # create agent dir
-    directory = dmTypes["directory"] + "/" + AGENT_DIR
+    directory = configDict["directory"] + "/" + AGENT_DIR
 
-    if dmTypes[AGENT_NAME] == "naive":
+    if configDict[AGENT_NAME] == "naive":
         decisionMaker = NaiveDecisionMakerTrain(resultFName=runType[RESULTS], directory=directory + runType[DIRECTORY] + dmCopy)
     else:
         if runType[TYPE] == "DQN_WithTargetAndDefault":
@@ -292,11 +292,12 @@ class NaiveDecisionMakerTrain(BaseNaiveDecisionMaker):
 
 
 class TrainArmySubAgent(BaseAgent):
-    def __init__(self, sharedData, dmTypes, decisionMaker, isMultiThreaded, playList, trainList, dmCopy=None):     
+    def __init__(self, sharedData, configDict, decisionMaker, isMultiThreaded, playList, trainList, testList, dmCopy=None):     
         super(TrainArmySubAgent, self).__init__(TRAIN_STATE.SIZE)     
 
         self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
         self.trainAgent = AGENT_NAME in trainList
+        self.testAgent = AGENT_NAME in testList
         self.inTraining = self.trainAgent
         
         self.illigalmoveSolveInModel = True
@@ -305,7 +306,7 @@ class TrainArmySubAgent(BaseAgent):
         if decisionMaker != None:
             self.decisionMaker = decisionMaker
         else:
-            self.decisionMaker, _ = CreateDecisionMakerTrainArmy(dmTypes, isMultiThreaded)
+            self.decisionMaker, _ = CreateDecisionMakerTrainArmy(configDict, isMultiThreaded)
 
         self.history = self.decisionMaker.AddHistory()
         
@@ -358,7 +359,7 @@ class TrainArmySubAgent(BaseAgent):
 
     def EndRun(self, reward, score, stepNum):
         saved = False
-        if self.trainAgent:
+        if self.trainAgent or self.testAgent:
             saved = self.decisionMaker.end_run(reward, score, stepNum)
 
         return saved

@@ -106,7 +106,14 @@ class BaseDecisionMaker:
             if self.switchCount[idx] <= numSwitch:
                 self.switchCount[idx] = numSwitch + 1
                 slotName = name + "_" + str(numSwitch)
-                resultFile.AddSwitchSlot(slotName)
+                resultFile.AddSlot(slotName)
+
+    def AddSlot(self, slotName):
+        if self.resultFile != None:
+            self.resultFile.AddSlot(slotName)
+
+    def GoToNextResultFile(self, numFile):
+        self.resultFile.GoToNextFile(numFile)
 
     def AddResultFile(self, resultFile):
         self.secondResultFile = resultFile
@@ -284,8 +291,8 @@ class DecisionMakerAlgoBase(BaseDecisionMaker):
 
         self.nonTrainingHistCount += 1
 
-    def ResetHistory(self, dump2Old=True):
-        self.historyMngr.Reset(dump2Old)
+    def ResetHistory(self, dump2Old=True, save=False):
+        self.historyMngr.Reset(dump2Old, save)
 
     def ResetAllData(self, resetDecisionMaker=True, resetHistory=True, resetResults=True):
         if resetDecisionMaker:
@@ -337,6 +344,27 @@ class DecisionMakerAlgoBase(BaseDecisionMaker):
 
     def CheckModel(self, plotGraphs):
         pass
+
+    def Save(self):
+        self.decisionMaker.Save()
+        self.historyMngr.Save()
+        if self.resultFile != None:
+            self.resultFile.Save()
+
+    def end_test_run(self, r, score, steps):
+        if self.resultFile != None:
+            self.resultFile.end_run(r, score, steps, True)
+
+    def NumTestRuns(self):
+        numRuns = 0
+        if self.resultFile != None:
+            numRuns = self.resultFile.NumRuns()
+        
+        return numRuns
+        
+        
+
+
   
 class DecisionMakerExperienceReplay(DecisionMakerAlgoBase):
     def __init__(self, modelType, modelParams, agentName='', decisionMakerName='', resultFileName='', historyFileName='', directory='', isMultiThreaded = False):
@@ -348,7 +376,7 @@ class DecisionMakerExperienceReplay(DecisionMakerAlgoBase):
         self.endRunLock.acquire()
 
         numRun = int(self.NumRuns())
-        print(threading.current_thread().getName(), ":", self.agentName,"->for trial#", numRun, ": reward =", r, "score =", score, "steps =", steps)
+        #print(threading.current_thread().getName(), ":", self.agentName,"->for trial#", numRun, ": reward =", r, "score =", score, "steps =", steps)
 
         save = True if (numRun + 1) % self.params.numTrials2Save == 0 else False
         train = True if (numRun + 1) % self.params.numTrials2Learn == 0 else False
@@ -405,21 +433,6 @@ class DecisionMakerExperienceReplay(DecisionMakerAlgoBase):
             print("\t", threading.current_thread().getName(), ":", self.agentName,"->ExperienceReplay size to small - training with hist size = ", len(r))
 
         return numRuns2Learn
-
-
-    def ResetHistory(self, dump2Old=True):
-        self.historyMngr.Reset(dump2Old)
-
-    def ResetAllData(self, resetDecisionMaker=True, resetHistory=True, resetResults=True):
-        if resetDecisionMaker:
-            self.decisionMaker.Reset()
-
-        if resetHistory:
-            self.historyMngr.Reset()
-
-        if resetResults and self.resultFile != None:
-            self.resultFile.Reset()
-
 
     def ActionsValues(self, state, validActions, targetValues = False):
         if not self.decisionMaker.TakeDfltValues():
@@ -588,6 +601,8 @@ class DecisionMakerExperienceReplay(DecisionMakerAlgoBase):
                 figVals.savefig(dir2Save + plotType + "DQN_" + str(numRuns))
             if isFigDiff:
                 figDiff.savefig(dir2Save + plotType + "DQNDiff_" + str(numRuns))
+
+
 
 class DecisionMakerOnlineAsync(DecisionMakerAlgoBase):
     def __init__(self, modelType, modelParams, agentName='', decisionMakerName='', resultFileName='', historyFileName='', directory='', isMultiThreaded = False):        
