@@ -47,12 +47,12 @@ SCREEN_SIZE = SC2_Params.SCREEN_SIZE
 MINIMAP_SIZE = SC2_Params.MINIMAP_SIZE
 
 # general params
-flags.DEFINE_string("do", "run", "what to  do: options =[run, check, copyNN, gp]") 
+flags.DEFINE_string("act", "run", "what to  act: options =[run, check, copyNN, gp]") 
 flags.DEFINE_string("device", "gpu", "Which device to run nn on.")
 flags.DEFINE_string("runDir", "none", "directory of the decision maker (should contain config file name config.txt)")
 
 # params for genetic programming
-flags.DEFINE_string("gpDo", "trainPopulation", "train population or test single individual")
+flags.DEFINE_string("gpAct", "trainPopulation", "train population or test single individual")
 flags.DEFINE_string("populationSize", "20", "population size")
 flags.DEFINE_string("populationInstances", "2", "num instances for each individual")
 flags.DEFINE_string("numGenerations", "20", "num generations to run")
@@ -249,19 +249,19 @@ def start_agent(configDict=None, copy2Run=None, threadName="Thread"):
 
                     contRun = False
 
-def run_script(gpDoArg, populationIdx, instanceIdx):     
+def run_script(gpActArg, populationIdx, instanceIdx):     
     cmd = ' '.join(sys.argv)
     cmd.replace(".\\", "")                                                        
-    os.system('python {}'.format(cmd + " --gpDo=" + gpDoArg + " --populationIdx=" + str(populationIdx) + " --populationInstanceIdx=" + str(instanceIdx)))    
+    os.system('python {}'.format(cmd + " --gpAct=" + gpActArg + " --populationIdx=" + str(populationIdx) + " --populationInstanceIdx=" + str(instanceIdx)))    
 
-def run_gp_threads(populationSize, numInstances, gpDoArg):
+def run_gp_threads(populationSize, numInstances, gpActArg):
     numThreadsRunning = 10
     numOfTerminals2KillGame = 10
 
     threadsB4Run = []  
     for idx in range(populationSize):
         for instance in range(numInstances):
-            t = threading.Thread(target=run_script, args=(gpDoArg, idx, instance))
+            t = threading.Thread(target=run_script, args=(gpActArg, idx, instance))
             threadsB4Run.append(t)
     
     numTerminal = 0
@@ -278,11 +278,11 @@ def run_gp_threads(populationSize, numInstances, gpDoArg):
                 numTerminal += 1
                 runningThreads.remove(t)
 
-        if numTerminal >= numOfTerminals2KillGame and gpDoArg == "testSingle":
+        if numTerminal >= numOfTerminals2KillGame and gpActArg == "testSingle":
             os.system('"Taskkill /IM SC2_x64.exe /F"')
             numTerminal = 0
     
-    if gpDoArg == "testSingle":
+    if gpActArg == "testSingle":
         os.system('"Taskkill /IM SC2_x64.exe /F"')     
             
 def gp_train(): 
@@ -493,18 +493,31 @@ def main(argv):
         os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
         os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
-    if flags.FLAGS.do == "run":
+    ## create history of run commands text file
+
+    modelDir = "./" + flags.FLAGS.runDir
+    histCmdFName = modelDir + "/cmdHistory.txt"
+    if not os.path.isdir(modelDir):
+        os.makedirs(modelDir)
+
+    if flags.FLAGS.resetModel == "True":
+        open(histCmdFName, "w+").write(str(sys.argv))
+    else:
+        open(histCmdFName, "a+").write("\n\n" + str(sys.argv))
+
+    ## call the act function
+    if flags.FLAGS.act == "run":
         start_agent()
-    elif flags.FLAGS.do == "check":
+    elif flags.FLAGS.act == "check":
         check_model()
-    elif flags.FLAGS.do == "copyNN":
+    elif flags.FLAGS.act == "copyNN":
         copy_dqn()
-    elif flags.FLAGS.do == "gp":
-        if flags.FLAGS.gpDo == "trainPopulation":
+    elif flags.FLAGS.act == "gp":
+        if flags.FLAGS.gpAct == "trainPopulation":
             gp_train()
-        elif flags.FLAGS.gpDo == "trainSingle":
+        elif flags.FLAGS.gpAct == "trainSingle":
             gp_train_single()
-        elif flags.FLAGS.gpDo == "testSingle":
+        elif flags.FLAGS.gpAct == "testSingle":
             gp_test_single()
 
 

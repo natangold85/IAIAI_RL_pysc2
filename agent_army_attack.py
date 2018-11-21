@@ -172,15 +172,19 @@ RUN_TYPES[USER_PLAY][TYPE] = "play"
 STEP_DURATION = 0
 
 def GetRunTypeArmyAttack(configDict):
-    return RUN_TYPES[configDict[AGENT_NAME]]
+    if configDict[AGENT_NAME] == "none":
+        return {}
+    else:
+        return RUN_TYPES[configDict[AGENT_NAME]]
 
 def CreateDecisionMakerArmyAttack(configDict, isMultiThreaded, dmCopy=None, hyperParamsDict=None):
     dmCopy = "" if dmCopy==None else "_" + str(dmCopy)
     
-    if configDict[AGENT_NAME] == "none":
-        return BaseDecisionMaker(AGENT_NAME)
-        
     runType = GetRunTypeArmyAttack(configDict)
+
+    if configDict[AGENT_NAME] == "none":
+        return BaseDecisionMaker(AGENT_NAME), runType
+        
     
     # create agent dir
     directory = configDict["directory"] + "/" + AGENT_DIR

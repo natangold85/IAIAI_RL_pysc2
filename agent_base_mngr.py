@@ -579,6 +579,7 @@ class BaseMngr(BaseAgent):
             subAgent.MonitorObservation(obs)
 
     def Action2SC2Action(self, obs, a, moveNum):
+        
         return self.subAgents[a].Action2SC2Action(obs, self.subAgentsActions[a], moveNum)
     
     def IsDoNothingAction(self, a):

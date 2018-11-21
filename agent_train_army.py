@@ -290,6 +290,27 @@ class NaiveDecisionMakerTrain(BaseNaiveDecisionMaker):
 
         return vals
 
+    def choose_action(self, state, validActions, targetValues=False):
+        action = ID_ACTION_DO_NOTHING
+        
+        if ID_ACTION_TRAIN_SIEGETANK in validActions:
+            action = ID_ACTION_TRAIN_SIEGETANK
+        elif ID_ACTION_TRAIN_HELLION in validActions:
+            action = ID_ACTION_TRAIN_HELLION
+        else:
+            if np.random.uniform() > 0.5:
+                if ID_ACTION_TRAIN_MARINE in validActions:
+                    action = ID_ACTION_TRAIN_MARINE
+                elif ID_ACTION_TRAIN_REAPER in validActions:
+                    action = ID_ACTION_TRAIN_REAPER
+            else:
+                if ID_ACTION_TRAIN_MARINE in validActions:
+                    action = ID_ACTION_TRAIN_MARINE
+                elif ID_ACTION_TRAIN_REAPER in validActions:
+                    action = ID_ACTION_TRAIN_REAPER
+
+        return action       
+
 
 class TrainArmySubAgent(BaseAgent):
     def __init__(self, sharedData, configDict, decisionMaker, isMultiThreaded, playList, trainList, testList, dmCopy=None):     
@@ -368,6 +389,8 @@ class TrainArmySubAgent(BaseAgent):
     def Action2SC2Action(self, obs, a, moveNum):
         if moveNum == 0:
             finishedAction = False
+            if a == None:
+                print("ERROR\n\n None\n\n")
             self.buildingSelected = self.SelectBuilding2Train(a)
             if self.buildingSelected != None:
                 target = self.buildingSelected.m_screenLocation
