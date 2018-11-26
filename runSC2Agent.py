@@ -30,6 +30,8 @@ from utils_plot import create_nnGraphs
 from paramsCalibration import GeneticProgrammingGeneration
 from paramsCalibration import ReadGPFitness
 from paramsCalibration import TrainSingleGP
+from paramsCalibration import GetPopulationDict
+from paramsCalibration import SetPopulationTrained
 
 # agent possible to run calibration
 from agent_army_attack import CreateDecisionMakerArmyAttack
@@ -297,22 +299,33 @@ def gp_train():
 
     trainAgent = flags.FLAGS.testAgent
 
+    # todo : add other agents train except army_attack
     if trainAgent == "army_attack":
         runType = GetRunTypeArmyAttack(configDict)
 
+    populationDict, currGeneration = GetPopulationDict(configDict["directory"])
+    
+    while currGeneration != numGenerations:
 
-    for gen in range(numGenerations):
+        # advance to next generation (in case current population has fitness)
+        if "fitness" in populationDict:
+            print("\n\n\ncreate population generation #", currGeneration, "\n\n\n")
+            GeneticProgrammingGeneration(populationSize, numPopulationInstances, configDict, runType)
+            populationDict, currGeneration = GetPopulationDict(configDict["directory"])
 
-        print("\n\n\ncreate population generation #", gen, "\n\n\n")
-        GeneticProgrammingGeneration(populationSize, numPopulationInstances, configDict, runType)
+        # train generation (if not trained)
+        if "trained" not in populationDict:
+            print("\n\n\ntrain population generation #", currGeneration, "\n\n\n")
+            run_gp_threads(populationSize, numPopulationInstances, "trainSingle")
+            SetPopulationTrained(configDict["directory"])
 
-        print("\n\n\ntrain population generation #", gen, "\n\n\n")
-        run_gp_threads(populationSize, numPopulationInstances, "trainSingle")
-
-        print("\n\n\ntest population generation #", gen, "\n\n\n")
-        run_gp_threads(populationSize, numPopulationInstances, "testSingle")
-
-        ReadGPFitness(configDict, runType)
+        # test generation
+        if "fitness" not in populationDict:
+            print("\n\n\ntest population generation #", currGeneration, "\n\n\n")
+            run_gp_threads(populationSize, numPopulationInstances, "testSingle")
+            # calculate generation fitness
+            ReadGPFitness(configDict, runType)
+            populationDict, currGeneration = GetPopulationDict(configDict["directory"])
 
 
 def getGP_Params(population, params2Calibrate, populationIdx, instanceIdx):

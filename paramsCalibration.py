@@ -37,8 +37,13 @@ class Calibration:
         self.numGeneration = 0
 
 
-    def Cycle(self):
-        if self.LoadPopulation():
+    def Cycle(self, go2NextWOFitness=False):
+        populationExist, fitnessExist = self.LoadPopulation()
+        
+        if not go2NextWOFitness and not fitnessExist:
+            return
+
+        if populationExist:
             # go to next generation if prev generation exist
             self.populationMngr.Cycle()
             self.numGeneration += 1
@@ -69,7 +74,7 @@ class Calibration:
     def LoadPopulation(self):
         populationFName = self.configDict["directory"] + "/" + CURRENT_POPULATION_FILE_NAME
         if not os.path.isfile(populationFName):
-            return False
+            return False, False
 
         populationList = eval(open(populationFName, "r+").read())        
         self.numGeneration = populationList["numGeneration"]
@@ -80,17 +85,18 @@ class Calibration:
         
         if "fitness" in populationList.keys():
             self.populationMngr.Population(population, np.array(populationList["fitness"]))
+            return True, True
         else:
             self.populationMngr.Population(population)
-
-        return True
+            return True, False
 
     def Size(self):
         return self.populationMngr.Size()
 
 def ChangeParamsAccordingToDict(params, paramsDict):
     if "learningRatePower" in paramsDict:
-        params.learning_rate = 10 ** paramsDict["learningRatePower"]
+        params.learning_rateActor = 10 ** paramsDict["learningRatePower"]
+        params.learning_rateCritic = 10 ** paramsDict["learningRatePower"]
     return params
 
 def CreateParamsState(params2Calibrate):
@@ -104,6 +110,25 @@ def CreateParamsState(params2Calibrate):
 
     return paramState
 
+def SetPopulationTrained(directory):
+    populationFName = directory + "/" + CURRENT_POPULATION_FILE_NAME
+    if not os.path.isfile(populationFName):
+        return False
+
+    populationDict = eval(open(populationFName, "r+").read())   
+    populationDict["trained"] = True
+
+    open(populationFName, "w+").write(str(populationDict))
+    
+def GetPopulationDict(directory):
+    populationFName = directory + "/" + CURRENT_POPULATION_FILE_NAME
+    if not os.path.isfile(populationFName):
+        return 0
+
+    populationDict = eval(open(populationFName, "r+").read())        
+    return populationDict, populationDict["numGeneration"]
+
+
 def GeneticProgrammingGeneration(populationSize, numInstances, configDict, runType): 
     parms2Calib = configDict["params2Calibrate"]
     paramsState = CreateParamsState(parms2Calib)
@@ -111,7 +136,7 @@ def GeneticProgrammingGeneration(populationSize, numInstances, configDict, runTy
     params = GP_Params(populationSize=populationSize)
     
     calib = Calibration(configDict, runType, paramsState, params, numInstances)
-    calib.Cycle()
+    calib.Cycle(go2NextWOFitness=False)
 
 
 def ReadGPFitness(configDict, runType): 

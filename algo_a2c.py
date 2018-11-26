@@ -16,13 +16,15 @@ from utils import EmptyLock
 # dqn params
 class A2C_PARAMS(ParamsBase):
     def __init__(self, stateSize, numActions, discountFactor = 0.95, batchSize = 32, maxReplaySize = 500000, minReplaySize = 1000, 
-                learning_rate=0.00001, numTrials2CmpResults=1000, outputGraph=True, accumulateHistory=True, numTrials2Learn=None, numTrials2Save=100):
+                learning_rateActor=0.00001, learning_rateCritic=0.00001, numTrials2CmpResults=1000, outputGraph=True, accumulateHistory=True, 
+                numTrials2Learn=None, numTrials2Save=100):
 
         super(A2C_PARAMS, self).__init__(stateSize=stateSize, numActions=numActions, discountFactor=discountFactor, numTrials2Learn=numTrials2Learn,
                                         numTrials2Save=numTrials2Save, maxReplaySize=maxReplaySize, minReplaySize=minReplaySize, accumulateHistory=accumulateHistory)
         
 
-        self.learning_rate = learning_rate
+        self.learning_rateActor = learning_rateActor
+        self.learning_rateCritic = learning_rateCritic
         self.batchSize = batchSize
         self.type = "A2C"
         self.numTrials2CmpResults = numTrials2CmpResults
@@ -42,10 +44,10 @@ class A2C:
             self.numRuns =tf.get_variable("numRuns", shape=(), initializer=tf.zeros_initializer(), dtype=tf.int32)
 
         with tf.variable_scope("critic"):
-            self.critic = AC_Critic(modelParams.stateSize, modelParams.numActions)
+            self.critic = AC_Critic(modelParams.stateSize, modelParams.numActions, self.params.learning_rateCritic)
         
         with tf.variable_scope("actor"):
-            self.actor = AC_Actor(modelParams.stateSize, modelParams.numActions)
+            self.actor = AC_Actor(modelParams.stateSize, modelParams.numActions, self.params.learning_rateActor)
 
         summary_ops = tf.get_collection(tf.GraphKeys.SUMMARIES)
         self.summaries = [s for s in summary_ops if self.directoryName in s.name]
@@ -151,7 +153,7 @@ class A2C:
         return self.params.discountFactor
 
 class AC_Actor:
-    def __init__(self, stateSize, numActions):
+    def __init__(self, stateSize, numActions, learningRate):
         # Network Parameters
         self.num_input = stateSize
         self.numActions = numActions        
@@ -178,7 +180,7 @@ class AC_Actor:
         self.losses = - (tf.log(self.picked_action_probs) * self.targets + 0.01 * self.entropy)
 
         self.loss = tf.reduce_sum(self.losses, name="loss")
-        self.optimizer = tf.train.RMSPropOptimizer(0.00025, 0.99, 0.0, 1e-6)
+        self.optimizer = tf.train.RMSPropOptimizer(learningRate, 0.99, 0.0, 1e-6)
         self.grads_and_vars = self.optimizer.compute_gradients(self.loss)
         self.grads_and_vars = [[grad, var] for grad, var in self.grads_and_vars if grad is not None]
 
@@ -209,7 +211,7 @@ class AC_Actor:
 
 
 class AC_Critic:
-    def __init__(self, stateSize, numActions):
+    def __init__(self, stateSize, numActions, learningRate):
         # Network Parameters
         self.num_input = stateSize
         self.numActions = numActions        
@@ -224,7 +226,7 @@ class AC_Critic:
         self.losses = tf.squared_difference(self.output, self.targets)
         self.loss = tf.reduce_sum(self.losses, name="loss")
         
-        self.optimizer = tf.train.RMSPropOptimizer(0.00025, 0.99, 0.0, 1e-6)
+        self.optimizer = tf.train.RMSPropOptimizer(learningRate, 0.99, 0.0, 1e-6)
         self.grads_and_vars = self.optimizer.compute_gradients(self.loss)
         self.grads_and_vars = [[grad, var] for grad, var in self.grads_and_vars if grad is not None]
         self.train_op = self.optimizer.apply_gradients(self.grads_and_vars)
