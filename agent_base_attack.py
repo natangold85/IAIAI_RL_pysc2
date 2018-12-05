@@ -20,16 +20,9 @@ from utils import SC2_Params
 from utils import SC2_Actions
 
 #decision makers
-from algo_decisionMaker import DecisionMakerExperienceReplay
-from algo_decisionMaker import BaseDecisionMaker
+from algo_decisionMaker import BaseNaiveDecisionMaker
 
-from utils_results import ResultFile
-
-# params
-from algo_dqn import DQN_PARAMS
-from algo_dqn import DQN_EMBEDDING_PARAMS
-from algo_qtable import QTableParams
-from algo_qtable import QTableParamsExplorationDecay
+from algo_decisionMaker import CreateDecisionMaker
 
 from utils import SwapPnt
 from utils import DistForCmp
@@ -45,25 +38,25 @@ AGENT_NAME = "base_attack"
 
 GRID_SIZE = 5
 
-ACTION_DO_NOTHING = 0
-ACTIONS_START_IDX_ATTACK = 1
-ACTIONS_END_IDX_ATTACK = ACTIONS_START_IDX_ATTACK + GRID_SIZE * GRID_SIZE
-NUM_ACTIONS = ACTIONS_END_IDX_ATTACK
+class BaseAttackActions:
+    DO_NOTHING = 0
+    START_IDX_ATTACK = 1
+    END_IDX_ATTACK = START_IDX_ATTACK + GRID_SIZE * GRID_SIZE
+    SIZE = END_IDX_ATTACK
+
+class BaseAttackState:
+    START_SELF_MAT = 0
+    END_SELF_MAT = START_SELF_MAT + GRID_SIZE * GRID_SIZE
+    START_ENEMY_MAT = END_SELF_MAT
+    END_ENEMY_MAT = START_ENEMY_MAT + GRID_SIZE * GRID_SIZE
+    TIME_LINE_IDX = END_ENEMY_MAT
+    SIZE = TIME_LINE_IDX + 1
 
 ACTION2STR = {}
 
-ACTION2STR[ACTION_DO_NOTHING] = "Do_Nothing"
-for a in range(ACTIONS_START_IDX_ATTACK, ACTIONS_END_IDX_ATTACK):
-    ACTION2STR[a] = "BaseAttack_" + str(a - ACTIONS_START_IDX_ATTACK)
-
-STATE_START_SELF_MAT = 0
-STATE_END_SELF_MAT = STATE_START_SELF_MAT + GRID_SIZE * GRID_SIZE
-STATE_START_ENEMY_MAT = STATE_END_SELF_MAT
-STATE_END_ENEMY_MAT = STATE_START_ENEMY_MAT + GRID_SIZE * GRID_SIZE
-STATE_TIME_LINE_IDX = STATE_END_ENEMY_MAT
-STATE_SIZE = STATE_TIME_LINE_IDX + 1
-
-TIME_LINE_BUCKETING = 25
+ACTION2STR[BaseAttackActions.DO_NOTHING] = "Do_Nothing"
+for a in range(BaseAttackActions.START_IDX_ATTACK, BaseAttackActions.END_IDX_ATTACK):
+    ACTION2STR[a] = "BaseAttack_" + str(a - BaseAttackActions.START_IDX_ATTACK)
 
 NUM_UNIT_SCREEN_PIXELS = 0
 
@@ -71,57 +64,6 @@ for key,value in TerranUnit.ARMY_SPEC.items():
     if value.name == "marine":
         NUM_UNIT_SCREEN_PIXELS = value.numScreenPixels
 
-# possible types of decision maker
-
-QTABLE = 'q'
-DQN = 'dqn'
-DQN_EMBEDDING_LOCATIONS = 'dqn_Embedding' 
-
-NAIVE = "naive"
-USER_PLAY = 'play'
-
-ALL_TYPES = set([USER_PLAY, QTABLE, DQN, DQN_EMBEDDING_LOCATIONS])
-
-# data for run type
-TYPE = "type"
-DECISION_MAKER_NAME = "dm_name"
-HISTORY = "history"
-RESULTS = "results"
-PARAMS = 'params'
-DIRECTORY = 'directory'
-
-# table names
-
-RUN_TYPES = {}
-RUN_TYPES[QTABLE] = {}
-RUN_TYPES[QTABLE][TYPE] = "QLearningTable"
-RUN_TYPES[QTABLE][DIRECTORY] = "baseAttack_q"
-RUN_TYPES[QTABLE][PARAMS] = QTableParamsExplorationDecay(STATE_SIZE, NUM_ACTIONS)
-RUN_TYPES[QTABLE][DECISION_MAKER_NAME] = "baseAttack_q_qtable"
-RUN_TYPES[QTABLE][HISTORY] = "baseAttack_q_replayHistory"
-RUN_TYPES[QTABLE][RESULTS] = "baseAttack_q_result"
-
-RUN_TYPES[DQN] = {}
-RUN_TYPES[DQN][TYPE] = "DQN_WithTarget"
-RUN_TYPES[DQN][DIRECTORY] = "baseAttack_dqn"
-RUN_TYPES[DQN][PARAMS] = DQN_PARAMS(STATE_SIZE, NUM_ACTIONS)
-RUN_TYPES[DQN][DECISION_MAKER_NAME] = "baseAttack_dqn_DQN"
-RUN_TYPES[DQN][HISTORY] = "baseAttack_dqn_replayHistory"
-RUN_TYPES[DQN][RESULTS] = "baseAttack_dqn_result"
-
-RUN_TYPES[DQN_EMBEDDING_LOCATIONS] = {}
-RUN_TYPES[DQN_EMBEDDING_LOCATIONS][TYPE] = "DQN_WithTarget"
-RUN_TYPES[DQN_EMBEDDING_LOCATIONS][PARAMS] = DQN_EMBEDDING_PARAMS(STATE_SIZE, STATE_END_ENEMY_MAT, NUM_ACTIONS)
-RUN_TYPES[DQN_EMBEDDING_LOCATIONS][DECISION_MAKER_NAME] = "baseAttack_dqn_Embedding_DQN"
-RUN_TYPES[DQN_EMBEDDING_LOCATIONS][HISTORY] = "baseAttack_dqn_Embedding_replayHistory"
-RUN_TYPES[DQN_EMBEDDING_LOCATIONS][RESULTS] = "baseAttack_dqn_Embedding_result"
-
-RUN_TYPES[USER_PLAY] = {}
-RUN_TYPES[USER_PLAY][TYPE] = "play"
-
-RUN_TYPES[NAIVE] = {}
-RUN_TYPES[NAIVE][TYPE] = "naive"
-RUN_TYPES[NAIVE][RESULTS] = ""
 
 class SharedDataBaseAttack(EmptySharedData):
     def __init__(self):
@@ -134,17 +76,17 @@ class BuildingUnit:
         self.numScreenPixels = numScreenPixels
         self.value = value
 
-class NaiveDecisionMakerBaseAttack(BaseDecisionMaker):
-    def __init__(self):
-        super(NaiveDecisionMakerBaseAttack, self).__init__(AGENT_NAME)
-        
+class NaiveDecisionMakerBaseAttack(BaseNaiveDecisionMaker):
+    def __init__(self, numTrials2Save=None, agentName="", resultFName=None, directory=None):
+        super(NaiveDecisionMakerBaseAttack, self).__init__(numTrials2Save, agentName=agentName, resultFName=resultFName, directory=directory)
+
 
     def choose_action(self, state, validActions, targetValues=False):
-        buildingPnts = (state[STATE_START_ENEMY_MAT:STATE_END_ENEMY_MAT] > 0).nonzero()[0]
-        selfLocs = (state[STATE_START_SELF_MAT:STATE_END_SELF_MAT] > 0).nonzero()[0]
+        buildingPnts = (state[BaseAttackState.START_ENEMY_MAT:BaseAttackState.END_ENEMY_MAT] > 0).nonzero()[0]
+        selfLocs = (state[BaseAttackState.START_SELF_MAT:BaseAttackState.END_SELF_MAT] > 0).nonzero()[0]
 
         if len(selfLocs) == 0 or len(buildingPnts) == 0:
-            return ACTION_DO_NOTHING
+            return BaseAttackActions.DO_NOTHING
 
         self_y = int(selfLocs[0] / GRID_SIZE)
         self_x = selfLocs[0] % GRID_SIZE
@@ -163,17 +105,17 @@ class NaiveDecisionMakerBaseAttack(BaseDecisionMaker):
                 minDist = dist
                 minIdx = idx
 
-        return minIdx + ACTIONS_START_IDX_ATTACK
+        return minIdx + BaseAttackActions.START_IDX_ATTACK
 
     def ActionsValues(self, state, validActions, target = True):
-        vals = np.zeros(NUM_ACTIONS,dtype = float)
+        vals = np.zeros(BaseAttackActions.SIZE,dtype = float)
         vals[self.choose_action(state, validActions)] = 1.0
 
         return vals
 
 class BaseAttack(BaseAgent):
     def __init__(self, sharedData, configDict, decisionMaker, isMultiThreaded, playList, trainList, testList, dmCopy=None):        
-        super(BaseAttack, self).__init__(STATE_SIZE)
+        super(BaseAttack, self).__init__(BaseAttackState.SIZE)
 
         self.sharedData = sharedData
         self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
@@ -185,11 +127,12 @@ class BaseAttack(BaseAgent):
         if decisionMaker != None:
             self.decisionMaker = decisionMaker
         else:
-            self.decisionMaker = self.CreateDecisionMaker(configDict, isMultiThreaded)
+            self.decisionMaker, _ = CreateDecisionMaker(agentName=AGENT_NAME, configDict=configDict, 
+                            isMultiThreaded=isMultiThreaded, dmCopy=dmCopy, heuristicClass=NaiveDecisionMakerBaseAttack)
 
         self.history = self.decisionMaker.AddHistory()
 
-        self.terminalState = np.zeros(STATE_SIZE, dtype=np.int, order='C')
+        self.terminalState = np.zeros(BaseAttackState.SIZE, dtype=np.int, order='C')
 
         allTerranBuildings = TerranUnit.BUILDINGS + [Terran.SCV]
         
@@ -206,26 +149,6 @@ class BaseAttack(BaseAgent):
 
         self.lastValidAttackAction = None
         self.enemyBuildingGridLoc2ScreenLoc = {}
-
-    def CreateDecisionMaker(self, configDict, isMultiThreaded, dmCopy=None):
-        dmCopy = "" if dmCopy==None else "_" + str(dmCopy)
-
-        if configDict[AGENT_NAME] == "none":
-            return BaseDecisionMaker(AGENT_NAME)
-            
-        if configDict[AGENT_NAME] == "naive":
-            decisionMaker = NaiveDecisionMakerBaseAttack()
-        else:
-            runType = RUN_TYPES[configDict[AGENT_NAME]]
-
-            # create agent dir
-            directory = configDict["directory"] + "/" + AGENT_DIR
-            if not os.path.isdir("./" + directory):
-                os.makedirs("./" + directory)
-            decisionMaker = DecisionMakerExperienceReplay(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,
-                                            resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=AGENT_DIR+runType[DIRECTORY]+dmCopy, isMultiThreaded=isMultiThreaded)
-
-        return decisionMaker
 
     def GetDecisionMaker(self):
         return self.decisionMaker
@@ -245,9 +168,9 @@ class BaseAttack(BaseAgent):
     def FirstStep(self, obs):
         super(BaseAttack, self).FirstStep()
 
-        self.current_state = np.zeros(STATE_SIZE, dtype=np.int, order='C')
-        self.current_scaled_state = np.zeros(STATE_SIZE, dtype=np.int, order='C')
-        self.previous_scaled_state = np.zeros(STATE_SIZE, dtype=np.int, order='C')
+        self.current_state = np.zeros(BaseAttackState.SIZE, dtype=np.int, order='C')
+        self.current_scaled_state = np.zeros(BaseAttackState.SIZE, dtype=np.int, order='C')
+        self.previous_scaled_state = np.zeros(BaseAttackState.SIZE, dtype=np.int, order='C')
 
         self.enemyBuildingGridLoc2ScreenLoc = {}
         self.selfLocCoord = None      
@@ -264,7 +187,7 @@ class BaseAttack(BaseAgent):
                 self.history.learn(self.previous_scaled_state, self.lastActionCommitted, reward, self.current_scaled_state, terminal)
             elif terminal:
                 # if terminal reward entire state if action is not chosen for current step
-                for a in range(NUM_ACTIONS):
+                for a in range(BaseAttackActions.SIZE):
                     self.history.learn(self.previous_scaled_state, a, reward, self.terminalState, terminal)
                     self.history.learn(self.current_scaled_state, a, reward, self.terminalState, terminal)
 
@@ -272,7 +195,7 @@ class BaseAttack(BaseAgent):
         self.isActionCommitted = False
 
     def IsDoNothingAction(self, a):
-        return a == ACTION_DO_NOTHING
+        return a == BaseAttackActions.DO_NOTHING
 
     def Action2Str(self, a, onlyAgent=False):
         return ACTION2STR[a]
@@ -283,8 +206,8 @@ class BaseAttack(BaseAgent):
         else:
             sc2Action = SC2_Actions.DO_NOTHING_SC2_ACTION
 
-        if self.current_action > ACTION_DO_NOTHING:   
-            goTo = self.enemyBuildingGridLoc2ScreenLoc[self.current_action - ACTIONS_START_IDX_ATTACK].copy()
+        if self.current_action > BaseAttackActions.DO_NOTHING:   
+            goTo = self.enemyBuildingGridLoc2ScreenLoc[self.current_action - BaseAttackActions.START_IDX_ATTACK].copy()
             if SC2_Actions.ATTACK_SCREEN in obs.observation['available_actions']:
                 sc2Action = actions.FunctionCall(SC2_Actions.ATTACK_SCREEN, [SC2_Params.NOT_QUEUED, SwapPnt(goTo)])
         
@@ -295,25 +218,25 @@ class BaseAttack(BaseAgent):
             if self.illigalmoveSolveInModel:
                 validActions = self.ValidActions(self.current_scaled_state)
             else: 
-                validActions = list(range(NUM_ACTIONS))
+                validActions = list(range(BaseAttackActions.SIZE))
  
             targetValues = False if self.trainAgent else True
             action = self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues)
 
         else:
-            action = ACTION_DO_NOTHING
+            action = BaseAttackActions.DO_NOTHING
 
         self.current_action = action
         return action
 
     def CreateState(self, obs):
-        self.current_state = np.zeros(STATE_SIZE, dtype=np.int, order='C')
+        self.current_state = np.zeros(BaseAttackState.SIZE, dtype=np.int, order='C')
         self.GetSelfLoc(obs)
         self.GetEnemyBuildingLoc(obs)
-        self.current_state[STATE_TIME_LINE_IDX] = self.sharedData.numStep
+        self.current_state[BaseAttackState.TIME_LINE_IDX] = self.sharedData.numStep
 
         for idx in range(GRID_SIZE * GRID_SIZE):
-           self.sharedData.enemyBuildingMat[idx] = self.current_state[STATE_START_ENEMY_MAT + idx]
+           self.sharedData.enemyBuildingMat[idx] = self.current_state[BaseAttackState.START_ENEMY_MAT + idx]
 
         self.ScaleState()
 
@@ -336,7 +259,7 @@ class BaseAttack(BaseAgent):
             for i in range(len(selfPoints)):
                 idx = self.GetScaledIdx(selfPoints[i])
                 power = math.ceil(selfPower[i] / spec.numScreenPixels)
-                self.current_state[STATE_START_SELF_MAT + idx] += power
+                self.current_state[BaseAttackState.START_SELF_MAT + idx] += power
 
         if len(allArmy_y) > 0:
             self.selfLocCoord = [int(sum(allArmy_y) / len(allArmy_y)), int(sum(allArmy_x) / len(allArmy_x))]
@@ -358,10 +281,10 @@ class BaseAttack(BaseAgent):
         for i in range(len(enemyBuildingPoints)):
             idx = self.GetScaledIdx(enemyBuildingPoints[i])
             if idx in self.enemyBuildingGridLoc2ScreenLoc.keys():
-                self.current_state[STATE_START_ENEMY_MAT + idx] += enemyBuildingPower[i]
+                self.current_state[BaseAttackState.START_ENEMY_MAT + idx] += enemyBuildingPower[i]
                 self.enemyBuildingGridLoc2ScreenLoc[idx] = self.Closest2Self(self.enemyBuildingGridLoc2ScreenLoc[idx], enemyBuildingPoints[i])
             else:
-                self.current_state[STATE_START_ENEMY_MAT + idx] = enemyBuildingPower[i]
+                self.current_state[BaseAttackState.START_ENEMY_MAT + idx] = enemyBuildingPower[i]
                 self.enemyBuildingGridLoc2ScreenLoc[idx] = enemyBuildingPoints[i]   
 
     def GetScaledIdx(self, screenCord):
@@ -382,25 +305,25 @@ class BaseAttack(BaseAgent):
             return p2
     
     def ValidActions(self, state):
-        valid = [ACTION_DO_NOTHING]
-        valid = [ACTION_DO_NOTHING]
-        enemiesLoc = (state[STATE_START_ENEMY_MAT:STATE_END_ENEMY_MAT] > 0).nonzero()
+        valid = [BaseAttackActions.DO_NOTHING]
+        valid = [BaseAttackActions.DO_NOTHING]
+        enemiesLoc = (state[BaseAttackState.START_ENEMY_MAT:BaseAttackState.END_ENEMY_MAT] > 0).nonzero()
         for loc in enemiesLoc[0]:
-            valid.append(loc + ACTIONS_START_IDX_ATTACK)
+            valid.append(loc + BaseAttackActions.START_IDX_ATTACK)
 
         return valid
 
     def PrintState(self):
-        print("\n\nstate: timeline =", self.current_scaled_state[STATE_TIME_LINE_IDX], "last attack action =", self.lastValidAttackAction)
+        print("\n\nstate: timeline =", self.current_scaled_state[BaseAttackState.TIME_LINE_IDX], "last attack action =", self.lastValidAttackAction)
         for y in range(GRID_SIZE):
             for x in range(GRID_SIZE):
-                idx = STATE_START_SELF_MAT + x + y * GRID_SIZE
+                idx = BaseAttackState.START_SELF_MAT + x + y * GRID_SIZE
                 print(int(self.current_scaled_state[idx]), end = '')
             
             print(end = '  |  ')
             
             for x in range(GRID_SIZE):
-                idx = STATE_START_ENEMY_MAT + x + y * GRID_SIZE
+                idx = BaseAttackState.START_ENEMY_MAT + x + y * GRID_SIZE
                 print(int(self.current_scaled_state[idx]), end = '')
 
             print('||')

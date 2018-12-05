@@ -40,7 +40,7 @@ class Calibration:
     def Cycle(self, go2NextWOFitness=False):
         populationExist, fitnessExist = self.LoadPopulation()
         
-        if not go2NextWOFitness and not fitnessExist:
+        if populationExist and not go2NextWOFitness and not fitnessExist:
             return
 
         if populationExist:
@@ -123,7 +123,7 @@ def SetPopulationTrained(directory):
 def GetPopulationDict(directory):
     populationFName = directory + "/" + CURRENT_POPULATION_FILE_NAME
     if not os.path.isfile(populationFName):
-        return 0
+        return {}, 0
 
     populationDict = eval(open(populationFName, "r+").read())        
     return populationDict, populationDict["numGeneration"]
@@ -139,7 +139,7 @@ def GeneticProgrammingGeneration(populationSize, numInstances, configDict, runTy
     calib.Cycle(go2NextWOFitness=False)
 
 
-def ReadGPFitness(configDict, runType): 
+def ReadGPFitness(configDict, agentName, runType): 
     populationFName = configDict["directory"] + "/" + CURRENT_POPULATION_FILE_NAME
     populationList = eval(open(populationFName, "r+").read()) 
 
@@ -148,8 +148,7 @@ def ReadGPFitness(configDict, runType):
     for member in populationList["population"]:
         results = []
         for idx in member[0]:
-            # hard coded todo: do it better
-            path = configDict["directory"] + "/ArmyAttack/" + runType["directory"]
+            path = configDict["directory"] + "/" + agentName + "/" + runType["directory"]
             r = AvgResults(path, runType["results"], idx)
             GoToNextResultFile(path, runType["results"], idx, populationList["numGeneration"])
             if r != None:
@@ -187,7 +186,7 @@ def ReadGPFitness(configDict, runType):
 
 
 
-def TrainSingleGP(configDict, runType, dmInitFunc, dirCopyIdx):
+def TrainSingleGP(configDict, agentName, runType, dirCopyIdx):
     paramsDict = configDict["hyperParams"]
     
     if "hundredsTrainEpisodes" in paramsDict:
@@ -195,14 +194,18 @@ def TrainSingleGP(configDict, runType, dmInitFunc, dirCopyIdx):
     else:
         numTrainEpisodes = 5000
 
-    transitions = ReadAllHistFile(configDict, runType, numTrainEpisodes)
+    transitions = ReadAllHistFile(configDict, agentName, runType, numTrainEpisodes)
     if transitions == {}:
         print("empty history return")
         return
     else:
         print("hist size read = ", np.sum(transitions["terminal"]), "num supposed to load =", numTrainEpisodes)
-
-    decisionMaker, _ = dmInitFunc(configDict, isMultiThreaded=False, dmCopy=dirCopyIdx)
+    
+    # todo: read state size and num actions properly
+    from agent_army_attack import STATE_SIZE
+    from agent_army_attack import NUM_ACTIONS
+    from algo_decisionMaker import CreateDecisionMaker
+    decisionMaker, _ = CreateDecisionMaker(agentName=agentName, configDict=configDict, stateSize=STATE_SIZE, numActions=NUM_ACTIONS, isMultiThreaded=False, dmCopy=dirCopyIdx)
 
     with tf.Session() as sess:
         decisionMaker.InitModel(sess, resetModel=True)  
@@ -243,19 +246,18 @@ def TrainSingleGP(configDict, runType, dmInitFunc, dirCopyIdx):
         decisionMaker.decisionMaker.Save()
 
 
-def ReadAllHistFile(configDict, runType, numEpisodesLoad):
+def ReadAllHistFile(configDict, agentName, runType, numEpisodesLoad):
     maxHistFile = 200
     allTransitions = {}
-    
-    # hard coded todo: fix it
-    
-    path = "./" + configDict["directory"] + "/ArmyAttack/" + runType["directory"]
+        
+    path = "./" + configDict["directory"] + "/" + agentName + "/" + runType["directory"]
     
     currNumEpisodes = 0
     idxHistFile = 0
     
     while numEpisodesLoad > currNumEpisodes and idxHistFile < maxHistFile:
         currFName = path + "_" + str(idxHistFile) + "/" + runType["history"] 
+
         if os.path.isfile(currFName + ".gz"):
             transitions = GetHistoryFromFile(currFName)
             if transitions != None:
@@ -285,17 +287,18 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
     from utils_plot import plotImg
+    from agentRunTypes import GetRunType
 
-    flags.DEFINE_string("directoryName", "", "directory names to take results")
+    flags.DEFINE_string("directoryName", "none", "directory names to take results")
+    flags.DEFINE_string("agentName", "none", "directory names to take results")
     flags.FLAGS(sys.argv)
 
     if "results" in sys.argv:
         configDict = eval(open("./" + flags.FLAGS.directoryName + "/config.txt", "r+").read())
         configDict["directory"] = flags.FLAGS.directoryName
+        agentName = flags.FLAGS.agentName
 
-        from agent_army_attack import GetRunTypeArmyAttack
-        ReadGPFitness(configDict, GetRunTypeArmyAttack(configDict))
-
+        runType = GetRunType(agentName, configDict)
 
         popHistoryFname = "./" + flags.FLAGS.directoryName + "/" + HISTORY_POPULATION_FILE_NAME
         populationHistory = eval(open(popHistoryFname, "r+").read())
@@ -307,13 +310,17 @@ if __name__ == "__main__":
 
         paramsAll = [[], []]
         fitnessAll = []
+        stdSinglePopulation = []
 
         generationPopulation = []
         genNum = len(populationHistory)
 
+        numTopPopulation = 10
+        avgFitnessGenTopPopulation = []
+        
         avgFitnessGen = []
-        avgFitnessGenTop3 = []
         avgFitnessGenBest = []
+
         for gen in range(0, genNum):
             genDict = populationHistory[gen]
             population = genDict["population"]
@@ -322,23 +329,50 @@ if __name__ == "__main__":
             avgFitnessGen.append(np.average(fitness))
             avgFitnessGenBest.append(np.max(fitness))
 
+            topPopulation = fitness[fitness.argsort()[-numTopPopulation:][::-1]]
+            avgFitnessGenTopPopulation.append(np.average(topPopulation))
+
             for i in range(len(fitness)):
                 paramsAll[0].append(population[i][1][0])
                 paramsAll[1].append(population[i][1][1])
                 fitnessAll.append(fitness[i])
 
+            # load fitness from results file
+            for i in range(len(population)):
+                currFitnessDetailed  = []
+                popInstances = population[i][0]
+                for ins in popInstances:
+                    path = "./" + configDict["directory"] + "/" + agentName + "/" +  runType["directory"]
+                    r = AvgResults(path, runType["results"] + "_" + str(gen), ins)
+                    if r != None:
+                        currFitnessDetailed.append(r)
+                
+                stdSinglePopulation.append(np.std(currFitnessDetailed))
+
+
+
         figVals = plt.figure(figsize=(19.0, 11.0))
         plt.suptitle("genetic programming results" )
 
-        ax = figVals.add_subplot(2, 1, 1)
+        ax = figVals.add_subplot(2, 2, 1)
         ax.plot(np.arange(genNum), avgFitnessGen)
+        ax.plot(np.arange(genNum), avgFitnessGenBest)
+        ax.plot(np.arange(genNum), avgFitnessGenTopPopulation)
+
+        ax.legend(["average population", "best", "top " + str(numTopPopulation)])
         ax.set_xlabel("generation num")
         ax.set_ylabel("fitness")
         ax.set_title("fitness results")
 
-        ax = figVals.add_subplot(2, 1, 2)
-
-        img = plotImg(ax, paramsAll[0], paramsAll[1], fitnessAll, params[0], params[1], "fitness value", binY=1000, binX=0.5)
+        ax = figVals.add_subplot(2, 2, 2)
+        img = plotImg(ax, paramsAll[0], paramsAll[1], fitnessAll, params[0], params[1], "fitness value", binY=5, binX=1)
         figVals.colorbar(img, shrink=0.4, aspect=5)
+
+
+        ax = figVals.add_subplot(2, 2, 3)
+        ax.hist(stdSinglePopulation, bins=30)
+        ax.set_title("histogram of std of single individual of population")
+        ax.set_xlabel("std")
+
         plt.show()
 

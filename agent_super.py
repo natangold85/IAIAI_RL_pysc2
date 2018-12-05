@@ -19,17 +19,11 @@ from utils import TerranUnit
 from utils import SC2_Params
 from utils import SC2_Actions
 
-from algo_decisionMaker import BaseDecisionMaker
-from algo_decisionMaker import DecisionMakerExperienceReplay
-
-from algo_qtable import QTableParamsExplorationDecay
-from algo_dqn import DQN_PARAMS
-from algo_a2c import A2C_PARAMS
+from algo_decisionMaker import CreateDecisionMaker
 
 from utils_results import PlotResults
 
 # sub agents
-
 from agent_do_nothing import DoNothingSubAgent
 from agent_base_mngr import BaseMngr
 from agent_scout import ScoutAgent
@@ -49,13 +43,12 @@ from utils import FindMiddle
 from utils import Scale2MiniMap
 from utils import GetScreenCorners
 
-AGENT_DIR = "SuperAgent/"
-
-AGENT_NAME = "super"
+AGENT_NAME = "super_agent"
 
 NUM_TRIALS_2_LEARN = 20
 
 STEP_DURATION = 0
+
 
 SUB_AGENT_ID_DONOTHING = 0
 SUB_AGENT_ID_BASE = 1
@@ -69,25 +62,9 @@ SUBAGENTS_NAMES[SUB_AGENT_ID_BASE] = "BaseMngr"
 SUBAGENTS_NAMES[SUB_AGENT_ID_SCOUT] = "ScoutAgent"
 SUBAGENTS_NAMES[SUB_AGENT_ID_ATTACK] = "AttackAgent"
 
-# possible types of play
-
-QTABLE = 'q'
-DQN = 'dqn'
-DQN_2L = "dqn_2l"
-A2C = "A2C"
-
-USER_PLAY = 'play'
-
-# data for run type
-TYPE = "type"
-DECISION_MAKER_NAME = "dm_name"
-HISTORY = "history"
-RESULTS = "results"
-PARAMS = 'params'
-DIRECTORY = 'directory'
 
 # state details
-class STATE:
+class SUPER_STATE:
 
     BASE = BASE_STATE()
 
@@ -118,14 +95,15 @@ class STATE:
     VAL_IS_SCOUTED = 8
 
 
-class ACTIONS:
+class SUPER_ACTIONS:
     
     ACTION_DO_NOTHING = 0
     ACTION_DEVELOP_BASE = 1
     ACTION_SCOUT_START = 2
-    ACTION_SCOUT_END = ACTION_SCOUT_START + STATE.GRID_SIZE * STATE.GRID_SIZE
+    ACTION_SCOUT_END = ACTION_SCOUT_START + SUPER_STATE.GRID_SIZE * SUPER_STATE.GRID_SIZE
     ACTION_ATTACK_START = ACTION_SCOUT_END
-    ACTION_ATTACK_END = ACTION_ATTACK_START + STATE.GRID_SIZE * STATE.GRID_SIZE
+    ACTION_ATTACK_END = ACTION_ATTACK_START + SUPER_STATE.GRID_SIZE * SUPER_STATE.GRID_SIZE
+    
     SIZE = ACTION_ATTACK_END
 
     ACTIONS2SUB_AGENTSID = {}
@@ -148,52 +126,6 @@ class ACTIONS:
         ACTION2STR[a] = "Attack_" + str(a - ACTION_ATTACK_START)
 
 
-# Define the neural network
-def dqn_2layers(inputLayer, numActions, scope):
-    with tf.variable_scope(scope):
-        fc1 = tf.contrib.layers.fully_connected(inputLayer, 512)
-        fc2 = tf.contrib.layers.fully_connected(fc1, 512)
-        output = tf.contrib.layers.fully_connected(fc2, numActions, activation_fn = tf.nn.sigmoid) * 2 - 1
-        
-    return output
-# table names
-RUN_TYPES = {}
-
-RUN_TYPES[QTABLE] = {}
-RUN_TYPES[QTABLE][TYPE] = "QLearningTable"
-RUN_TYPES[QTABLE][PARAMS] = QTableParamsExplorationDecay(STATE.SIZE, ACTIONS.SIZE, numTrials2Learn=NUM_TRIALS_2_LEARN)
-RUN_TYPES[QTABLE][DIRECTORY] = "superAgent_qtable"
-RUN_TYPES[QTABLE][DECISION_MAKER_NAME] = "qtable"
-RUN_TYPES[QTABLE][HISTORY] = "replayHistory"
-RUN_TYPES[QTABLE][RESULTS] = "result"
-
-RUN_TYPES[DQN] = {}
-RUN_TYPES[DQN][TYPE] = "DQN_WithTarget"
-RUN_TYPES[DQN][PARAMS] = DQN_PARAMS(STATE.SIZE, ACTIONS.SIZE, numTrials2Learn=NUM_TRIALS_2_LEARN)
-RUN_TYPES[DQN][DECISION_MAKER_NAME] = "superAgent_dqn"
-RUN_TYPES[DQN][DIRECTORY] = "superAgent_dqn"
-RUN_TYPES[DQN][HISTORY] = "replayHistory"
-RUN_TYPES[DQN][RESULTS] = "result"
-
-RUN_TYPES[DQN_2L] = {}
-RUN_TYPES[DQN_2L][TYPE] = "DQN_WithTarget"
-RUN_TYPES[DQN_2L][PARAMS] = DQN_PARAMS(STATE.SIZE, ACTIONS.SIZE, layersNum=2, numTrials2Learn=NUM_TRIALS_2_LEARN)
-RUN_TYPES[DQN_2L][DIRECTORY] = "superAgent_dqn2l"
-RUN_TYPES[DQN_2L][DECISION_MAKER_NAME] = "superAgent_dqn2l"
-RUN_TYPES[DQN_2L][HISTORY] = "replayHistory"
-RUN_TYPES[DQN_2L][RESULTS] = "result"
-
-RUN_TYPES[A2C] = {}
-RUN_TYPES[A2C][TYPE] = "A2C"
-RUN_TYPES[A2C][PARAMS] = A2C_PARAMS(STATE.SIZE, ACTIONS.SIZE, numTrials2Learn=NUM_TRIALS_2_LEARN)
-RUN_TYPES[A2C][DECISION_MAKER_NAME] = "superAgent_A2C"
-RUN_TYPES[A2C][DIRECTORY] = "superAgent_A2C"
-RUN_TYPES[A2C][HISTORY] = "superAgent_replayHistory"
-RUN_TYPES[A2C][RESULTS] = "superAgent_result"
-
-RUN_TYPES[USER_PLAY] = {}
-RUN_TYPES[USER_PLAY][TYPE] = "play"
-
 UNIT_VALUE_TABLE_NAME = 'unit_value_table.gz'
 
 class SharedDataSuper(SharedDataBase, SharedDataAttack, SharedDataScout, SharedDataDoNothing):
@@ -210,7 +142,7 @@ BATTLE_TYPES = set(["battle_mngr", "attack_army", "attack_base"])
 
 class SuperAgent(BaseAgent):
     def __init__(self, configDict, useMapRewards=True, decisionMaker=None, isMultiThreaded=False, playList=[], trainList=[], testList=[], dmCopy=None):
-        super(SuperAgent, self).__init__(STATE.SIZE)
+        super(SuperAgent, self).__init__(SUPER_STATE.SIZE)
 
         self.sharedData = SharedDataSuper()
 
@@ -229,7 +161,7 @@ class SuperAgent(BaseAgent):
         if decisionMaker != None:
             self.decisionMaker = decisionMaker
         else:
-            self.decisionMaker = self.CreateDecisionMaker(configDict, isMultiThreaded, dmCopy=dmCopy)
+            self.decisionMaker, _ = CreateDecisionMaker(agentName=AGENT_NAME, configDict=configDict, isMultiThreaded=isMultiThreaded, dmCopy=dmCopy)
 
         self.history = self.decisionMaker.AddHistory()
         
@@ -263,24 +195,6 @@ class SuperAgent(BaseAgent):
 
         self.move_number = 0
         self.discountForLocalReward = 0.999
-
-    def CreateDecisionMaker(self, configDict, isMultiThreaded, dmCopy=None):
-        dmCopy = "" if dmCopy==None else "_" + str(dmCopy)
-
-        if configDict[AGENT_NAME] == "none":
-            return BaseDecisionMaker(AGENT_NAME)
-
-        runType = RUN_TYPES[configDict[AGENT_NAME]]
-
-        # create agent dir
-        directory = configDict["directory"] + "/" + AGENT_DIR
-        if not os.path.isdir("./" + directory):
-            os.makedirs("./" + directory)
-
-        decisionMaker = DecisionMakerExperienceReplay(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,
-                                            resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY] + dmCopy, isMultiThreaded=isMultiThreaded)
-
-        return decisionMaker
 
     def GetAgentByName(self, name):
         if AGENT_NAME == name:
@@ -361,15 +275,15 @@ class SuperAgent(BaseAgent):
             self.sharedData.buildingCompleted[Terran.CommandCenter].append(Building(middleCC))
 
         self.sharedData.unitTrainValue = self.unitPower
-        self.sharedData.currBaseState = np.zeros(STATE.BASE_END - STATE.BASE_START, dtype=np.int32, order='C')
+        self.sharedData.currBaseState = np.zeros(SUPER_STATE.BASE_END - SUPER_STATE.BASE_START, dtype=np.int32, order='C')
 
         # actions:
         self.current_action = None
 
         # states:
-        self.current_state = np.zeros(STATE.SIZE, dtype=np.int32, order='C')
-        self.previous_scaled_state = np.zeros(STATE.SIZE, dtype=np.int32, order='C')
-        self.current_scaled_state = np.zeros(STATE.SIZE, dtype=np.int32, order='C')
+        self.current_state = np.zeros(SUPER_STATE.SIZE, dtype=np.int32, order='C')
+        self.previous_scaled_state = np.zeros(SUPER_STATE.SIZE, dtype=np.int32, order='C')
+        self.current_scaled_state = np.zeros(SUPER_STATE.SIZE, dtype=np.int32, order='C')
 
         self.accumulatedTrainReward = 0.0
 
@@ -424,14 +338,14 @@ class SuperAgent(BaseAgent):
                 # todo: create valid actions for agent
                 validActions = self.ValidActions(self.current_scaled_state)
             else: 
-                validActions = list(range(ACTIONS.SIZE))
+                validActions = list(range(SUPER_ACTIONS.SIZE))
  
             targetValues = False if self.trainAgent else True
             return self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues)
 
         else:
             if self.subAgentPlay == SUB_AGENT_ID_ATTACK:
-                action = ACTIONS.ACTION_ATTACK_START
+                action = SUPER_ACTIONS.ACTION_ATTACK_START
             else:
                 action = self.subAgentPlay
 
@@ -440,14 +354,14 @@ class SuperAgent(BaseAgent):
     
     def ValidActions(self, state):
         
-        valid = [ACTIONS.ACTION_DO_NOTHING, ACTIONS.ACTION_DEVELOP_BASE]
+        valid = [SUPER_ACTIONS.ACTION_DO_NOTHING, SUPER_ACTIONS.ACTION_DEVELOP_BASE]
 
-        if state[STATE.BASE.ARMY_POWER] > 0:
-            for i in range(STATE.GRID_SIZE * STATE.GRID_SIZE):
-                if state[STATE.FOG_MAT_START + i] < STATE.VAL_IS_SCOUTED:
-                    valid.append(ACTIONS.ACTION_SCOUT_START + i)
-                if state[STATE.ENEMY_ARMY_MAT_START + i] > 0:
-                    valid.append(ACTIONS.ACTION_ATTACK_START + i)
+        if state[SUPER_STATE.BASE.ARMY_POWER] > 0:
+            for i in range(SUPER_STATE.GRID_SIZE * SUPER_STATE.GRID_SIZE):
+                if state[SUPER_STATE.FOG_MAT_START + i] < SUPER_STATE.VAL_IS_SCOUTED:
+                    valid.append(SUPER_ACTIONS.ACTION_SCOUT_START + i)
+                if state[SUPER_STATE.ENEMY_ARMY_MAT_START + i] > 0:
+                    valid.append(SUPER_ACTIONS.ACTION_ATTACK_START + i)
 
         return valid
 
@@ -491,34 +405,34 @@ class SuperAgent(BaseAgent):
         
         if self.playAgent:
             self.maxSupply = (obs.observation['player'][SC2_Params.SUPPLY_USED] == obs.observation['player'][SC2_Params.SUPPLY_CAP])
-            for si in range(STATE.BASE_START, STATE.BASE_END):
+            for si in range(SUPER_STATE.BASE_START, SUPER_STATE.BASE_END):
                 self.current_state[si] = self.sharedData.currBaseState[si]
 
-            for y in range(STATE.GRID_SIZE):
-                for x in range(STATE.GRID_SIZE):
-                    idx = x + y * STATE.GRID_SIZE
+            for y in range(SUPER_STATE.GRID_SIZE):
+                for x in range(SUPER_STATE.GRID_SIZE):
+                    idx = x + y * SUPER_STATE.GRID_SIZE
                 
-                    self.current_state[idx + STATE.ENEMY_ARMY_MAT_START] = self.sharedData.enemyMatObservation[y, x]
-                    self.current_state[idx + STATE.FOG_MAT_START] = int( self.sharedData.fogRatioMat[y, x] * STATE.MAX_SCOUT_VAL)
-                    self.current_state[idx + STATE.FOG_COUNTER_MAT_START] = self.sharedData.fogCounterMat[y, x]
+                    self.current_state[idx + SUPER_STATE.ENEMY_ARMY_MAT_START] = self.sharedData.enemyMatObservation[y, x]
+                    self.current_state[idx + SUPER_STATE.FOG_MAT_START] = int( self.sharedData.fogRatioMat[y, x] * SUPER_STATE.MAX_SCOUT_VAL)
+                    self.current_state[idx + SUPER_STATE.FOG_COUNTER_MAT_START] = self.sharedData.fogCounterMat[y, x]
 
-            self.current_state[STATE.TIME_LINE_IDX] = self.sharedData.numStep    
+            self.current_state[SUPER_STATE.TIME_LINE_IDX] = self.sharedData.numStep    
         
             self.ScaleCurrState()
 
     def AdjustAction2SubAgents(self):
-        subAgentIdx = ACTIONS.ACTIONS2SUB_AGENTSID[self.current_action]
+        subAgentIdx = SUPER_ACTIONS.ACTIONS2SUB_AGENTSID[self.current_action]
     
         if subAgentIdx == SUB_AGENT_ID_SCOUT:
-            self.subAgentsActions[subAgentIdx] = self.current_action - ACTIONS.ACTION_SCOUT_START
+            self.subAgentsActions[subAgentIdx] = self.current_action - SUPER_ACTIONS.ACTION_SCOUT_START
         elif subAgentIdx == SUB_AGENT_ID_ATTACK:            
-            self.subAgentsActions[subAgentIdx] = self.current_action - ACTIONS.ACTION_ATTACK_START
+            self.subAgentsActions[subAgentIdx] = self.current_action - SUPER_ACTIONS.ACTION_ATTACK_START
 
         return subAgentIdx, self.subAgentsActions[subAgentIdx]
 
     def GetAction2Act(self, subAgentIdx, subAgentAction):  
         if SUB_AGENT_ID_DONOTHING in self.activeSubAgents and self.subAgents[subAgentIdx].IsDoNothingAction(subAgentAction):
-            subAgentIdx = ACTIONS.ACTION_DO_NOTHING
+            subAgentIdx = SUPER_ACTIONS.ACTION_DO_NOTHING
             subAgentAction = self.subAgentsActions[subAgentIdx]
 
         return subAgentIdx, subAgentAction
@@ -548,8 +462,8 @@ class SuperAgent(BaseAgent):
         self.current_scaled_state[:] = self.current_state[:]
 
     def PrintState(self):
-        print ("supply depot buildings =" , self.current_state[STATE.BASE.SUPPLY_DEPOT_IDX], "in progress =", self.current_state[STATE.BASE.IN_PROGRESS_SUPPLY_DEPOT_IDX])
-        print ("barracks buildings =" , self.current_state[STATE.BASE.BARRACKS_IDX], "in progress =", self.current_state[STATE.BASE.IN_PROGRESS_BARRACKS_IDX])
+        print ("supply depot buildings =" , self.current_state[SUPER_STATE.BASE.SUPPLY_DEPOT_IDX], "in progress =", self.current_state[SUPER_STATE.BASE.IN_PROGRESS_SUPPLY_DEPOT_IDX])
+        print ("barracks buildings =" , self.current_state[SUPER_STATE.BASE.BARRACKS_IDX], "in progress =", self.current_state[SUPER_STATE.BASE.IN_PROGRESS_BARRACKS_IDX])
         # print("barracks: min =",  self.current_state[STATE.BASE.QUEUE_BARRACKS], end = '')
         # barList = self.sharedData.buildingCompleted[Terran.Barracks] 
         # idx = 0
@@ -624,4 +538,4 @@ if __name__ == "__main__":
     grouping = int(flags.FLAGS.grouping)
 
     if "results" in sys.argv:
-        PlotResults(AGENT_NAME, AGENT_DIR, RUN_TYPES, runDirectoryNames=directoryNames, grouping=grouping)  
+        PlotResults(AGENT_NAME, runDirectoryNames=directoryNames, grouping=grouping)  

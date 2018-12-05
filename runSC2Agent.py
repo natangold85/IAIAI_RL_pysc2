@@ -33,9 +33,7 @@ from paramsCalibration import TrainSingleGP
 from paramsCalibration import GetPopulationDict
 from paramsCalibration import SetPopulationTrained
 
-# agent possible to run calibration
-from agent_army_attack import CreateDecisionMakerArmyAttack
-from agent_army_attack import GetRunTypeArmyAttack
+from agentRunTypes import GetRunType
 
 RUN = True
 
@@ -273,6 +271,7 @@ def run_gp_threads(populationSize, numInstances, gpActArg):
         if len(runningThreads) < numThreadsRunning and len(threadsB4Run) > 0:
             t = threadsB4Run.pop()
             t.start()
+
             runningThreads.append(t)
 
         for t in runningThreads:
@@ -299,20 +298,18 @@ def gp_train():
 
     trainAgent = flags.FLAGS.testAgent
 
-    # todo : add other agents train except army_attack
-    if trainAgent == "army_attack":
-        runType = GetRunTypeArmyAttack(configDict)
+    runType = GetRunType(trainAgent, configDict)
 
     populationDict, currGeneration = GetPopulationDict(configDict["directory"])
     
     while currGeneration != numGenerations:
 
         # advance to next generation (in case current population has fitness)
-        if "fitness" in populationDict:
+        if "fitness" in populationDict or currGeneration == 0:
             print("\n\n\ncreate population generation #", currGeneration, "\n\n\n")
             GeneticProgrammingGeneration(populationSize, numPopulationInstances, configDict, runType)
             populationDict, currGeneration = GetPopulationDict(configDict["directory"])
-
+        
         # train generation (if not trained)
         if "trained" not in populationDict:
             print("\n\n\ntrain population generation #", currGeneration, "\n\n\n")
@@ -324,7 +321,7 @@ def gp_train():
             print("\n\n\ntest population generation #", currGeneration, "\n\n\n")
             run_gp_threads(populationSize, numPopulationInstances, "testSingle")
             # calculate generation fitness
-            ReadGPFitness(configDict, runType)
+            ReadGPFitness(configDict, trainAgent, runType)
             populationDict, currGeneration = GetPopulationDict(configDict["directory"])
 
 
@@ -357,13 +354,11 @@ def gp_train_single():
     configDict["hyperParams"] = paramDict
     
     trainAgent = flags.FLAGS.testAgent
-    if trainAgent == "army_attack":
-        dmInitFunc = CreateDecisionMakerArmyAttack
-        runType = GetRunTypeArmyAttack(configDict)
-
+    
     threading.current_thread().setName("TrainSingle_" + str(populationIdx) + "_" + str(instance2Train))
 
-    TrainSingleGP(configDict, runType, dmInitFunc, dirsCopy2Run)
+    runType = GetRunType(trainAgent, configDict)
+    TrainSingleGP(configDict, trainAgent, runType, dirsCopy2Run)
 
 def gp_test_single(): 
     populationIdx = int(flags.FLAGS.populationIdx)

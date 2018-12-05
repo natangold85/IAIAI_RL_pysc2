@@ -28,10 +28,8 @@ from utils import SC2_Params
 from utils import SC2_Actions
 
 #decision makers
-from algo_decisionMaker import DecisionMakerExperienceReplay
-from algo_decisionMaker import UserPlay
-from algo_decisionMaker import BaseDecisionMaker
-
+from algo_decisionMaker import CreateDecisionMaker
+from algo_decisionMaker import BaseNaiveDecisionMaker
 
 from utils_results import ResultFile
 from utils_results import PlotResults
@@ -49,40 +47,17 @@ from utils import CenterPoints
 STEP_DURATION = 0
 
 # possible types of play
-AGENT_DIR = "BattleMngr/"
 AGENT_NAME = "battle_mngr"
-
-QTABLE = 'q'
-DQN = 'dqn'
-DQN_EMBEDDING_LOCATIONS = 'dqn_Embedding' 
-NAIVE_DECISION = 'naive'
-
-USER_PLAY = 'play'
-
-ALL_TYPES = set([USER_PLAY, QTABLE, DQN, DQN_EMBEDDING_LOCATIONS, NAIVE_DECISION])
 
 GRID_SIZE = 5
 
-ACTION_DO_NOTHING = 0
-ACTION_ARMY_BATTLE = 1
-ACTION_BASE_BATTLE = 2
-NUM_ACTIONS = 3
+class BattleMngrActions:
+    DO_NOTHING = 0
+    ARMY_BATTLE = 1
+    BASE_BATTLE = 2
+    SIZE = 3
 
-SUB_AGENT_ARMY_BATTLE = ACTION_ARMY_BATTLE
-SUB_AGENT_BASE_BATTLE = ACTION_BASE_BATTLE
-ALL_SUB_AGENTS = [SUB_AGENT_ARMY_BATTLE, SUB_AGENT_BASE_BATTLE]
-
-SUBAGENTS_NAMES = {}
-SUBAGENTS_NAMES[SUB_AGENT_ARMY_BATTLE] = "ArmyAttack"
-SUBAGENTS_NAMES[SUB_AGENT_BASE_BATTLE] = "BaseAttack"
-
-
-ACTION2STR = {}
-ACTION2STR[ACTION_DO_NOTHING] = "Do_Nothing"
-ACTION2STR[ACTION_ARMY_BATTLE] = "Army_Battle"
-ACTION2STR[ACTION_BASE_BATTLE] = "Base_Battle"
-
-class STATE:
+class BattleMngrState:
     START_SELF_MAT = 0
     END_SELF_MAT = GRID_SIZE * GRID_SIZE
     
@@ -96,45 +71,20 @@ class STATE:
 
     SIZE = TIME_LINE_IDX + 1
 
-    TIME_LINE_BUCKETING = 25
+
+SUB_AGENT_ARMY_BATTLE = BattleMngrActions.ARMY_BATTLE
+SUB_AGENT_BASE_BATTLE = BattleMngrActions.BASE_BATTLE
+ALL_SUB_AGENTS = [SUB_AGENT_ARMY_BATTLE, SUB_AGENT_BASE_BATTLE]
+
+SUBAGENTS_NAMES = {}
+SUBAGENTS_NAMES[SUB_AGENT_ARMY_BATTLE] = "ArmyAttack"
+SUBAGENTS_NAMES[SUB_AGENT_BASE_BATTLE] = "BaseAttack"
 
 
-# data for run type
-TYPE = "type"
-DECISION_MAKER_NAME = "dm_name"
-HISTORY = "history"
-RESULTS = "results"
-PARAMS = 'params'
-DIRECTORY = 'directory'
-
-# table names
-RUN_TYPES = {}
-
-
-RUN_TYPES[QTABLE] = {}
-RUN_TYPES[QTABLE][TYPE] = "QLearningTable"
-RUN_TYPES[QTABLE][DIRECTORY] = "battleMngr_qtable"
-RUN_TYPES[QTABLE][PARAMS] = QTableParamsExplorationDecay(STATE.SIZE, NUM_ACTIONS)
-RUN_TYPES[QTABLE][DECISION_MAKER_NAME] = "battleMngr_q_qtable"
-RUN_TYPES[QTABLE][HISTORY] = "battleMngr_q_replayHistory"
-RUN_TYPES[QTABLE][RESULTS] = "battleMngr_q_result"
-
-RUN_TYPES[DQN] = {}
-RUN_TYPES[DQN][TYPE] = "DQN_WithTarget"
-RUN_TYPES[DQN][DIRECTORY] = "battleMngr_dqn"
-RUN_TYPES[DQN][PARAMS] = DQN_PARAMS(STATE.SIZE, NUM_ACTIONS)
-RUN_TYPES[DQN][DECISION_MAKER_NAME] = "battleMngr_dqn_DQN"
-RUN_TYPES[DQN][HISTORY] = "battleMngr_dqn_replayHistory"
-RUN_TYPES[DQN][RESULTS] = "battleMngr_dqn_result"
-
-RUN_TYPES[DQN_EMBEDDING_LOCATIONS] = {}
-RUN_TYPES[DQN_EMBEDDING_LOCATIONS][TYPE] = "DQN_WithTarget"
-RUN_TYPES[DQN][DIRECTORY] = "battleMngr_dqn_Embedding"
-RUN_TYPES[DQN_EMBEDDING_LOCATIONS][PARAMS] = DQN_EMBEDDING_PARAMS(STATE.SIZE, STATE.END_ENEMY_BUILDING_MAT, NUM_ACTIONS)
-RUN_TYPES[DQN_EMBEDDING_LOCATIONS][DECISION_MAKER_NAME] = "battleMngr_dqn_Embedding_DQN"
-RUN_TYPES[DQN_EMBEDDING_LOCATIONS][HISTORY] = "battleMngr_dqn_Embedding_replayHistory"
-RUN_TYPES[DQN_EMBEDDING_LOCATIONS][RESULTS] = "battleMngr_dqn_Embedding_result"
-
+ACTION2STR = {}
+ACTION2STR[BattleMngrActions.DO_NOTHING] = "Do_Nothing"
+ACTION2STR[BattleMngrActions.ARMY_BATTLE] = "Army_Battle"
+ACTION2STR[BattleMngrActions.BASE_BATTLE] = "Base_Battle"
 
 
 class SharedDataBattle(SharedDataArmyAttack, SharedDataBaseAttack):
@@ -142,9 +92,10 @@ class SharedDataBattle(SharedDataArmyAttack, SharedDataBaseAttack):
         super(SharedDataBattle, self).__init__()
 
 
-class NaiveDecisionMakerBattleMngr(BaseDecisionMaker):
-    def __init__(self):
-        super(NaiveDecisionMakerBattleMngr, self).__init__(AGENT_NAME)        
+class NaiveDecisionMakerBattleMngr(BaseNaiveDecisionMaker):
+    def __init__(self, numTrials2Save=None, agentName="", resultFName=None, directory=None):
+        super(NaiveDecisionMakerBattleMngr, self).__init__(numTrials2Save, agentName=agentName, resultFName=resultFName, directory=directory)
+
         self.startEnemyMat = GRID_SIZE * GRID_SIZE
         self.startBuildingMat = 2 * GRID_SIZE * GRID_SIZE
         self.endBuildingMat = 3 * GRID_SIZE * GRID_SIZE
@@ -153,13 +104,13 @@ class NaiveDecisionMakerBattleMngr(BaseDecisionMaker):
 
     def choose_action(self, state, validActions, targetValues=False):
         if (state[self.startEnemyMat:self.startBuildingMat] > 0).any():
-            action = ACTION_ARMY_BATTLE
+            action = BattleMngrActions.ARMY_BATTLE
         elif (state[self.startBuildingMat:self.endBuildingMat] > 0).any():
-            action = ACTION_BASE_BATTLE
+            action = BattleMngrActions.BASE_BATTLE
         else:
-            action = ACTION_DO_NOTHING
+            action = BattleMngrActions.DO_NOTHING
 
-        return action if action in validActions else ACTION_DO_NOTHING
+        return action if action in validActions else BattleMngrActions.DO_NOTHING
 
     def ActionsValues(self, state, validActions, target = True):
         vals = np.zeros(self.numActions,dtype = float)
@@ -171,7 +122,7 @@ class NaiveDecisionMakerBattleMngr(BaseDecisionMaker):
 
 class BattleMngr(BaseAgent):
     def __init__(self, sharedData, configDict, decisionMaker, isMultiThreaded, playList, trainList, testList, dmCopy=None):        
-        super(BattleMngr, self).__init__(STATE.SIZE)
+        super(BattleMngr, self).__init__(BattleMngrState.SIZE)
         self.playAgent = (AGENT_NAME in playList) | ("inherit" in playList)
         if self.playAgent:
             saPlayList = ["inherit"]
@@ -186,7 +137,8 @@ class BattleMngr(BaseAgent):
         if decisionMaker != None:
             self.decisionMaker = decisionMaker
         else:
-            self.decisionMaker = self.CreateDecisionMaker(configDict, isMultiThreaded)
+            self.decisionMaker, _ = CreateDecisionMaker(agentName=AGENT_NAME, configDict=configDict, 
+                            isMultiThreaded=isMultiThreaded, dmCopy=dmCopy, heuristicClass=NaiveDecisionMakerBattleMngr)
 
         self.history = self.decisionMaker.AddHistory()
 
@@ -220,27 +172,6 @@ class BattleMngr(BaseAgent):
 
         self.terminalState = np.zeros(self.state_size, dtype=np.int, order='C')
     
-
-    def CreateDecisionMaker(self, configDict, isMultiThreaded, dmCopy=None):
-        dmCopy = "" if dmCopy==None else "_" + str(dmCopy)
-
-        if configDict[AGENT_NAME] == "none":
-            return BaseDecisionMaker(AGENT_NAME)
-
-        if configDict[AGENT_NAME] == "naive":
-            decisionMaker = NaiveDecisionMakerBattleMngr()
-        else:
-            runType = RUN_TYPES[configDict[AGENT_NAME]]
-
-            # create agent dir
-            directory = configDict["directory"] + "/" + AGENT_DIR
-            if not os.path.isdir("./" + directory):
-                os.makedirs("./" + directory)
-            decisionMaker = DecisionMakerExperienceReplay(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,  
-                                            resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=AGENT_DIR+runType[DIRECTORY]+dmCopy, isMultiThreaded=isMultiThreaded)
-
-        return decisionMaker
-
     def GetDecisionMaker(self):
         return self.decisionMaker
 
@@ -273,7 +204,7 @@ class BattleMngr(BaseAgent):
         self.previous_scaled_state = np.zeros(self.state_size, dtype=np.int, order='C')
         
         self.subAgentsActions = {}
-        for sa in range(NUM_ACTIONS):
+        for sa in range(BattleMngrActions.SIZE):
             self.subAgentsActions[sa] = None
         
         for sa in SUBAGENTS_NAMES.keys():
@@ -308,7 +239,7 @@ class BattleMngr(BaseAgent):
             if self.illigalmoveSolveInModel:
                 validActions = self.ValidActions(self.current_scaled_state)
             else: 
-                validActions = list(range(NUM_ACTIONS))
+                validActions = list(range(BattleMngrActions.SIZE))
  
             targetValues = False if self.trainAgent else True
             action = self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues)
@@ -319,7 +250,7 @@ class BattleMngr(BaseAgent):
         return action
 
     def Action2Str(self, a, onlyAgent=False):
-        if a == ACTION_DO_NOTHING or onlyAgent:
+        if a == BattleMngrActions.DO_NOTHING or onlyAgent:
             return ACTION2STR[a]
         else:
             return ACTION2STR[a] + "-->" + self.subAgents[a].Action2Str(self.subAgentsActions[a])
@@ -345,8 +276,8 @@ class BattleMngr(BaseAgent):
         
         self.GetSelfLoc(obs)
         for idx in range(GRID_SIZE * GRID_SIZE):
-            self.current_state[STATE.START_ENEMY_BUILDING_MAT + idx] = self.sharedData.enemyBuildingMat[idx]
-            self.current_state[STATE.START_ENEMY_ARMY_MAT + idx] = self.sharedData.enemyArmyMat[idx]
+            self.current_state[BattleMngrState.START_ENEMY_BUILDING_MAT + idx] = self.sharedData.enemyBuildingMat[idx]
+            self.current_state[BattleMngrState.START_ENEMY_ARMY_MAT + idx] = self.sharedData.enemyArmyMat[idx]
 
         #self.GetEnemyBuildingLoc(obs)
         self.current_state[self.state_timeLineIdx] = self.sharedData.numStep
@@ -373,7 +304,7 @@ class BattleMngr(BaseAgent):
             for i in range(len(selfPoints)):
                 idx = self.GetScaledIdx(selfPoints[i])
                 power = math.ceil(selfPower[i] / spec.numScreenPixels)
-                self.current_state[STATE.START_SELF_MAT + idx] += power
+                self.current_state[BattleMngrState.START_SELF_MAT + idx] += power
 
         if len(allArmy_y) > 0:
             self.selfLocCoord = [int(sum(allArmy_y) / len(allArmy_y)), int(sum(allArmy_x) / len(allArmy_x))]
@@ -435,15 +366,15 @@ class BattleMngr(BaseAgent):
             return p2
     
     def ValidActions(self, state):
-        valid = [ACTION_DO_NOTHING]
+        valid = [BattleMngrActions.DO_NOTHING]
 
-        armyExist = (state[STATE.START_ENEMY_ARMY_MAT:STATE.END_ENEMY_ARMY_MAT] > 0).any()
-        buildingExist = (state[STATE.START_ENEMY_BUILDING_MAT:STATE.END_ENEMY_BUILDING_MAT] > 0).any()
+        armyExist = (state[BattleMngrState.START_ENEMY_ARMY_MAT:BattleMngrState.END_ENEMY_ARMY_MAT] > 0).any()
+        buildingExist = (state[BattleMngrState.START_ENEMY_BUILDING_MAT:BattleMngrState.END_ENEMY_BUILDING_MAT] > 0).any()
 
         if armyExist:
-            valid.append(ACTION_ARMY_BATTLE)
+            valid.append(BattleMngrActions.ARMY_BATTLE)
         if buildingExist:
-            valid.append(ACTION_BASE_BATTLE)
+            valid.append(BattleMngrActions.BASE_BATTLE)
         
         return valid
 

@@ -19,24 +19,12 @@ from utils import SC2_Actions
 
 from utils import BaseAgent
 
-#decision makers
-from algo_decisionMaker import BaseDecisionMaker
-from algo_decisionMaker import DecisionMakerExperienceReplay
-from algo_decisionMaker import UserPlay
 from algo_decisionMaker import BaseNaiveDecisionMaker
 
 from utils_results import ResultFile
 from utils_results import PlotResults
 
-# params
-from algo_dqn import DQN_PARAMS
-from algo_dqn import DQN_EMBEDDING_PARAMS
-from algo_dqn import DQN_PARAMS_WITH_DEFAULT_DM
-
-from algo_a2c import A2C_PARAMS
-
-from algo_qtable import QTableParams
-from algo_qtable import QTableParamsExplorationDecay
+from algo_decisionMaker import CreateDecisionMaker
 
 # utils functions
 from utils import EmptySharedData
@@ -50,29 +38,7 @@ from utils import SelectBuildingValidPoint
 from utils import SelectUnitValidPoints
 from utils import GatherResource
 
-AGENT_DIR = "BuildBase/"
 AGENT_NAME = "build_base"
-
-# possible types of decision maker
-
-QTABLE = 'q'
-DQN = 'dqn'
-DQN2L = 'dqn_2l'
-DQN2L_DFLT = 'dqn_2l_dflt'
-A2C = "A2C"
-DQN_EMBEDDING_LOCATIONS = 'dqn_Embedding' 
-NAIVE = "naive"
-USER_PLAY = 'play'
-
-ALL_TYPES = set([USER_PLAY, QTABLE, DQN, DQN_EMBEDDING_LOCATIONS, NAIVE])
-
-# data for run type
-TYPE = "type"
-DECISION_MAKER_NAME = "dm_name"
-HISTORY = "history"
-RESULTS = "results"
-PARAMS = 'params'
-DIRECTORY = 'directory'
 
 ADDITION_TYPES = [Terran.BarracksReactor, Terran.FactoryTechLab]
 
@@ -92,7 +58,7 @@ ADDITION_ACTION[Terran.FactoryTechLab] = SC2_Actions.BUILD_TECHLAB
 NUM_TRIALS_2_LEARN = 20
 NUM_TRIALS_4_CMP = 200
 
-class ACTIONS:
+class BUILD_ACTIONS:
     ID_DO_NOTHING = 0
     ID_BUILD_SUPPLY_DEPOT = 1
     ID_BUILD_REFINERY = 2
@@ -100,7 +66,7 @@ class ACTIONS:
     ID_BUILD_FACTORY = 4
     ID_BUILD_BARRACKS_REACTOR = 5
     ID_BUILD_FACTORY_TECHLAB = 6
-    NUM_ACTIONS = 7
+    SIZE = 7
     
     ACTION2STR = ["DoNothing" , "BuildSupplyDepot", "BuildOilRefinery", "BuildBarracks", "BuildFactory", "BuildBarrackReactor", "BuildFactoryTechLab"]
 
@@ -194,54 +160,6 @@ class ActionRequirement:
         self.buildingDependency = buildingDependency
 
 
-
-# table names
-RUN_TYPES = {}
-
-RUN_TYPES[QTABLE] = {}
-RUN_TYPES[QTABLE][TYPE] = "QLearningTable"
-RUN_TYPES[QTABLE][PARAMS] = QTableParamsExplorationDecay(BUILD_STATE.SIZE, ACTIONS.NUM_ACTIONS)
-RUN_TYPES[QTABLE][DIRECTORY] = "buildBase_qtable"
-RUN_TYPES[QTABLE][DECISION_MAKER_NAME] = "qtable"
-RUN_TYPES[QTABLE][HISTORY] = "replayHistory"
-RUN_TYPES[QTABLE][RESULTS] = "result"
-
-RUN_TYPES[DQN] = {}
-RUN_TYPES[DQN][TYPE] = "DQN_WithTarget"
-RUN_TYPES[DQN][PARAMS] = DQN_PARAMS(BUILD_STATE.SIZE, ACTIONS.NUM_ACTIONS)
-RUN_TYPES[DQN][DECISION_MAKER_NAME] = "build_dqn"
-RUN_TYPES[DQN][DIRECTORY] = "buildBase_dqn"
-RUN_TYPES[DQN][HISTORY] = "replayHistory"
-RUN_TYPES[DQN][RESULTS] = "result"
-
-RUN_TYPES[DQN2L] = {}
-RUN_TYPES[DQN2L][TYPE] = "DQN_WithTarget"
-RUN_TYPES[DQN2L][PARAMS] = DQN_PARAMS(BUILD_STATE.SIZE, ACTIONS.NUM_ACTIONS, layersNum=2, numTrials2CmpResults=NUM_TRIALS_4_CMP, descendingExploration=False)
-RUN_TYPES[DQN2L][DECISION_MAKER_NAME] = "build_dqn2l"
-RUN_TYPES[DQN2L][DIRECTORY] = "buildBase_dqn2l"
-RUN_TYPES[DQN2L][HISTORY] = "replayHistory"
-RUN_TYPES[DQN2L][RESULTS] = "result"
-
-RUN_TYPES[DQN2L_DFLT] = {}
-RUN_TYPES[DQN2L_DFLT][TYPE] = "DQN_WithTargetAndDefault"
-RUN_TYPES[DQN2L_DFLT][PARAMS] = DQN_PARAMS_WITH_DEFAULT_DM(BUILD_STATE.SIZE, ACTIONS.NUM_ACTIONS, layersNum=2, numTrials2CmpResults=NUM_TRIALS_4_CMP, descendingExploration=False)
-RUN_TYPES[DQN2L_DFLT][DECISION_MAKER_NAME] = "build_dqn2l_dflt"
-RUN_TYPES[DQN2L_DFLT][DIRECTORY] = "buildBase_dqn2l_dflt"
-RUN_TYPES[DQN2L_DFLT][HISTORY] = "replayHistory"
-RUN_TYPES[DQN2L_DFLT][RESULTS] = "result"
-
-RUN_TYPES[A2C] = {}
-RUN_TYPES[A2C][TYPE] = "A2C"
-RUN_TYPES[A2C][PARAMS] = A2C_PARAMS(BUILD_STATE.SIZE, ACTIONS.NUM_ACTIONS, numTrials2CmpResults=NUM_TRIALS_4_CMP, outputGraph=True)
-RUN_TYPES[A2C][DECISION_MAKER_NAME] = "build_A2C"
-RUN_TYPES[A2C][DIRECTORY] = "buildBase_A2C"
-RUN_TYPES[A2C][HISTORY] = "replayHistory"
-RUN_TYPES[A2C][RESULTS] = "results"
-
-RUN_TYPES[NAIVE] = {}
-RUN_TYPES[NAIVE][DIRECTORY] = "buildBase_naive"
-RUN_TYPES[NAIVE][RESULTS] = "buildBase_result"
-
 BUILDING_NOT_BUILT_THRESHOLD_COUNTER = 40
 
 class SharedDataBuild(EmptySharedData):
@@ -295,29 +213,9 @@ class BuildingCmdAddition(BuildingCmd):
         super(BuildingCmdAddition, self).__init__(screenLocation, inProgress)
         self.m_additionCoord = None
 
-def CreateDecisionMakerBuildBase(configDict, isMultiThreaded, dmCopy=None):
-    dmCopy = "" if dmCopy==None else "_" + str(dmCopy)
-
-    if configDict[AGENT_NAME] == "none":
-        return BaseDecisionMaker(AGENT_NAME), []
-
-    runType = RUN_TYPES[configDict[AGENT_NAME]]
-    # create agent dir
-    directory = configDict["directory"] + "/" + AGENT_DIR
-
-    if configDict[AGENT_NAME] == "naive":
-        decisionMaker = NaiveDecisionMakerBuilder(resultFName=runType[RESULTS], directory=directory + runType[DIRECTORY])
-    else:    
-        if runType[TYPE] == "DQN_WithTargetAndDefault":
-            runType[PARAMS].defaultDecisionMaker = NaiveDecisionMakerBuilder()
-
-        decisionMaker = DecisionMakerExperienceReplay(modelType=runType[TYPE], modelParams = runType[PARAMS], decisionMakerName = runType[DECISION_MAKER_NAME], agentName=AGENT_NAME,
-                                            resultFileName=runType[RESULTS], historyFileName=runType[HISTORY], directory=directory + runType[DIRECTORY] + dmCopy, isMultiThreaded=isMultiThreaded)
-
-    return decisionMaker, runType
 
 class NaiveDecisionMakerBuilder(BaseNaiveDecisionMaker):
-    def __init__(self, resultFName = None, directory = None, numTrials2Save=NUM_TRIALS_2_LEARN):
+    def __init__(self, resultFName = None, directory = None, numTrials2Save=100):
         super(NaiveDecisionMakerBuilder, self).__init__(numTrials2Save=numTrials2Save, resultFName=resultFName, directory=directory, agentName=AGENT_NAME)
         self.SDSupply = 8
         self.CCSupply = 15
@@ -336,34 +234,34 @@ class NaiveDecisionMakerBuilder(BaseNaiveDecisionMaker):
         supplyLeft = state[BUILD_STATE.SUPPLY_LEFT_IDX]
         
         if supplyLeft <= 2:
-            action = ACTIONS.ID_BUILD_SUPPLY_DEPOT
+            action = BUILD_ACTIONS.ID_BUILD_SUPPLY_DEPOT
         elif numSDAll < 2:
-            action = ACTIONS.ID_BUILD_SUPPLY_DEPOT
+            action = BUILD_ACTIONS.ID_BUILD_SUPPLY_DEPOT
         elif numRefAll < 2:
-            action = ACTIONS.ID_BUILD_REFINERY
+            action = BUILD_ACTIONS.ID_BUILD_REFINERY
         elif numBaAll < 2:
-            action = ACTIONS.ID_BUILD_BARRACKS
+            action = BUILD_ACTIONS.ID_BUILD_BARRACKS
         elif numFaAll < 1:
-            action = ACTIONS.ID_BUILD_FACTORY
+            action = BUILD_ACTIONS.ID_BUILD_FACTORY
         elif numReactorsAll < 2:
-            action = ACTIONS.ID_BUILD_BARRACKS_REACTOR
+            action = BUILD_ACTIONS.ID_BUILD_BARRACKS_REACTOR
         elif numSDAll < 6:
-            action = ACTIONS.ID_BUILD_SUPPLY_DEPOT
+            action = BUILD_ACTIONS.ID_BUILD_SUPPLY_DEPOT
         elif numFaAll < 2:
-            action = ACTIONS.ID_BUILD_FACTORY
+            action = BUILD_ACTIONS.ID_BUILD_FACTORY
         elif numTechAll < 2:
-            action = ACTIONS.ID_BUILD_FACTORY_TECHLAB
+            action = BUILD_ACTIONS.ID_BUILD_FACTORY_TECHLAB
         elif numBaAll < 4:
-            action = ACTIONS.ID_BUILD_BARRACKS
+            action = BUILD_ACTIONS.ID_BUILD_BARRACKS
         elif supplyLeft < 6:
-            action = ACTIONS.ID_BUILD_SUPPLY_DEPOT
+            action = BUILD_ACTIONS.ID_BUILD_SUPPLY_DEPOT
 
-        return action if action in validActions else ACTIONS.ID_DO_NOTHING
+        return action if action in validActions else BUILD_ACTIONS.ID_DO_NOTHING
 
     def ActionsValues(self, state, validActions, target = True):    
-        vals = np.zeros(ACTIONS.NUM_ACTIONS,dtype = float)
+        vals = np.zeros(BUILD_ACTIONS.SIZE,dtype = float)
         vals[self.choose_action(state, validActions)] = 1.0
-        vals[ACTIONS.ID_DO_NOTHING] = 0.1
+        vals[BUILD_ACTIONS.ID_DO_NOTHING] = 0.1
         return vals
 
 
@@ -383,7 +281,8 @@ class BuildBaseSubAgent(BaseAgent):
         if decisionMaker != None:
             self.decisionMaker = decisionMaker
         else:
-            self.decisionMaker, _ = CreateDecisionMakerBuildBase(configDict, isMultiThreaded)
+            self.decisionMaker, _ = CreateDecisionMaker(agentName=AGENT_NAME, configDict=configDict, 
+                                                    isMultiThreaded=isMultiThreaded, dmCopy=dmCopy, heuristicClass=NaiveDecisionMakerBuilder)
 
         self.history = self.decisionMaker.AddHistory()
 
@@ -393,12 +292,12 @@ class BuildBaseSubAgent(BaseAgent):
         self.terminalState = np.zeros(BUILD_STATE.SIZE, dtype=np.int32, order='C')
 
         self.actionsRequirement = {}
-        self.actionsRequirement[ACTIONS.ID_BUILD_SUPPLY_DEPOT] = ActionRequirement(100)
-        self.actionsRequirement[ACTIONS.ID_BUILD_REFINERY] = ActionRequirement(75)
-        self.actionsRequirement[ACTIONS.ID_BUILD_BARRACKS] = ActionRequirement(150,0,BUILD_STATE.SUPPLY_DEPOT_IDX)
-        self.actionsRequirement[ACTIONS.ID_BUILD_FACTORY] = ActionRequirement(150,100,BUILD_STATE.BARRACKS_IDX)
-        self.actionsRequirement[ACTIONS.ID_BUILD_BARRACKS_REACTOR] = ActionRequirement(50,50,BUILD_STATE.BARRACKS_IDX)
-        self.actionsRequirement[ACTIONS.ID_BUILD_FACTORY_TECHLAB] = ActionRequirement(50,25,BUILD_STATE.FACTORY_IDX)
+        self.actionsRequirement[BUILD_ACTIONS.ID_BUILD_SUPPLY_DEPOT] = ActionRequirement(100)
+        self.actionsRequirement[BUILD_ACTIONS.ID_BUILD_REFINERY] = ActionRequirement(75)
+        self.actionsRequirement[BUILD_ACTIONS.ID_BUILD_BARRACKS] = ActionRequirement(150,0,BUILD_STATE.SUPPLY_DEPOT_IDX)
+        self.actionsRequirement[BUILD_ACTIONS.ID_BUILD_FACTORY] = ActionRequirement(150,100,BUILD_STATE.BARRACKS_IDX)
+        self.actionsRequirement[BUILD_ACTIONS.ID_BUILD_BARRACKS_REACTOR] = ActionRequirement(50,50,BUILD_STATE.BARRACKS_IDX)
+        self.actionsRequirement[BUILD_ACTIONS.ID_BUILD_FACTORY_TECHLAB] = ActionRequirement(50,25,BUILD_STATE.FACTORY_IDX)
 
         self.maxNumOilRefinery = 2
 
@@ -424,11 +323,11 @@ class BuildBaseSubAgent(BaseAgent):
         return -1        
 
     def Action2SC2Action(self, obs, a, moveNum):
-        if a == ACTIONS.ID_DO_NOTHING:
+        if a == BUILD_ACTIONS.ID_DO_NOTHING:
             return SC2_Actions.DO_NOTHING_SC2_ACTION, True
-        elif a < ACTIONS.ID_BUILD_BARRACKS_REACTOR:
+        elif a < BUILD_ACTIONS.ID_BUILD_BARRACKS_REACTOR:
             return self.BuildAction(obs, moveNum)
-        elif a < ACTIONS.NUM_ACTIONS:
+        elif a < BUILD_ACTIONS.SIZE:
             return self.BuildAdditionAction(obs, moveNum)
 
     def GetStateVal(self, idx):
@@ -468,17 +367,17 @@ class BuildBaseSubAgent(BaseAgent):
                     discountedReward = reward * pow(self.decisionMaker.DiscountFactor(), numSteps)
                     self.history.learn(self.lastActionCommittedState, self.lastActionCommitted, discountedReward, self.lastActionCommittedNextState, terminal)        
             elif terminal:
-                self.history.learn(self.current_scaled_state, ACTIONS.ID_DO_NOTHING, reward, self.terminalState, terminal)
+                self.history.learn(self.current_scaled_state, BUILD_ACTIONS.ID_DO_NOTHING, reward, self.terminalState, terminal)
 
         self.previous_scaled_state[:] = self.current_scaled_state[:]
         self.isActionCommitted = False
 
 
     def IsDoNothingAction(self, a):
-        return a == ACTIONS.ID_DO_NOTHING
+        return a == BUILD_ACTIONS.ID_DO_NOTHING
 
     def BuildAction(self, obs, moveNum):
-        buildingType = ACTIONS.ACTION_2_BUILDING_TRANSITION[self.current_action]
+        buildingType = BUILD_ACTIONS.ACTION_2_BUILDING_TRANSITION[self.current_action]
 
         if moveNum == 0:
             if buildingType == Terran.Refinery:
@@ -535,8 +434,8 @@ class BuildBaseSubAgent(BaseAgent):
         return SC2_Actions.DO_NOTHING_SC2_ACTION, True
 
     def BuildAdditionAction(self, obs, moveNum):
-        buildingType = ACTIONS.ACTION_2_BUILDING_TRANSITION[self.current_action][0]
-        additionType = ACTIONS.ACTION_2_BUILDING_TRANSITION[self.current_action][1]
+        buildingType = BUILD_ACTIONS.ACTION_2_BUILDING_TRANSITION[self.current_action][0]
+        additionType = BUILD_ACTIONS.ACTION_2_BUILDING_TRANSITION[self.current_action][1]
 
         if moveNum == 0:
             # select building without addition
@@ -606,29 +505,29 @@ class BuildBaseSubAgent(BaseAgent):
             if self.illigalmoveSolveInModel:
                 validActions = self.ValidActions(self.current_scaled_state)
             else: 
-                validActions = list(range(ACTIONS.NUM_ACTIONS))
+                validActions = list(range(BUILD_ACTIONS.SIZE))
  
             targetValues = False if self.trainAgent else True
             action = self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues)
         else:
-            action = ACTIONS.ID_DO_NOTHING
+            action = BUILD_ACTIONS.ID_DO_NOTHING
         
         self.current_action = action
         return action
 
     def ValidActions(self, state):
-        valid = [ACTIONS.ID_DO_NOTHING]
+        valid = [BUILD_ACTIONS.ID_DO_NOTHING]
         for key, requirement in self.actionsRequirement.items():
             if self.ValidSingleAction(state, requirement):
                 valid.append(key)
         
         # special condition for oil refinery:
-        if state[BUILD_STATE.REFINERY_IDX] + state[BUILD_STATE.IN_PROGRESS_REFINERY_IDX] >= self.maxNumOilRefinery and ACTIONS.ID_BUILD_REFINERY in valid:
-            valid.remove(ACTIONS.ID_BUILD_REFINERY)
+        if state[BUILD_STATE.REFINERY_IDX] + state[BUILD_STATE.IN_PROGRESS_REFINERY_IDX] >= self.maxNumOilRefinery and BUILD_ACTIONS.ID_BUILD_REFINERY in valid:
+            valid.remove(BUILD_ACTIONS.ID_BUILD_REFINERY)
 
         # for addition building need building without addition
         for addition, building in ADDITION_2_BUILDING.items():
-            action = ACTIONS.BUILDING_2_ACTION_TRANSITION[addition]
+            action = BUILD_ACTIONS.BUILDING_2_ACTION_TRANSITION[addition]
             if action in valid:
                 numBuilding = state[BUILD_STATE.BUILDING_2_STATE_TRANSITION[building][0]]
                 numAddition = state[BUILD_STATE.BUILDING_2_STATE_TRANSITION[addition][0]]
@@ -636,7 +535,7 @@ class BuildBaseSubAgent(BaseAgent):
                 if numBuilding == numAddition:
                     valid.remove(action)
 
-        for building, action in ACTIONS.BUILDING_2_ACTION_TRANSITION.items():
+        for building, action in BUILD_ACTIONS.BUILDING_2_ACTION_TRANSITION.items():
             if action in valid:
                 if self.NumBeforeProgress(building) > 0:
                     valid.remove(action)
@@ -658,7 +557,7 @@ class BuildBaseSubAgent(BaseAgent):
 
 
     def Action2Str(self, a, onlyAgent=False):
-        return ACTIONS.ACTION2STR[a]
+        return BUILD_ACTIONS.ACTION2STR[a]
 
     def StateIdx2Str(self, idx):
         return BUILD_STATE.IDX2STR[idx]
@@ -789,4 +688,4 @@ if __name__ == "__main__":
     grouping = int(flags.FLAGS.grouping)
 
     if "results" in sys.argv:
-        PlotResults(AGENT_NAME, AGENT_DIR, RUN_TYPES, runDirectoryNames=directoryNames, grouping=grouping)
+        PlotResults(AGENT_NAME, runDirectoryNames=directoryNames, grouping=grouping)

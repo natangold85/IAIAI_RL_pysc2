@@ -1,0 +1,2 @@
+model_checkpoint_path: "army_attack_A2C"
+all_model_checkpoint_paths: "army_attack_A2C"

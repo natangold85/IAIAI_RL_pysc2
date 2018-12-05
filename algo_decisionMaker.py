@@ -31,6 +31,51 @@ from utils_ttable import TransitionTable
 # results handlers
 from utils_results import ResultFile
 
+from paramsCalibration import ChangeParamsAccordingToDict
+
+def CreateDecisionMaker(agentName, configDict, isMultiThreaded, dmCopy, hyperParamsDict=None, heuristicClass=None):
+    from agentRunTypes import GetRunType
+    from agentRunTypes import GetAgentParams
+    
+    from agentsStatesAndActions import StateSize2Agent
+    from agentsStatesAndActions import NumActions2Agent
+
+    dmCopy = "" if dmCopy==None else "_" + str(dmCopy)
+
+    if configDict[agentName] == "none":
+        return BaseDecisionMaker(agentName), []
+
+    runType = GetRunType(agentName, configDict)
+    agentParams = GetAgentParams(agentName)
+    stateSize = StateSize2Agent(agentName)
+    numActions = NumActions2Agent(agentName)
+    
+    directory = configDict["directory"] + "/" + agentName + "/" + runType["directory"] + dmCopy
+
+    if configDict[agentName] == "heuristic":
+        if "numTrials2Save" in agentParams.keys():
+            decisionMaker = heuristicClass(resultFName=runType["results"], directory=directory, numTrials2Save=agentParams["numTrials2Save"])
+        else:
+            decisionMaker = heuristicClass(resultFName=runType["results"], directory=directory)
+    else:        
+        dmClass = eval(runType["dm_type"])
+
+        if runType["algo_type"] == "DQN_WithTargetAndDefault":
+            runType["params"].defaultDecisionMaker = heuristicClass()
+
+        if hyperParamsDict != None:
+            runType["params"] = ChangeParamsAccordingToDict(runType["params"], hyperParamsDict)
+        elif "hyperParams" in configDict:
+            runType["params"] = ChangeParamsAccordingToDict(runType["params"], configDict["hyperParams"])
+        
+        runType["params"].stateSize = stateSize
+        runType["params"].numActions = numActions
+
+        decisionMaker = dmClass(modelType=runType["algo_type"], modelParams = runType["params"], decisionMakerName = runType["dm_name"], agentName=agentName,  
+                            resultFileName=runType["results"], historyFileName=runType["history"], directory=directory, isMultiThreaded=isMultiThreaded)
+
+    return decisionMaker, runType
+
 class BaseDecisionMaker:
     def __init__(self, agentName):
         self.trainFlag = False
@@ -175,7 +220,7 @@ class BaseDecisionMaker:
         return 0
 
 class BaseNaiveDecisionMaker(BaseDecisionMaker):
-    def __init__(self, numTrials2Save, agentName = "", resultFName = None, directory = None):
+    def __init__(self, numTrials2Save=None, agentName = "", resultFName = None, directory = None):
         super(BaseNaiveDecisionMaker, self).__init__(agentName)
         self.resultFName = resultFName
         self.trialNum = 0

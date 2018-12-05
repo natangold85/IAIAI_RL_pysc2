@@ -19,6 +19,8 @@ from multiprocessing import Process, Lock, Value, Array, Manager
 
 from utils_plot import PlotMeanWithInterval
 
+from agentRunTypes import GetRunType
+
 def AvgResults(path, name, idxDir=None, key4Results=None):
     if idxDir == None:
         results = ReadOnlyResults(path + '/' + name)
@@ -31,9 +33,14 @@ def GoToNextResultFile(path, name, idxDir, idx2CurrentFile):
     fName = path + '_' + str(idxDir) + '/' + name + ".gz"
     newFName = path + '_' + str(idxDir) + '/' + name + "_" + str(idx2CurrentFile) +".gz"
     if os.path.isfile(fName):
+        if os.path.isfile(newFName):
+            os.remove(newFName)
         os.rename(fName, newFName)
+        return True
 
-def PlotResults(agentName, agentDir, runTypes, runDirectoryNames, grouping, subAgentsGroups = [""], keyResults = "results", additionPlots=[], maxTrials2Plot=None, multipleDm=False):
+    return False
+
+def PlotResults(agentName, runDirectoryNames, grouping, subAgentsGroups = [""], keyResults = "results", additionPlots=[], maxTrials2Plot=None, multipleDm=False):
     runDirectoryNames.sort()
 
     resultFnames = []
@@ -42,8 +49,8 @@ def PlotResults(agentName, agentDir, runTypes, runDirectoryNames, grouping, subA
     for runDirName in runDirectoryNames:
         groupNames.append(runDirName)
         
-        dm_Types = eval(open("./" + runDirName + "/config.txt", "r+").read())
-        runType = runTypes[dm_Types[agentName]]
+        configDict = eval(open("./" + runDirName + "/config.txt", "r+").read())
+        runType = GetRunType(agentName, configDict)
         
         fName = runType[keyResults]
         
@@ -53,11 +60,11 @@ def PlotResults(agentName, agentDir, runTypes, runDirectoryNames, grouping, subA
             dirName = ''
 
         resultFnames.append(fName)
-        fullDirectoryNames.append(runDirName + "/" + agentDir + dirName)
+        fullDirectoryNames.append(runDirName + "/" + agentName + "/" + dirName)
     
     print(resultFnames)
     print(fullDirectoryNames)
-    plot = PlotMngr(resultFnames, fullDirectoryNames, groupNames, agentDir, subAgentsGroups, multipleDm)
+    plot = PlotMngr(resultFnames, fullDirectoryNames, groupNames, agentName, subAgentsGroups, multipleDm)
     plot.Plot(grouping, additionPlots, maxTrials2Plot, multipleDm)
 
 class PlotMngr:
@@ -315,8 +322,10 @@ class ReadOnlyResults():
 
         self.tableName = tableName
         self.table = pd.DataFrame(columns=self.rewardCol, dtype=np.float)
-        if os.path.isfile(tableName + ".gz"):
-            self.table = pd.read_pickle(tableName + ".gz", compression='gzip')   
+        if os.path.isfile(tableName + ".gz") and os.path.getsize(tableName + '.gz') > 0:
+            self.table = pd.read_pickle(tableName + ".gz", compression='gzip')
+
+            
     
     def AvgReward(self, key = None):
         names = list(self.table.index)
@@ -381,7 +390,7 @@ class ResultFile:
         self.countComplete = int(self.result_table.ix[self.countCompleteKey, 0])
 
     def Load(self):
-        if os.path.isfile(self.saveFileName + '.gz'):
+        if os.path.isfile(self.saveFileName + '.gz') and os.path.getsize(self.saveFileName + '.gz') > 0:
             self.result_table = pd.read_pickle(self.saveFileName + '.gz', compression='gzip')
             self.countComplete = int(self.result_table.ix[self.countCompleteKey, 0])
 
@@ -389,7 +398,7 @@ class ResultFile:
         self.result_table.to_pickle(self.saveFileName + '.gz', 'gzip') 
     
     def NumRuns(self):
-        return self.numRunFromStart
+        return self.countComplete * self.numToWrite
 
     def check_state_exist(self, state):
         if state not in self.result_table.index:
