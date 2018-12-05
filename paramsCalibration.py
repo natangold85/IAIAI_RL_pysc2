@@ -287,6 +287,7 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
     from utils_plot import plotImg
+    from utils_plot import PlotMeanWithInterval
     from agentRunTypes import GetRunType
 
     flags.DEFINE_string("directoryName", "none", "directory names to take results")
@@ -309,6 +310,7 @@ if __name__ == "__main__":
             exit()
 
         paramsAll = [[], []]
+        paramsAllAccording2Gen = [[], []]
         fitnessAll = []
         stdSinglePopulation = []
 
@@ -316,27 +318,33 @@ if __name__ == "__main__":
         genNum = len(populationHistory)
 
         numTopPopulation = 10
-        avgFitnessGenTopPopulation = []
         
-        avgFitnessGen = []
-        avgFitnessGenBest = []
+        fitnessGenAll = []
+        fitnessGenTopPopulation = []
+        fitnessGenBest = []
 
         for gen in range(0, genNum):
             genDict = populationHistory[gen]
             population = genDict["population"]
             fitness = np.array(genDict["fitness"])
 
-            avgFitnessGen.append(np.average(fitness))
-            avgFitnessGenBest.append(np.max(fitness))
+            fitnessGenBest.append(np.max(fitness))
+            fitnessGenAll.append(fitness)
 
             topPopulation = fitness[fitness.argsort()[-numTopPopulation:][::-1]]
-            avgFitnessGenTopPopulation.append(np.average(topPopulation))
+            fitnessGenTopPopulation.append(topPopulation)
 
+            params0 = []
+            params1 = []
             for i in range(len(fitness)):
-                paramsAll[0].append(population[i][1][0])
-                paramsAll[1].append(population[i][1][1])
+                params0.append(population[i][1][0])
+                params1.append(population[i][1][1])
                 fitnessAll.append(fitness[i])
 
+            paramsAllAccording2Gen[0].append(params0)
+            paramsAllAccording2Gen[1].append(params1)
+            paramsAll[0] += params0
+            paramsAll[1] += params1
             # load fitness from results file
             for i in range(len(population)):
                 currFitnessDetailed  = []
@@ -354,25 +362,36 @@ if __name__ == "__main__":
         figVals = plt.figure(figsize=(19.0, 11.0))
         plt.suptitle("genetic programming results" )
 
-        ax = figVals.add_subplot(2, 2, 1)
-        ax.plot(np.arange(genNum), avgFitnessGen)
-        ax.plot(np.arange(genNum), avgFitnessGenBest)
-        ax.plot(np.arange(genNum), avgFitnessGenTopPopulation)
+        ax = figVals.add_subplot(3, 2, 1)
+        
+        PlotMeanWithInterval(np.arange(genNum), np.average(fitnessGenAll, axis=1), np.std(fitnessGenAll, axis=1), axes=ax)
+        PlotMeanWithInterval(np.arange(genNum), np.average(fitnessGenTopPopulation, axis=1), np.std(fitnessGenTopPopulation, axis=1), axes=ax)
+        ax.plot(np.arange(genNum), fitnessGenBest)
 
-        ax.legend(["average population", "best", "top " + str(numTopPopulation)])
+        ax.legend(["average population", "top " + str(numTopPopulation), "best"])
         ax.set_xlabel("generation num")
         ax.set_ylabel("fitness")
         ax.set_title("fitness results")
 
-        ax = figVals.add_subplot(2, 2, 2)
+        ax = figVals.add_subplot(3, 2, 2)
         img = plotImg(ax, paramsAll[0], paramsAll[1], fitnessAll, params[0], params[1], "fitness value", binY=5, binX=1)
         figVals.colorbar(img, shrink=0.4, aspect=5)
 
 
-        ax = figVals.add_subplot(2, 2, 3)
+        ax = figVals.add_subplot(3, 2, 3)
         ax.hist(stdSinglePopulation, bins=30)
         ax.set_title("histogram of std of single individual of population")
         ax.set_xlabel("std")
+
+        ax = figVals.add_subplot(3, 2, 5)
+        PlotMeanWithInterval(np.arange(genNum), np.average(paramsAllAccording2Gen[0], axis=1), np.std(paramsAllAccording2Gen[0], axis=1), axes=ax)
+        ax.set_title("values of param =" + params[0])
+        ax.set_xlabel("generation num")
+
+        ax = figVals.add_subplot(3, 2, 6)
+        PlotMeanWithInterval(np.arange(genNum), np.average(paramsAllAccording2Gen[1], axis=1), np.std(paramsAllAccording2Gen[1], axis=1), axes=ax)
+        ax.set_title("values of param =" + params[1])
+        ax.set_xlabel("generation num")
 
         plt.show()
 

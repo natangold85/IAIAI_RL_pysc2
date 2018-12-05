@@ -4,23 +4,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 
-# def PlotMeanWithInterval(mean, interval, color_mean=None):
-#     # plot the shaded range of the confidence intervals
-#     plt.fill_between(range(mean.shape[0]), mean + interval, mean - interval, alpha=.5)
-#     # plot the mean on top
-#     plt.plot(mean)
-
-def PlotMeanWithInterval(x, y, interval, color=None):
+def PlotMeanWithInterval(x, y, interval, axes=plt, color=None):
     if color != None:
         # plot the shaded range of the confidence intervals
-        plt.fill_between(x, y + interval, y - interval, color=color, alpha=.5)
+        axes.fill_between(x, y + interval, y - interval, color=color, alpha=.5)
         # plot the mean on top
-        plt.plot(x, y, color=color)
+        axes.plot(x, y, color=color)
     else:
         # plot the shaded range of the confidence intervals
-        plt.fill_between(x, y + interval, y - interval, alpha=.5)
+        axes.fill_between(x, y + interval, y - interval, alpha=.5)
         # plot the mean on top
-        plt.plot(x, y)
+        axes.plot(x, y)
 
 def create_nnGraphs(superAgent, agent2Check, statesIdx, actions2Check, plotTarget=False, numTrials = -1, saveGraphs = False, showGraphs = False, dir2Save = "./", maxSize2Plot=20000):
     plotType = "target" if plotTarget else "current"
