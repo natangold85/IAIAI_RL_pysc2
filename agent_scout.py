@@ -162,7 +162,7 @@ class ScoutAgent(BaseAgent):
         self.fogCounterMatFull[yFog, xFog] = MAX_FOG_COUNTER_2_ZERO 
 
         # calculate enemy mat
-        miniMapEnemy = obs.observation['feature_minimap'][SC2_Params.PLAYER_RELATIVE_MINIMAP] == SC2_Params.PLAYER_HOSTILE        
+        miniMapEnemy = obs.observation['feature_minimap'][SC2_Params.PLAYER_RELATIVE_MINIMAP] == SC2_Params.PLAYER_HOSTILE   
         # if enemy and in sight insert enemy
         self.enemyMatObservationFull[((miniMapEnemy) & (self.fogMatFull == SC2_Params.IN_SIGHT)).nonzero()] = True
         # if fog treat as unknown
@@ -185,6 +185,7 @@ class ScoutAgent(BaseAgent):
 
                 # count enemy power
                 numEnemyPixels = np.sum(self.enemyMatObservationFull[startY:endY, startX:endX])
+                    
                 self.sharedData.enemyMatObservation[y, x] = numEnemyPixels
                 
                 # calc fog ratio
@@ -252,3 +253,6 @@ class ScoutAgent(BaseAgent):
     
     def Action2Str(self, a, onlyAgent=False):
         return ACTION2STR[a]
+
+    def ChooseAction(self):
+        return 0

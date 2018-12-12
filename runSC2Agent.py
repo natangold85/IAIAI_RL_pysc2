@@ -9,7 +9,6 @@ import traceback
 import os
 import sys
 import threading
-from multiprocessing import Pool                                                
 import time
 import tensorflow as tf
 import collections
@@ -32,6 +31,7 @@ from paramsCalibration import ReadGPFitness
 from paramsCalibration import TrainSingleGP
 from paramsCalibration import GetPopulationDict
 from paramsCalibration import SetPopulationTrained
+from paramsCalibration import DeletePopulation
 
 from agentRunTypes import GetRunType
 
@@ -111,8 +111,6 @@ def start_agent(configDict=None, copy2Run=None, threadName="Thread"):
     print("train list =", trainList)
     print("test list =", testList, "\n\n\n")
 
-    # parse params from flags and configDict
-
     if flags.FLAGS.numEpisodes == "none":
         numEpisodes = None
     else:
@@ -130,10 +128,10 @@ def start_agent(configDict=None, copy2Run=None, threadName="Thread"):
 
     numGameThreads = numDmThreads if training else 1
 
-    if "sharedDM" in configDict.keys():
-        sharedDM = configDict["sharedDM"]
+    if "sharedDm" in configDict.keys():
+        sharedDm = configDict["sharedDm"]
     else:
-        sharedDM = True
+        sharedDm = True
 
 
     
@@ -154,7 +152,7 @@ def start_agent(configDict=None, copy2Run=None, threadName="Thread"):
         if copy2Run != None:
             dmCopy = copy2Run
         else:
-            if not sharedDM:
+            if not sharedDm:
                 dmCopy = i
             else:
                 dmCopy = numRun
@@ -162,7 +160,7 @@ def start_agent(configDict=None, copy2Run=None, threadName="Thread"):
         print("\n\n\n init decision maker instance #", i, "\n\n\n")
         agent = SuperAgent(decisionMaker=decisionMaker, isMultiThreaded=isMultiThreaded, configDict=configDict, playList=playList, trainList=trainList, testList=testList, useMapRewards=useMapRewards, dmCopy=dmCopy)
         
-        if not sharedDM:
+        if not sharedDm:
             allDecisionMakers.append(agent.GetDecisionMaker())
         elif i == 0:
             decisionMaker = agent.GetDecisionMaker()
@@ -239,7 +237,7 @@ def start_agent(configDict=None, copy2Run=None, threadName="Thread"):
                         dmAgent = dm.GetDecisionMakerByName(testList[0])
                         minRuns = min(dmAgent.NumTestRuns(), minRuns)
                 
-                if minRuns > numEpisodes:
+                if minRuns >= numEpisodes:
                     if "numRun" in configDict:
                         print("\n\nending run #", configDict["numRun"], "!!!\n\n") 
                         configDictOrg["numRun"] += 1
@@ -249,35 +247,76 @@ def start_agent(configDict=None, copy2Run=None, threadName="Thread"):
 
                     contRun = False
 
-def run_script(gpActArg, populationIdx, instanceIdx):     
+def run_assignment(gpActArg, populationIdx, instanceIdx):     
     cmd = ' '.join(sys.argv)
     cmd.replace(".\\", "")                                                        
     os.system('python {}'.format(cmd + " --gpAct=" + gpActArg + " --populationIdx=" + str(populationIdx) + " --populationInstanceIdx=" + str(instanceIdx)))    
+
+def reset_progress_files(populationSize, numInstances):
+    progressReset = {"trainSingle" : False, "testSingle" : False}
+    
+    for pop in range(populationSize):
+        for ins in range(numInstances):
+            save_progress_file(progressReset, pop, ins)
+
+def delete_progress_files():
+    progressDir = "./" + flags.FLAGS.runDir
+    files = os.listdir(progressDir)
+    for fName in files:
+        if fName.startswith("progress"):
+            os.remove(os.path.join(progressDir,fName))
+
+def load_progress_file(populationIdx, instanceIdx):
+    progressFName = "./" + flags.FLAGS.runDir + "/progress" + str(populationIdx) + "_" + str(instanceIdx) + ".txt"
+    if os.path.isfile(progressFName):
+        progress = eval(open(progressFName, "r+").read())
+    else:
+        progress = {"trainSingle" : False, "testSingle" : False}
+
+    return progress
+
+def save_progress_file(progress, populationIdx, instanceIdx):
+    progressFName = "./" + flags.FLAGS.runDir + "/progress" + str(populationIdx) + "_" + str(instanceIdx) + ".txt"
+    open(progressFName, "w+").write(str(progress))
+
+def check_assignment_complete(gpActArg, populationIdx, instanceIdx):
+    progressFile = "./" + flags.FLAGS.runDir + "/progress" + str(populationIdx) + "_" + str(instanceIdx) + ".txt"
+    if os.path.isfile(progressFile):
+        progress = eval(open(progressFile, "r+").read())
+        return progress[gpActArg]
+
+    return False
 
 def run_gp_threads(populationSize, numInstances, gpActArg):
     numThreadsRunning = 10
     numOfTerminals2KillGame = 10
 
-    threadsB4Run = []  
+    assignmentsB4Run = []  
     for idx in range(populationSize):
         for instance in range(numInstances):
-            t = threading.Thread(target=run_script, args=(gpActArg, idx, instance))
-            threadsB4Run.append(t)
+            assignment = (gpActArg, idx, instance)
+            assignmentsB4Run.append(assignment)
     
     numTerminal = 0
-    runningThreads = []
+    runningAssignments = []
 
-    while len(threadsB4Run) > 0 or len(runningThreads) > 0:
-        if len(runningThreads) < numThreadsRunning and len(threadsB4Run) > 0:
-            t = threadsB4Run.pop()
+    while len(assignmentsB4Run) > 0 or len(runningAssignments) > 0:
+        if len(runningAssignments) < numThreadsRunning and len(assignmentsB4Run) > 0:
+            assignment = assignmentsB4Run.pop()
+            t = threading.Thread(target=run_assignment, args=assignment, daemon=True)
+            runningAssignments.append([t, assignment])
             t.start()
 
-            runningThreads.append(t)
-
-        for t in runningThreads:
-            if not t.isAlive():
+        for assignment in runningAssignments:
+            if not assignment[0].isAlive():
+                args = assignment[1][:]
                 numTerminal += 1
-                runningThreads.remove(t)
+                if not check_assignment_complete(args[0], args[1], args[2]):
+                    assignmentsB4Run.append(args)
+
+                assignment[0].join()
+                runningAssignments.remove(assignment)
+
 
         if numTerminal >= numOfTerminals2KillGame and gpActArg == "testSingle":
             os.system('"Taskkill /IM SC2_x64.exe /F"')
@@ -296,6 +335,11 @@ def gp_train():
     configDict = eval(open("./" + flags.FLAGS.runDir + "/config.txt", "r+").read())
     configDict["directory"] = flags.FLAGS.runDir
 
+    if eval(flags.FLAGS.resetModel):
+        DeletePopulation(configDict["directory"])
+        delete_progress_files()
+
+
     trainAgent = flags.FLAGS.testAgent
 
     runType = GetRunType(trainAgent, configDict)
@@ -309,6 +353,7 @@ def gp_train():
             print("\n\n\ncreate population generation #", currGeneration, "\n\n\n")
             GeneticProgrammingGeneration(populationSize, numPopulationInstances, configDict, runType)
             populationDict, currGeneration = GetPopulationDict(configDict["directory"])
+            reset_progress_files(populationSize, numPopulationInstances)
         
         # train generation (if not trained)
         if "trained" not in populationDict:
@@ -360,6 +405,11 @@ def gp_train_single():
     runType = GetRunType(trainAgent, configDict)
     TrainSingleGP(configDict, trainAgent, runType, dirsCopy2Run)
 
+    progress = load_progress_file(populationIdx, instance2Train)
+    progress["trainSingle"] = True
+    save_progress_file(progress, populationIdx, instance2Train)
+        
+
 def gp_test_single(): 
     populationIdx = int(flags.FLAGS.populationIdx)
     instance2Train  = int(flags.FLAGS.populationInstanceIdx)
@@ -380,6 +430,10 @@ def gp_test_single():
     configDict["numGeneration"] = gpPopulation["numGeneration"]
 
     start_agent(configDict, dirsCopy2Run, threadName="pop#" + str(populationIdx) + "_" + str(instance2Train))
+
+    progress = load_progress_file(populationIdx, instance2Train)
+    progress["testSingle"] = True
+    save_progress_file(progress, populationIdx, instance2Train)
     
 def run_thread(agent, sess, display, players, numSteps):
     """Runs an agent thread."""
@@ -494,10 +548,8 @@ def main(argv):
     :param argv: empty
     :return:
     """
-
     if flags.FLAGS.device == "cpu":
         # run from cpu
-        import os
         os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
         os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 

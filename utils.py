@@ -44,7 +44,7 @@ class BaseAgent(base_agent.BaseAgent):
     def MonitorObservation(self, obs):
         pass
 
-    def FirstStep(self, obs = None):
+    def FirstStep(self, obs=None):
         self.isActionCommitted = False
 
         self.current_action = None
@@ -104,11 +104,13 @@ class BaseAgent(base_agent.BaseAgent):
 
 # params base
 class ParamsBase:
-    def __init__(self, stateSize, numActions, discountFactor = 0.95, accumulateHistory = True, maxReplaySize=500000, minReplaySize=1000, numTrials2Learn=None, numTrials2Save=100):
+    def __init__(self, stateSize, numActions, discountFactor = 0.95, accumulateHistory=True, maxReplaySize=500000, minReplaySize=1000, 
+                numTrials2Learn=None, numTrials2Save=100, saveOldHist=False):
         self.stateSize = stateSize
         self.numActions = numActions
         self.discountFactor = discountFactor
         self.accumulateHistory = accumulateHistory
+        self.saveOldHist = saveOldHist
         self.maxReplaySize = maxReplaySize
         self.minReplaySize = minReplaySize
         

@@ -20,7 +20,7 @@ def JoinTransitions(target, toJoin):
     for k in keyTransitions:
         if k in toJoin.keys():
             if k in target.keys():
-                target[k] += toJoin [k]
+                target[k] += toJoin[k]
             else:
                 target[k] = toJoin [k]
 
@@ -104,7 +104,7 @@ class History():
         return s, a, r, s_, terminal
 
 class HistoryMngr(History):
-    def __init__(self, params, historyFileName = '', directory = '', isMultiThreaded = False, createAllHistFiles = True):
+    def __init__(self, params, historyFileName = '', directory = '', isMultiThreaded = False):
         super(HistoryMngr, self).__init__(isMultiThreaded)
 
         self.params = params
@@ -117,9 +117,8 @@ class HistoryMngr(History):
         self.transitions["rewardMax"] = 0.01
         self.transitions["rewardMin"] = 0.0
 
-        self.createAllHistFiles = createAllHistFiles
 
-        if createAllHistFiles:
+        if self.params.saveOldHist:
             self.oldTransitions = {}
             for key in self.transitionKeys:
                 self.oldTransitions[key] = []
@@ -130,7 +129,7 @@ class HistoryMngr(History):
 
         if historyFileName != '':
             self.histFileName = directory + historyFileName
-            if self.createAllHistFiles:
+            if self.params.saveOldHist:
                 self.lastHistFileAdd = "_last"
                 self.numOldHistFiles = 0
         else:
@@ -140,7 +139,7 @@ class HistoryMngr(History):
         if os.path.isfile(self.histFileName + '.gz') and os.path.getsize(self.histFileName + '.gz') > 0:
             self.transitions = pd.read_pickle(self.histFileName + '.gz', compression='gzip')
 
-        if self.createAllHistFiles:
+        if self.params.saveOldHist:
             if os.path.isfile(self.histFileName + self.lastHistFileAdd + '.gz'):
                 self.oldTransitions = pd.read_pickle(self.histFileName + self.lastHistFileAdd + '.gz', compression='gzip')
 
@@ -168,7 +167,7 @@ class HistoryMngr(History):
 
     def PopHist2ReplaySize(self):
         toCut = len(self.transitions["a"]) - self.params.maxReplaySize
-        if self.createAllHistFiles:
+        if self.params.saveOldHist:
             for key in self.transitionKeys:
                 self.oldTransitions[key] += self.transitions[key][:toCut]
  
@@ -192,14 +191,12 @@ class HistoryMngr(History):
         else:
             self.GetSingleHistory(singleHist)
 
-        if self.params.accumulateHistory:
-            self.PopHist2ReplaySize()
-            allTransitions = self.transitions.copy()
-        else:
-            allTransitions = self.transitions.copy()
-            self.CleanHistory()
 
-        self.SaveHistFile(allTransitions)    
+        self.PopHist2ReplaySize()
+        allTransitions = self.transitions.copy()
+        
+        if not self.params.accumulateHistory:
+            self.CleanHistory()
 
         self.histLock.release()
 
@@ -316,13 +313,12 @@ class HistoryMngr(History):
         self.histLock.release()
 
     def SaveHistFile(self, transitions):
-
         if self.histFileName != '':
             pd.to_pickle(transitions, self.histFileName + '.gz', 'gzip') 
             if os.path.getsize(self.histFileName + '.gz') == 0:
                 print("\n\n\n\nError save 0 bytes\n\n\n")
             
-            if self.createAllHistFiles:
+            if self.params.saveOldHist:
                 if len(self.oldTransitions["a"]) >= self.params.maxReplaySize:
                     pd.to_pickle(self.oldTransitions, self.histFileName + str(self.numOldHistFiles) + '.gz', 'gzip') 
                     
@@ -357,7 +353,7 @@ class HistoryMngr(History):
         for key in self.transitionKeys:
             transitions[key] = []
 
-        if self.createAllHistFiles:
+        if self.params.saveOldHist:
             for i in range(self.numOldHistFiles):
                 currTransitions = pd.read_pickle(self.histFileName + str(i) + '.gz', compression='gzip')
                 for key in self.transitionKeys:

@@ -266,7 +266,12 @@ class BattleMngr(BaseAgent):
 
         self.isActionCommitted = True
         self.lastActionCommitted = self.current_action
-        return self.subAgents[self.current_action].Action2SC2Action(obs, self.subAgentsActions[self.current_action], moveNum)
+        
+        if self.current_action == BattleMngrActions.DO_NOTHING:
+            sc2Action = SC2_Actions.STOP_SC2_ACTION if SC2_Actions.STOP in obs.observation['available_actions'] else SC2_Actions.DO_NOTHING_SC2_ACTION
+            return sc2Action, True
+        else:
+            return self.subAgents[self.current_action].Action2SC2Action(obs, self.subAgentsActions[self.current_action], moveNum)
 
     def CreateState(self, obs):
         for sa in ALL_SUB_AGENTS:

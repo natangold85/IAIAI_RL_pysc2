@@ -565,10 +565,11 @@ class DoNothingSubAgent(BaseAgent):
         for unit in unitStatus:
             uType = unit[SC2_Params.UNIT_TYPE_IDX]
             
-            if uType in unitCount:
-                unitCount[uType] += 1
-            else:
-                unitCount[uType] = 1
+            if uType in self.sharedData.armySize:
+                if uType in unitCount:
+                    unitCount[uType] += 1
+                else:
+                    unitCount[uType] = 1
 
         for unit in unitCount.keys():
             count = unitCount[unit]

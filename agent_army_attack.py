@@ -67,15 +67,64 @@ class SharedDataArmyAttack(EmptySharedData):
         super(SharedDataArmyAttack, self).__init__()
         self.enemyArmyMat = [0] * (GRID_SIZE * GRID_SIZE)
 
-class NaiveDecisionMakerArmyAttack(BaseNaiveDecisionMaker):
+class StochasticHeuristicArmyAttackDm(BaseNaiveDecisionMaker):
     def __init__(self, numTrials2Save=None, agentName="", resultFName=None, directory=None):
-        super(NaiveDecisionMakerArmyAttack, self).__init__(numTrials2Save, agentName=agentName, resultFName=resultFName, directory=directory)
+        super(StochasticHeuristicArmyAttackDm, self).__init__(numTrials2Save, agentName=agentName, resultFName=resultFName, directory=directory)
         
 
     def choose_action(self, state, validActions, targetValues=False):
         if len(validActions) > 1:
             if np.random.uniform() > 0.9:
                 return np.random.choice(validActions)
+
+        return ArmyAttackActions.DO_NOTHING
+
+    def ActionsValues(self, state, validActions, target = True):
+        vals = np.zeros(ArmyAttackActions.SIZE,dtype = float)
+        vals[self.choose_action(state, validActions)] = 1.0
+
+        return vals
+    
+class AttackClosestArmyAttackDm(BaseNaiveDecisionMaker):
+    def __init__(self, numTrials2Save=None, agentName="", resultFName=None, directory=None):
+        super(AttackClosestArmyAttackDm, self).__init__(numTrials2Save, agentName=agentName, resultFName=resultFName, directory=directory)
+        
+
+    def choose_action(self, state, validActions, targetValues=False):
+        if len(validActions) > 1:
+            selfLocations = []
+            for y in range(GRID_SIZE):
+                for x in range(GRID_SIZE):
+                    idx = x + y * GRID_SIZE
+                    if state[ArmyAttackState.START_SELF_MAT + idx]:
+                        selfLocations.append([y, x])
+            
+            if len(selfLocations) > 1:
+                avgSelfLocation = np.average(selfLocations, axis=0)
+            elif len(selfLocations) > 0:
+                avgSelfLocation = selfLocations[0]
+            else:
+                return ArmyAttackActions.DO_NOTHING
+                
+            activeActions = validActions.copy()
+            activeActions.remove(ArmyAttackActions.DO_NOTHING)
+            
+            minDist = 2 * GRID_SIZE ** 2
+            minDistAction = -1
+            for a in activeActions:
+                idxOnMap = a - ArmyAttackActions.START_IDX_ATTACK
+                x = idxOnMap % GRID_SIZE
+                y = int(idxOnMap / GRID_SIZE)
+                dist = (y - avgSelfLocation[0]) ** 2 + (x - avgSelfLocation[1]) ** 2
+                if dist < minDist:
+                    minDist = dist
+                    minDistAction = a
+
+            if minDistAction in activeActions:
+                return minDistAction
+            else:
+                print("ERROR")
+            
 
         return ArmyAttackActions.DO_NOTHING
 
@@ -101,7 +150,7 @@ class ArmyAttack(BaseAgent):
             self.decisionMaker = decisionMaker
         else:
             self.decisionMaker, _ = CreateDecisionMaker(agentName=AGENT_NAME, configDict=configDict, 
-                            isMultiThreaded=isMultiThreaded, dmCopy=dmCopy, heuristicClass=NaiveDecisionMakerArmyAttack)
+                            isMultiThreaded=isMultiThreaded, dmCopy=dmCopy, heuristicClass=AttackClosestArmyAttackDm)
 
         self.history = self.decisionMaker.AddHistory()
         # state and actions:
@@ -273,10 +322,8 @@ class ArmyAttack(BaseAgent):
     def Closest2Self(self, p1, p2):
         d1 = DistForCmp(p1, self.selfLocCoord)
         d2 = DistForCmp(p2, self.selfLocCoord)
-        if d1 < d2:
-            return p1
-        else:
-            return p2
+        
+        return p1 if d1 < d2 else p2
         
     def ValidActions(self, state):
         if self.illigalmoveSolveInModel:

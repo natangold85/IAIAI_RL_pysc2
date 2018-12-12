@@ -81,7 +81,7 @@ class SUPER_STATE:
     FOG_COUNTER_MAT_START = FOG_MAT_END
     FOG_COUNTER_MAT_END = FOG_COUNTER_MAT_START + GRID_SIZE * GRID_SIZE
 
-    ENEMY_ARMY_MAT_START = FOG_MAT_END
+    ENEMY_ARMY_MAT_START = FOG_COUNTER_MAT_END
     ENEMY_ARMY_MAT_END = ENEMY_ARMY_MAT_START + GRID_SIZE * GRID_SIZE
     
     ENEMY_BUILDING_MAT_START = ENEMY_ARMY_MAT_END
@@ -260,6 +260,8 @@ class SuperAgent(BaseAgent):
         return self.SendAction(sc2Action)
 
     def FirstStep(self, obs):
+        super(SuperAgent, self).FirstStep(obs)
+
         self.move_number = 0
         self.sharedData.numStep = 0 
         self.sharedData.numAgentStep = 0
@@ -341,7 +343,7 @@ class SuperAgent(BaseAgent):
                 validActions = list(range(SUPER_ACTIONS.SIZE))
  
             targetValues = False if self.trainAgent else True
-            return self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues)
+            action = self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues)
 
         else:
             if self.subAgentPlay == SUB_AGENT_ID_ATTACK:
@@ -356,12 +358,14 @@ class SuperAgent(BaseAgent):
         
         valid = [SUPER_ACTIONS.ACTION_DO_NOTHING, SUPER_ACTIONS.ACTION_DEVELOP_BASE]
 
+        attackAction = False
         if state[SUPER_STATE.BASE.ARMY_POWER] > 0:
             for i in range(SUPER_STATE.GRID_SIZE * SUPER_STATE.GRID_SIZE):
                 if state[SUPER_STATE.FOG_MAT_START + i] < SUPER_STATE.VAL_IS_SCOUTED:
                     valid.append(SUPER_ACTIONS.ACTION_SCOUT_START + i)
                 if state[SUPER_STATE.ENEMY_ARMY_MAT_START + i] > 0:
                     valid.append(SUPER_ACTIONS.ACTION_ATTACK_START + i)
+                    attackAction = True
 
         return valid
 
@@ -402,7 +406,6 @@ class SuperAgent(BaseAgent):
         for subAgent in self.subAgents.values():
             subAgent.CreateState(obs)
 
-        
         if self.playAgent:
             self.maxSupply = (obs.observation['player'][SC2_Params.SUPPLY_USED] == obs.observation['player'][SC2_Params.SUPPLY_CAP])
             for si in range(SUPER_STATE.BASE_START, SUPER_STATE.BASE_END):
@@ -530,12 +533,23 @@ class SuperAgent(BaseAgent):
 if __name__ == "__main__":
     from absl import app
     from absl import flags
+    flags.DEFINE_string("directoryPrefix", "", "directory names to take results")
     flags.DEFINE_string("directoryNames", "", "directory names to take results")
     flags.DEFINE_string("grouping", "100", "grouping size of results.")
+    flags.DEFINE_string("max2Plot", "none", "grouping size of results.")
     flags.FLAGS(sys.argv)
 
     directoryNames = (flags.FLAGS.directoryNames).split(",")
+    for d in range(len(directoryNames)):
+        directoryNames[d] = flags.FLAGS.directoryPrefix + directoryNames[d]
+    
     grouping = int(flags.FLAGS.grouping)
+    if flags.FLAGS.max2Plot == "none":
+        max2Plot = None
+    else:
+        max2Plot = int(flags.FLAGS.max2Plot)
 
     if "results" in sys.argv:
-        PlotResults(AGENT_NAME, runDirectoryNames=directoryNames, grouping=grouping)  
+        PlotResults(AGENT_NAME, runDirectoryNames=directoryNames, grouping=grouping, maxTrials2Plot=max2Plot)
+    elif "multipleResults" in sys.argv:
+        PlotResults(AGENT_NAME, runDirectoryNames=directoryNames, grouping=grouping, maxTrials2Plot=max2Plot, multipleDm=True)

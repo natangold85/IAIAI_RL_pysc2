@@ -10,6 +10,8 @@ DQN = 'dqn'
 DQN2L = 'dqn_2l'
 DQN2L_EXPLORATION_CHANGE = 'dqn_2l_explorationChange'
 A2C = 'A2C'
+A2C_EXP = 'A2C_Exp'
+A2C_EXP_ADJUSTED = 'A2C_ExpAdjusted'
 A3C = 'A3C'
 DQN_EMBEDDING_LOCATIONS = 'dqn_Embedding'
 HEURISTIC = 'heuristic' 
@@ -94,14 +96,28 @@ def GetRunType(agentName, configDict):
         runType[DECISION_MAKER_TYPE] = "DecisionMakerExperienceReplay"
         runType[ALGO_TYPE] = "A2C"
         runType[DIRECTORY] = agentName + "_A2C"
-        runType[PARAMS] = A2C_PARAMS(0, 0, numTrials2Save=AGENTS_PARAMS["army_attack"]['numTrials2Save'])
+        runType[PARAMS] = A2C_PARAMS(0, 0, numTrials2Save=AGENTS_PARAMS[agentName]['numTrials2Save'])
         runType[DECISION_MAKER_NAME] = agentName + "_A2C"
+    
+    elif configDict[agentName] == A2C_EXP:
+        runType[DECISION_MAKER_TYPE] = "DecisionMakerExperienceReplay"
+        runType[ALGO_TYPE] = "A2C"
+        runType[DIRECTORY] = agentName + "_A2C"
+        runType[PARAMS] = A2C_PARAMS(0, 0, numTrials2Save=AGENTS_PARAMS[agentName]['numTrials2Save'], accumulateHistory=True)
+        runType[DECISION_MAKER_NAME] = agentName + "_A2C"        
+
+    elif configDict[agentName] == A2C_EXP_ADJUSTED:
+        runType[DECISION_MAKER_TYPE] = "DecisionMakerExperienceReplay"
+        runType[ALGO_TYPE] = "A2C"
+        runType[DIRECTORY] = agentName + "_A2C"
+        runType[PARAMS] = A2C_PARAMS(0, 0, numTrials2Save=AGENTS_PARAMS[agentName]['numTrials2Save'], accumulateHistory=True)
+        runType[DECISION_MAKER_NAME] = agentName + "_A2C"        
 
     elif configDict[agentName] == A3C:
         runType[DECISION_MAKER_TYPE] = "DecisionMakerOnlineAsync"
         runType[ALGO_TYPE] = "A3C"
         runType[DIRECTORY] = agentName + "_A3C"
-        runType[PARAMS] = A3C_PARAMS(0, 0, numTrials2Learn=1, numTrials2Save=AGENTS_PARAMS["army_attack"]['numTrials2Save'])
+        runType[PARAMS] = A3C_PARAMS(0, 0, numTrials2Learn=1, numTrials2Save=AGENTS_PARAMS[agentName]['numTrials2Save'])
         runType[DECISION_MAKER_NAME] = agentName + "_A3C"
 
     elif configDict[agentName] == HEURISTIC:

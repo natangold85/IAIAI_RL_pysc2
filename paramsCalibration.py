@@ -10,7 +10,7 @@ from algo_geneticProgramming import Population
 from algo_geneticProgramming import ParamsState
 
 from utils_results import AvgResults
-from utils_results import GoToNextResultFile
+from utils_results import ChangeName2NextResultFile
 
 from utils_history import GetHistoryFromFile
 from utils_history import JoinTransitions
@@ -128,6 +128,15 @@ def GetPopulationDict(directory):
     populationDict = eval(open(populationFName, "r+").read())        
     return populationDict, populationDict["numGeneration"]
 
+def DeletePopulation(directory):
+    populationFName = directory + "/" + CURRENT_POPULATION_FILE_NAME
+    if os.path.isfile(populationFName):
+        os.remove(populationFName)
+
+    populationHistoryFName = directory + "/" + HISTORY_POPULATION_FILE_NAME
+    if os.path.isfile(populationHistoryFName):
+        os.remove(populationHistoryFName)    
+
 
 def GeneticProgrammingGeneration(populationSize, numInstances, configDict, runType): 
     parms2Calib = configDict["params2Calibrate"]
@@ -150,7 +159,7 @@ def ReadGPFitness(configDict, agentName, runType):
         for idx in member[0]:
             path = configDict["directory"] + "/" + agentName + "/" + runType["directory"]
             r = AvgResults(path, runType["results"], idx)
-            GoToNextResultFile(path, runType["results"], idx, populationList["numGeneration"])
+            ChangeName2NextResultFile(path, runType["results"], idx, populationList["numGeneration"])
             if r != None:
                 results.append(r)
 
@@ -201,11 +210,8 @@ def TrainSingleGP(configDict, agentName, runType, dirCopyIdx):
     else:
         print("hist size read = ", np.sum(transitions["terminal"]), "num supposed to load =", numTrainEpisodes)
     
-    # todo: read state size and num actions properly
-    from agent_army_attack import STATE_SIZE
-    from agent_army_attack import NUM_ACTIONS
     from algo_decisionMaker import CreateDecisionMaker
-    decisionMaker, _ = CreateDecisionMaker(agentName=agentName, configDict=configDict, stateSize=STATE_SIZE, numActions=NUM_ACTIONS, isMultiThreaded=False, dmCopy=dirCopyIdx)
+    decisionMaker, _ = CreateDecisionMaker(agentName=agentName, configDict=configDict, isMultiThreaded=False, dmCopy=dirCopyIdx)
 
     with tf.Session() as sess:
         decisionMaker.InitModel(sess, resetModel=True)  

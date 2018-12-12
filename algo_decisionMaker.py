@@ -33,7 +33,7 @@ from utils_results import ResultFile
 
 from paramsCalibration import ChangeParamsAccordingToDict
 
-def CreateDecisionMaker(agentName, configDict, isMultiThreaded, dmCopy, hyperParamsDict=None, heuristicClass=None):
+def CreateDecisionMaker(agentName, configDict, isMultiThreaded, dmCopy, heuristicClass=None):
     from agentRunTypes import GetRunType
     from agentRunTypes import GetAgentParams
     
@@ -63,9 +63,7 @@ def CreateDecisionMaker(agentName, configDict, isMultiThreaded, dmCopy, hyperPar
         if runType["algo_type"] == "DQN_WithTargetAndDefault":
             runType["params"].defaultDecisionMaker = heuristicClass()
 
-        if hyperParamsDict != None:
-            runType["params"] = ChangeParamsAccordingToDict(runType["params"], hyperParamsDict)
-        elif "hyperParams" in configDict:
+        if "hyperParams" in configDict:
             runType["params"] = ChangeParamsAccordingToDict(runType["params"], configDict["hyperParams"])
         
         runType["params"].stateSize = stateSize
@@ -156,9 +154,6 @@ class BaseDecisionMaker:
     def AddSlot(self, slotName):
         if self.resultFile != None:
             self.resultFile.AddSlot(slotName)
-
-    def GoToNextResultFile(self, numFile):
-        self.resultFile.GoToNextFile(numFile)
 
     def AddResultFile(self, resultFile):
         self.secondResultFile = resultFile
@@ -421,7 +416,7 @@ class DecisionMakerExperienceReplay(DecisionMakerAlgoBase):
         self.endRunLock.acquire()
 
         numRun = int(self.NumRuns())
-        #print(threading.current_thread().getName(), ":", self.agentName,"->for trial#", numRun, ": reward =", r, "score =", score, "steps =", steps)
+        print(threading.current_thread().getName(), ":", self.agentName,"->for trial#", numRun, ": reward =", r, "score =", score, "steps =", steps)
 
         save = True if (numRun + 1) % self.params.numTrials2Save == 0 else False
         train = True if (numRun + 1) % self.params.numTrials2Learn == 0 else False

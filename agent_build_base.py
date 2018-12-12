@@ -680,12 +680,23 @@ class BuildBaseSubAgent(BaseAgent):
 if __name__ == "__main__":
     from absl import app
     from absl import flags
+    flags.DEFINE_string("directoryPrefix", "", "directory names to take results")
     flags.DEFINE_string("directoryNames", "", "directory names to take results")
     flags.DEFINE_string("grouping", "100", "grouping size of results.")
+    flags.DEFINE_string("max2Plot", "none", "grouping size of results.")
     flags.FLAGS(sys.argv)
 
     directoryNames = (flags.FLAGS.directoryNames).split(",")
+    for d in range(len(directoryNames)):
+        directoryNames[d] = flags.FLAGS.directoryPrefix + directoryNames[d]
+    
     grouping = int(flags.FLAGS.grouping)
+    if flags.FLAGS.max2Plot == "none":
+        max2Plot = None
+    else:
+        max2Plot = int(flags.FLAGS.max2Plot)
 
     if "results" in sys.argv:
-        PlotResults(AGENT_NAME, runDirectoryNames=directoryNames, grouping=grouping)
+        PlotResults(AGENT_NAME, runDirectoryNames=directoryNames, grouping=grouping, maxTrials2Plot=max2Plot)
+    elif "multipleResults" in sys.argv:
+        PlotResults(AGENT_NAME, runDirectoryNames=directoryNames, grouping=grouping, maxTrials2Plot=max2Plot, multipleDm=True)

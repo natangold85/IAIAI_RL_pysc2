@@ -180,13 +180,14 @@ class AttackAgent(BaseAgent):
                     return actions.FunctionCall(SC2_Actions.SELECT_ARMY, [SC2_Params.NOT_QUEUED]), False
 
             elif moveNum == 1:
-                self.sharedData.armyInAttack = self.ArmySelected(obs)
 
+                self.sharedData.armyInAttack = self.ArmySelected(obs)
+                
                 if len(self.sharedData.armyInAttack) > 0:
                     coordBattle = self.InBattle(obs)
                     if self.sharedData.inBattle:
-                        print("InBattle")
                         self.attackPreformAction = True
+                        self.moveNum = 0
                         return actions.FunctionCall(SC2_Actions.MOVE_CAMERA, [SwapPnt(coordBattle)]), False
 
                     elif SC2_Actions.ATTACK_MINIMAP in obs.observation['available_actions']:     
@@ -197,14 +198,11 @@ class AttackAgent(BaseAgent):
             elif moveNum >= 2:
                 if self.sharedData.inBattle:
                     if self.attackPreformAction:
-                        self.moveNum = 0
                         sc2Action, terminal = self.subAgents[SUB_AGENT_ID_BATTLEMNGR].Action2SC2Action(obs, self.moveNum)
                         self.moveNum += 1
-
                         self.attackPreformAction = not terminal
                         return sc2Action, False
                     else:
-                        print("\n\nGo Back to Base", self.sharedData.commandCenterLoc,"\n\n")
                         return actions.FunctionCall(SC2_Actions.MOVE_CAMERA, [SwapPnt(self.sharedData.commandCenterLoc[0])]), True
         else:
             return self.subAgents[SUB_AGENT_ID_BATTLEMNGR].Action2SC2Action(obs, moveNum)

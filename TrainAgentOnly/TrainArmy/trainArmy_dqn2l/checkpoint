@@ -1,2 +1,0 @@
-model_checkpoint_path: "train_dqn2l"
-all_model_checkpoint_paths: "train_dqn2l"
