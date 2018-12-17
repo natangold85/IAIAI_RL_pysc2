@@ -460,7 +460,6 @@ def run_thread(agent, sess, display, players, numSteps):
             
             # remove crahsed terminal history
             # agent.RemoveNonTerminalHistory()
-
             global NUM_CRASHES
             NUM_CRASHES += 1
 

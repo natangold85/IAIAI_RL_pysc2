@@ -98,7 +98,7 @@ class ScoutAgent(BaseAgent):
     def FirstStep(self, obs):
         super(ScoutAgent, self).FirstStep()  
 
-        self.scoutChosen = False
+        self.isScoutGroup = False
         self.scoutInProgress = False
 
         self.fogMatFull = np.zeros((SC2_Params.MINIMAP_SIZE, SC2_Params.MINIMAP_SIZE), int)
@@ -113,7 +113,7 @@ class ScoutAgent(BaseAgent):
     def Action2SC2Action(self, obs, a, moveNum):     
         if moveNum == 0:
             if a < ACTIONS_END_IDX_SCOUT:
-                if self.scoutChosen:
+                if self.isScoutGroup:
                     return actions.FunctionCall(SC2_Actions.SELECT_CONTROL_GROUP, [SC2_Params.CONTROL_GROUP_RECALL, CONTROL_GROUP_ID_SCOUT]), False
                 else:
                     target = self.SelectScoutingUnit(obs)
@@ -123,14 +123,12 @@ class ScoutAgent(BaseAgent):
 
         elif moveNum == 1:
             if a < ACTIONS_END_IDX_SCOUT:
-                if self.scoutChosen:
-                    if not self.IsScouterSelected(obs):
-                        self.scoutChosen = False
-                    elif SC2_Actions.ATTACK_MINIMAP in obs.observation['available_actions']:
+                if self.isScoutGroup:
+                    if SC2_Actions.ATTACK_MINIMAP in obs.observation['available_actions']:
                         return self.GoToLocationAction(a)
 
                 elif SC2_Actions.SELECT_CONTROL_GROUP in obs.observation['available_actions']:       
-                    self.scoutChosen = True
+                    self.isScoutGroup = True
                     return actions.FunctionCall(SC2_Actions.SELECT_CONTROL_GROUP, [SC2_Params.CONTROL_GROUP_SET, CONTROL_GROUP_ID_SCOUT]), False
         
         elif moveNum == 2:
@@ -141,6 +139,10 @@ class ScoutAgent(BaseAgent):
         return SC2_Actions.DO_NOTHING_SC2_ACTION, True
 
     def MonitorObservation(self, obs):
+        if self.isScoutGroup:
+            self.isScoutGroup = obs.observation['control_groups'][CONTROL_GROUP_ID_SCOUT[0]][SC2_Params.NUM_UNITS_CONTROL_GROUP] > 0
+
+
         miniMapVisi = obs.observation['feature_minimap'][SC2_Params.VISIBILITY_MINIMAP]
         miniMapHeights = obs.observation['feature_minimap'][SC2_Params.HEIGHT_MAP] != NON_VALID_MINIMAP_HEIGHT
         

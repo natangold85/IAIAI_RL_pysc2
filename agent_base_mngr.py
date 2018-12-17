@@ -81,7 +81,6 @@ SUBAGENTS_NAMES[SUB_AGENT_TRAINER] = "TrainArmySubAgent"
 class SharedDataBase(SharedDataBuild, SharedDataTrain):
     def __init__(self):
         super(SharedDataBase, self).__init__()
-        self.currBaseState = None
 
 class BASE_STATE:
     # state details
@@ -194,51 +193,46 @@ class NaiveDecisionMakerBaseMngr(BaseNaiveDecisionMaker):
         super(NaiveDecisionMakerBaseMngr, self).__init__(numTrials2Save=numTrials2Save, agentName=AGENT_NAME, resultFName=resultFName, directory=directory)
 
     def choose_action(self, state, validActions, targetValues=False):
+        actionValues = -np.ones(BASE_ACTIONS.SIZE, float)
+        actionValues[validActions] = -0.9
+
         action = BASE_ACTIONS.DO_NOTHING
-        if np.random.uniform() > 0.75:
-            return action
+        if np.random.uniform() < 0.75:
 
-        numSDAll = state[BASE_STATE.SUPPLY_DEPOT_IDX] + state[BASE_STATE.IN_PROGRESS_SUPPLY_DEPOT_IDX]
-        numRefAll = state[BASE_STATE.REFINERY_IDX] + state[BASE_STATE.IN_PROGRESS_REFINERY_IDX]
-        numBaAll = state[BASE_STATE.BARRACKS_IDX] + state[BASE_STATE.IN_PROGRESS_BARRACKS_IDX]
-        numFaAll = state[BASE_STATE.FACTORY_IDX] + state[BASE_STATE.IN_PROGRESS_FACTORY_IDX]
-        numReactorsAll = state[BASE_STATE.REACTORS_IDX] + state[BASE_STATE.IN_PROGRESS_REACTORS_IDX]
-        numTechAll = state[BASE_STATE.TECHLAB_IDX] + state[BASE_STATE.IN_PROGRESS_TECHLAB_IDX]
-        numBarracksQ = state[BASE_STATE.QUEUE_BARRACKS]
-        
-        supplyLeft = state[BASE_STATE.SUPPLY_LEFT]
-        power = state[BASE_STATE.ARMY_POWER]
+            numSDAll = state[BASE_STATE.SUPPLY_DEPOT_IDX] + state[BASE_STATE.IN_PROGRESS_SUPPLY_DEPOT_IDX]
+            numRefAll = state[BASE_STATE.REFINERY_IDX] + state[BASE_STATE.IN_PROGRESS_REFINERY_IDX]
+            numBaAll = state[BASE_STATE.BARRACKS_IDX] + state[BASE_STATE.IN_PROGRESS_BARRACKS_IDX]
+            numFaAll = state[BASE_STATE.FACTORY_IDX] + state[BASE_STATE.IN_PROGRESS_FACTORY_IDX]
+            numReactorsAll = state[BASE_STATE.REACTORS_IDX] + state[BASE_STATE.IN_PROGRESS_REACTORS_IDX]
+            numTechAll = state[BASE_STATE.TECHLAB_IDX] + state[BASE_STATE.IN_PROGRESS_TECHLAB_IDX]
+            numBarracksQ = state[BASE_STATE.QUEUE_BARRACKS]
+            
+            supplyLeft = state[BASE_STATE.SUPPLY_LEFT]
+            power = state[BASE_STATE.ARMY_POWER]
 
-        if supplyLeft <= 2:
-            action = BASE_ACTIONS.BUILD_BASE
-        elif numSDAll < 3 or numRefAll < 2 or numBaAll < 1 or numReactorsAll < 1:
-            action = BASE_ACTIONS.BUILD_BASE
-        elif numBarracksQ < 6 and power < 8:
-            action = BASE_ACTIONS.TRAIN_ARMY
-        elif numFaAll < 1 and numTechAll < 1: 
-            action = BASE_ACTIONS.BUILD_BASE
-        elif supplyLeft > 5:
-            action = BASE_ACTIONS.TRAIN_ARMY
-        elif numReactorsAll < 2:
-            action = BASE_ACTIONS.BUILD_BASE
-        elif supplyLeft > 5:
-            action = BASE_ACTIONS.TRAIN_ARMY
-        elif supplyLeft < 5:
-            action = BASE_ACTIONS.BUILD_BASE
-        else:
-            action = BASE_ACTIONS.TRAIN_ARMY
+            if supplyLeft <= 2:
+                action = BASE_ACTIONS.BUILD_BASE
+            elif numSDAll < 3 or numRefAll < 2 or numBaAll < 1 or numReactorsAll < 1:
+                action = BASE_ACTIONS.BUILD_BASE
+            elif numBarracksQ < 6 and power < 8:
+                action = BASE_ACTIONS.TRAIN_ARMY
+            elif numFaAll < 1 and numTechAll < 1: 
+                action = BASE_ACTIONS.BUILD_BASE
+            elif supplyLeft > 5:
+                action = BASE_ACTIONS.TRAIN_ARMY
+            elif numReactorsAll < 2:
+                action = BASE_ACTIONS.BUILD_BASE
+            elif supplyLeft > 5:
+                action = BASE_ACTIONS.TRAIN_ARMY
+            elif supplyLeft < 5:
+                action = BASE_ACTIONS.BUILD_BASE
+            else:
+                action = BASE_ACTIONS.TRAIN_ARMY
+            
+            action = action if action in validActions else BASE_ACTIONS.DO_NOTHING
 
-        return action if action in validActions else BASE_ACTIONS.DO_NOTHING
-
-    def ActionsValues(self, state, validActions, target = True):    
-        vals = np.zeros(BASE_ACTIONS.SIZE,dtype = float)
-        vals[self.choose_action(state, validActions)] = 1.0
-
-        return vals
-
-    def end_run(self, r, score, steps):
-        print(threading.current_thread().getName(), ":", AGENT_NAME,"->for trial#", self.trialNum, ": reward =", r, "score =", score, "steps =", steps)
-        return super(NaiveDecisionMakerBaseMngr, self).end_run(r, score, steps)
+        actionValues[action] = 1.0
+        return action, actionValues
 
 
 class BaseMngr(BaseAgent):
@@ -296,16 +290,12 @@ class BaseMngr(BaseAgent):
             self.SetSubAgentTrainSwitch(configDict["numTrial2Train"], [SUB_AGENT_BUILDER, SUB_AGENT_TRAINER])
 
         self.sharedData = sharedData
-        self.terminalState = np.zeros(BASE_STATE.SIZE, dtype=np.int, order='C')
+        self.terminalState = np.zeros(BASE_STATE.SIZE, float)
 
         self.subAgentsActions = {}
 
         # model params 
         self.minPriceMinerals = 50
-
-        self.current_state = np.zeros(BASE_STATE.SIZE, dtype=np.int32, order='C')
-        self.previous_scaled_state = np.zeros(BASE_STATE.SIZE, dtype=np.int32, order='C')
-        self.current_scaled_state = np.zeros(BASE_STATE.SIZE, dtype=np.int32, order='C')
 
 
 
@@ -410,9 +400,9 @@ class BaseMngr(BaseAgent):
         super(BaseMngr, self).FirstStep()
 
         # state       
-        self.current_state = np.zeros(BASE_STATE.SIZE, dtype=np.int32, order='C')
-        self.previous_scaled_state = np.zeros(BASE_STATE.SIZE, dtype=np.int32, order='C')
-        self.current_scaled_state = np.zeros(BASE_STATE.SIZE, dtype=np.int32, order='C')
+        self.current_state = np.zeros(BASE_STATE.SIZE, float)
+        self.previous_scaled_state = np.zeros(BASE_STATE.SIZE, float)
+        self.current_scaled_state = np.zeros(BASE_STATE.SIZE, float)
 
         self.subAgentsActions = {}
 
@@ -494,8 +484,6 @@ class BaseMngr(BaseAgent):
 
         self.ScaleState()
 
-        self.sharedData.currBaseState = self.current_scaled_state.copy()
-
         if self.isActionCommitted:
             self.lastActionCommittedStep = self.sharedData.numAgentStep
             self.lastActionCommittedState = self.previous_scaled_state
@@ -539,13 +527,9 @@ class BaseMngr(BaseAgent):
             self.subAgentsActions[sa] = self.subAgents[sa].ChooseAction() 
 
         if self.playAgent:
-            if self.illigalmoveSolveInModel:
-                validActions = self.ValidActions(self.current_scaled_state)
-            else: 
-                validActions = list(range(BASE_ACTIONS.SIZE))
- 
+            validActions = self.ValidActions(self.current_scaled_state) if self.illigalmoveSolveInModel else list(range(BASE_ACTIONS.SIZE))
             targetValues = False if self.trainAgent else True
-            action = self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues)
+            action, _ = self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues)
         else:
             action = self.subAgentPlay
 
@@ -562,6 +546,18 @@ class BaseMngr(BaseAgent):
      
         return valid
     
+    def GetArmyPower(self):
+        return self.current_scaled_state[BASE_STATE.ARMY_POWER]
+
+    def GetMngrActionAdvantage(self):
+        validActions = self.ValidActions(self.current_scaled_state) if self.illigalmoveSolveInModel else list(range(BASE_ACTIONS.SIZE))
+        targetValues = False if self.trainAgent else True
+        action, values = self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues) 
+        return values[action] - values[BASE_ACTIONS.DO_NOTHING]
+
+    def GetBaseDevelopScore(self):
+        return self.subAgents[SUB_AGENT_BUILDER].GetBaseDevelopScore()
+
     def ArmyBuildingExist(self, state):
         return (state[BASE_STATE.TRAIN_BUILDING_RELATED_IDX] > 0).any()
 

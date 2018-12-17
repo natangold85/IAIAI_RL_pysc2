@@ -196,16 +196,16 @@ class DQN:
         return self.ExploreProb()    
 
     def choose_action(self, state, validActions, targetValues=False):
+        vals = self.outputLayer.eval({self.inputLayer: state.reshape(1,self.num_input)}, session=self.sess).squeeze()
+        
         if np.random.uniform() > self.params.ExploreProb(self.numRuns.eval(session = self.sess)):
-            vals = self.outputLayer.eval({self.inputLayer: state.reshape(1,self.num_input)}, session=self.sess).squeeze()
-
             maxArgs = np.argwhere(vals == np.amax(vals[validActions]))
             maxArgsValid = np.array([x for x in maxArgs if x in validActions]).squeeze(axis=1)
             a = np.random.choice(maxArgsValid)      
         else:
             a = np.random.choice(validActions)
 
-        return a
+        return a, vals
 
 
     def ActionsValues(self, state, validActions, targetValues = False):
@@ -382,18 +382,19 @@ class DQN_WithTarget(DQN):
 
     def choose_action(self, state, validActions, targetValues=False):
         if targetValues:   
+            vals = self.targetOutput.eval({self.inputLayer: state.reshape(1,self.num_input)}, session=self.sess)
             if np.random.uniform() > self.TargetExploreProb():
-                vals = self.targetOutput.eval({self.inputLayer: state.reshape(1,self.num_input)}, session=self.sess)
 
                 maxArgs = list(np.argwhere(vals[0] == np.amax(vals[0][validActions]))[0])
                 maxArgsValid = [x for x in maxArgs if x in validActions]
                 action = np.random.choice(maxArgsValid)      
             else:
                 action = np.random.choice(validActions)
+            
+            return action, vals
         else:
-            action = super(DQN_WithTarget, self).choose_action(state, validActions, targetValues)
+            return super(DQN_WithTarget, self).choose_action(state, validActions, targetValues)
 
-        return action
 
     def ActionsValues(self, state, validActions, targetValues = False):
         if targetValues:
@@ -481,9 +482,9 @@ class DQN_WithTargetAndDefault(DQN_WithTarget):
                 return super(DQN_WithTargetAndDefault, self).choose_action(state, validActions, targetValues)
         else:
             if self.ValueDefault() == self.initValDflt:
-                super(DQN_WithTargetAndDefault, self).choose_action(state, validActions)
+                return super(DQN_WithTargetAndDefault, self).choose_action(state, validActions)
             else:
-                self.defaultDecisionMaker.choose_action(state, validActions)
+                return self.defaultDecisionMaker.choose_action(state, validActions)
     
     def ValueDefault(self):
         return self.valueDefaultDm.eval(session = self.sess)

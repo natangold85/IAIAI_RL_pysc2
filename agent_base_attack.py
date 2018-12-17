@@ -82,36 +82,37 @@ class NaiveDecisionMakerBaseAttack(BaseNaiveDecisionMaker):
 
 
     def choose_action(self, state, validActions, targetValues=False):
+        actionValues = -np.ones(BaseAttackActions.SIZE, float)
+        actionValues[validActions] = -0.9
+
         buildingPnts = (state[BaseAttackState.START_ENEMY_MAT:BaseAttackState.END_ENEMY_MAT] > 0).nonzero()[0]
         selfLocs = (state[BaseAttackState.START_SELF_MAT:BaseAttackState.END_SELF_MAT] > 0).nonzero()[0]
 
         if len(selfLocs) == 0 or len(buildingPnts) == 0:
-            return BaseAttackActions.DO_NOTHING
+            action = BaseAttackActions.DO_NOTHING
+        else:
 
-        self_y = int(selfLocs[0] / GRID_SIZE)
-        self_x = selfLocs[0] % GRID_SIZE
+            self_y = int(selfLocs[0] / GRID_SIZE)
+            self_x = selfLocs[0] % GRID_SIZE
 
-        minDist = 1000
-        minIdx = -1
+            minDist = 1000
+            minIdx = -1
 
-        for idx in buildingPnts:
-            p_y = int(idx / GRID_SIZE)
-            p_x = idx % GRID_SIZE
-            diffX = p_x - self_x
-            diffY = p_y - self_y
+            for idx in buildingPnts:
+                p_y = int(idx / GRID_SIZE)
+                p_x = idx % GRID_SIZE
+                diffX = p_x - self_x
+                diffY = p_y - self_y
 
-            dist = diffX * diffX + diffY * diffY
-            if dist < minDist:
-                minDist = dist
-                minIdx = idx
+                dist = diffX * diffX + diffY * diffY
+                if dist < minDist:
+                    minDist = dist
+                    minIdx = idx
+            
+            action = minIdx + BaseAttackActions.START_IDX_ATTACK
 
-        return minIdx + BaseAttackActions.START_IDX_ATTACK
-
-    def ActionsValues(self, state, validActions, target = True):
-        vals = np.zeros(BaseAttackActions.SIZE,dtype = float)
-        vals[self.choose_action(state, validActions)] = 1.0
-
-        return vals
+        actionValues[action] = 1
+        return action, actionValues
 
 class BaseAttack(BaseAgent):
     def __init__(self, sharedData, configDict, decisionMaker, isMultiThreaded, playList, trainList, testList, dmCopy=None):        
@@ -132,7 +133,7 @@ class BaseAttack(BaseAgent):
 
         self.history = self.decisionMaker.AddHistory()
 
-        self.terminalState = np.zeros(BaseAttackState.SIZE, dtype=np.int, order='C')
+        self.terminalState = np.zeros(BaseAttackState.SIZE, float)
 
         allTerranBuildings = TerranUnit.BUILDINGS + [Terran.SCV]
         
@@ -168,9 +169,9 @@ class BaseAttack(BaseAgent):
     def FirstStep(self, obs):
         super(BaseAttack, self).FirstStep()
 
-        self.current_state = np.zeros(BaseAttackState.SIZE, dtype=np.int, order='C')
-        self.current_scaled_state = np.zeros(BaseAttackState.SIZE, dtype=np.int, order='C')
-        self.previous_scaled_state = np.zeros(BaseAttackState.SIZE, dtype=np.int, order='C')
+        self.current_state = np.zeros(BaseAttackState.SIZE, float)
+        self.current_scaled_state = np.zeros(BaseAttackState.SIZE, float)
+        self.previous_scaled_state = np.zeros(BaseAttackState.SIZE, float)
 
         self.enemyBuildingGridLoc2ScreenLoc = {}
         self.selfLocCoord = None      
@@ -215,13 +216,9 @@ class BaseAttack(BaseAgent):
 
     def ChooseAction(self):
         if self.playAgent:
-            if self.illigalmoveSolveInModel:
-                validActions = self.ValidActions(self.current_scaled_state)
-            else: 
-                validActions = list(range(BaseAttackActions.SIZE))
- 
+            validActions = self.ValidActions(self.current_scaled_state) if self.illigalmoveSolveInModel else list(range(BaseAttackActions.SIZE))
             targetValues = False if self.trainAgent else True
-            action = self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues)
+            action, _  = self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues)
 
         else:
             action = BaseAttackActions.DO_NOTHING
@@ -230,7 +227,7 @@ class BaseAttack(BaseAgent):
         return action
 
     def CreateState(self, obs):
-        self.current_state = np.zeros(BaseAttackState.SIZE, dtype=np.int, order='C')
+        self.current_state = np.zeros(BaseAttackState.SIZE, float)
         self.GetSelfLoc(obs)
         self.GetEnemyBuildingLoc(obs)
         self.current_state[BaseAttackState.TIME_LINE_IDX] = self.sharedData.numStep

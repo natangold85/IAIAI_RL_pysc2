@@ -149,7 +149,7 @@ class TRAIN_STATE:
 
     DOUBLE_QUEUE_ADDITION = [Terran.BarracksReactor, Terran.FactoryReactor, Terran.Reactor]
 
-class SharedDataTrain(EmptySharedData):
+class SharedDataTrain(EmptySharedData): 
     def __init__(self):
         super(SharedDataTrain, self).__init__()
 
@@ -172,45 +172,19 @@ class NaiveDecisionMakerTrain(BaseNaiveDecisionMaker):
     def __init__(self, resultFName = None, directory = None, numTrials2Save=100):
         super(NaiveDecisionMakerTrain, self).__init__(numTrials2Save=numTrials2Save, resultFName=resultFName, directory=directory, agentName=AGENT_NAME)
 
-    def ActionsValues(self, state, validActions, target = True):  
-        vals = np.zeros(TRAIN_ACTIONS.SIZE,dtype = float)
-           
-        if state[TRAIN_STATE.ARMY_POWER] < 20:
-            vals[TRAIN_ACTIONS.TRAIN_MARINE] = 0.4
-            vals[TRAIN_ACTIONS.TRAIN_REAPER] = 0.4
-            vals[TRAIN_ACTIONS.TRAIN_SIEGETANK] = 0.5
-            vals[TRAIN_ACTIONS.TRAIN_HELLION] = 0.5                    
-        elif state[TRAIN_STATE.ARMY_POWER] < 30:
-            vals[TRAIN_ACTIONS.TRAIN_MARINE] = 0.1
-            vals[TRAIN_ACTIONS.TRAIN_REAPER] = 0.1
-            vals[TRAIN_ACTIONS.TRAIN_SIEGETANK] = 0.5
-            vals[TRAIN_ACTIONS.TRAIN_HELLION] = 0.4 
-        else: 
-            vals[TRAIN_ACTIONS.TRAIN_SIEGETANK] = 0.5
-            vals[TRAIN_ACTIONS.TRAIN_HELLION] = 0.4 
-
-        if state[TRAIN_STATE.BARRACKS_IDX] == 0:
-            vals[TRAIN_ACTIONS.TRAIN_MARINE] = -0.1
-            vals[TRAIN_ACTIONS.TRAIN_REAPER] = -0.1
-
-        if state[TRAIN_STATE.FACTORY_IDX] == 0:
-            vals[TRAIN_ACTIONS.TRAIN_HELLION] = -0.1
-            vals[TRAIN_ACTIONS.TRAIN_SIEGETANK] = -0.1  
-        
-        if state[TRAIN_STATE.TECHLAB_IDX] == 0:
-            vals[TRAIN_ACTIONS.TRAIN_SIEGETANK] = -0.1  
-
-        vals[TRAIN_ACTIONS.DO_NOTHING] = 0.1
-
-        return vals
-
     def choose_action(self, state, validActions, targetValues=False):
+        actionValues = -np.ones(TRAIN_ACTIONS.SIZE, float)
+        actionValues[validActions] = -0.9
+        
         action = TRAIN_ACTIONS.DO_NOTHING
         
         if TRAIN_ACTIONS.TRAIN_SIEGETANK in validActions:
             action = TRAIN_ACTIONS.TRAIN_SIEGETANK
         elif TRAIN_ACTIONS.TRAIN_HELLION in validActions:
-            action = TRAIN_ACTIONS.TRAIN_HELLION
+            if np.random.uniform() > 0.33 or TRAIN_ACTIONS.TRAIN_MARINE not in validActions:
+                action = TRAIN_ACTIONS.TRAIN_HELLION
+            else:
+                action = TRAIN_ACTIONS.TRAIN_MARINE
         else:
             if np.random.uniform() > 0.5:
                 if TRAIN_ACTIONS.TRAIN_MARINE in validActions:
@@ -223,7 +197,9 @@ class NaiveDecisionMakerTrain(BaseNaiveDecisionMaker):
                 elif TRAIN_ACTIONS.TRAIN_REAPER in validActions:
                     action = TRAIN_ACTIONS.TRAIN_REAPER
 
-        return action       
+        actionValues[action] = 1
+
+        return action, actionValues    
 
 
 class TrainArmySubAgent(BaseAgent):
@@ -278,9 +254,9 @@ class TrainArmySubAgent(BaseAgent):
 
         # states and action:
         self.current_action = None
-        self.current_state = np.zeros(TRAIN_STATE.SIZE, dtype=np.int32, order='C')
-        self.previous_scaled_state = np.zeros(TRAIN_STATE.SIZE, dtype=np.int32, order='C')
-        self.current_scaled_state = np.zeros(TRAIN_STATE.SIZE, dtype=np.int32, order='C')
+        self.current_state = np.zeros(TRAIN_STATE.SIZE, float)
+        self.previous_scaled_state = np.zeros(TRAIN_STATE.SIZE, float)
+        self.current_scaled_state = np.zeros(TRAIN_STATE.SIZE, float)
         
         self.lastActionCommittedStep = 0
         self.lastActionCommittedState = None
@@ -357,7 +333,7 @@ class TrainArmySubAgent(BaseAgent):
         for unit, num in self.sharedData.armySize.items():
             power += num * self.sharedData.unitTrainValue[unit]
 
-        self.current_state[TRAIN_STATE.ARMY_POWER] = int(power)
+        self.current_state[TRAIN_STATE.ARMY_POWER] = power
 
         self.sharedData.qMinSizes = self.CalculateQueues()
         for key, value in TRAIN_STATE.BUILDING_2_STATE_QUEUE_TRANSITION.items():
@@ -392,13 +368,9 @@ class TrainArmySubAgent(BaseAgent):
 
     def ChooseAction(self):
         if self.playAgent:
-            if self.illigalmoveSolveInModel:
-                validActions = self.ValidActions(self.current_scaled_state)
-            else: 
-                validActions = list(range(TRAIN_ACTIONS.SIZE))
-            
+            validActions = self.ValidActions(self.current_scaled_state) if self.illigalmoveSolveInModel else list(range(TRAIN_ACTIONS.SIZE))       
             targetValues = False if self.trainAgent else True
-            action = self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues)
+            action, _ = self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues)
         else:
             action = self.subAgentPlay
 

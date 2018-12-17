@@ -127,7 +127,7 @@ class PlotMngr:
             # insert to list Results instances
             if multipleDm:
                 self.resultFileList.append(resultsInstances)
-                self.legendList += groupNames[i]
+                self.legendList += [groupNames[i]]
             else:
                 self.resultFileList += resultsInstances
                 legendResultGroup = [groupNames[i] + ins for ins in instanceName]

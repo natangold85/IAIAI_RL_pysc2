@@ -73,17 +73,18 @@ class StochasticHeuristicArmyAttackDm(BaseNaiveDecisionMaker):
         
 
     def choose_action(self, state, validActions, targetValues=False):
+        actionValues = -np.ones(ArmyAttackActions.SIZE, float)
+        actionValues[validActions] = -0.9
+
         if len(validActions) > 1:
             if np.random.uniform() > 0.9:
-                return np.random.choice(validActions)
+                action = np.random.choice(validActions)
+            else:
+                action = ArmyAttackActions.DO_NOTHING
 
-        return ArmyAttackActions.DO_NOTHING
+        actionValues[action] = 1.0
+        return action, actionValues
 
-    def ActionsValues(self, state, validActions, target = True):
-        vals = np.zeros(ArmyAttackActions.SIZE,dtype = float)
-        vals[self.choose_action(state, validActions)] = 1.0
-
-        return vals
     
 class AttackClosestArmyAttackDm(BaseNaiveDecisionMaker):
     def __init__(self, numTrials2Save=None, agentName="", resultFName=None, directory=None):
@@ -91,6 +92,9 @@ class AttackClosestArmyAttackDm(BaseNaiveDecisionMaker):
         
 
     def choose_action(self, state, validActions, targetValues=False):
+        actionValues = -np.ones(ArmyAttackActions.SIZE, float)
+        actionValues[validActions] = -0.9
+    
         if len(validActions) > 1:
             selfLocations = []
             for y in range(GRID_SIZE):
@@ -99,40 +103,31 @@ class AttackClosestArmyAttackDm(BaseNaiveDecisionMaker):
                     if state[ArmyAttackState.START_SELF_MAT + idx]:
                         selfLocations.append([y, x])
             
-            if len(selfLocations) > 1:
-                avgSelfLocation = np.average(selfLocations, axis=0)
-            elif len(selfLocations) > 0:
-                avgSelfLocation = selfLocations[0]
+            if len(selfLocations) == 0:
+                action = ArmyAttackActions.DO_NOTHING
             else:
-                return ArmyAttackActions.DO_NOTHING
+                avgSelfLocation = np.average(selfLocations, axis=0) if len(selfLocations) > 1 else selfLocations[0]
+
+                activeActions = validActions.copy()
+                activeActions.remove(ArmyAttackActions.DO_NOTHING)
                 
-            activeActions = validActions.copy()
-            activeActions.remove(ArmyAttackActions.DO_NOTHING)
-            
-            minDist = 2 * GRID_SIZE ** 2
-            minDistAction = -1
-            for a in activeActions:
-                idxOnMap = a - ArmyAttackActions.START_IDX_ATTACK
-                x = idxOnMap % GRID_SIZE
-                y = int(idxOnMap / GRID_SIZE)
-                dist = (y - avgSelfLocation[0]) ** 2 + (x - avgSelfLocation[1]) ** 2
-                if dist < minDist:
-                    minDist = dist
-                    minDistAction = a
+                minDist = 2 * GRID_SIZE ** 2
+                minDistAction = -1
+                for a in activeActions:
+                    idxOnMap = a - ArmyAttackActions.START_IDX_ATTACK
+                    x = idxOnMap % GRID_SIZE
+                    y = int(idxOnMap / GRID_SIZE)
+                    dist = (y - avgSelfLocation[0]) ** 2 + (x - avgSelfLocation[1]) ** 2
+                    if dist < minDist:
+                        minDist = dist
+                        minDistAction = a
 
-            if minDistAction in activeActions:
-                return minDistAction
-            else:
-                print("ERROR")
-            
+                action = minDistAction if minDistAction in activeActions else ArmyAttackActions.DO_NOTHING
+        else:
+            action = ArmyAttackActions.DO_NOTHING
 
-        return ArmyAttackActions.DO_NOTHING
-
-    def ActionsValues(self, state, validActions, target = True):
-        vals = np.zeros(ArmyAttackActions.SIZE,dtype = float)
-        vals[self.choose_action(state, validActions)] = 1.0
-
-        return vals
+        actionValues[action] = 1
+        return action, actionValues
 
 class ArmyAttack(BaseAgent):
     def __init__(self, sharedData, configDict, decisionMaker, isMultiThreaded, playList, trainList, testList, dmCopy=None):        
@@ -155,7 +150,7 @@ class ArmyAttack(BaseAgent):
         self.history = self.decisionMaker.AddHistory()
         # state and actions:
 
-        self.terminalState = np.zeros(ArmyAttackState.SIZE, dtype=np.int, order='C')
+        self.terminalState = np.zeros(ArmyAttackState.SIZE, float)
         
         self.lastValidAttackAction = None
         self.enemyArmyGridLoc2ScreenLoc = {}
@@ -181,9 +176,9 @@ class ArmyAttack(BaseAgent):
     def FirstStep(self, obs):
         super(ArmyAttack, self).FirstStep()
 
-        self.current_state = np.zeros(ArmyAttackState.SIZE, dtype=np.int, order='C')
-        self.current_scaled_state = np.zeros(ArmyAttackState.SIZE, dtype=np.int, order='C')
-        self.previous_scaled_state = np.zeros(ArmyAttackState.SIZE, dtype=np.int, order='C')
+        self.current_state = np.zeros(ArmyAttackState.SIZE, dtype=float)
+        self.current_scaled_state = np.zeros(ArmyAttackState.SIZE, dtype=float)
+        self.previous_scaled_state = np.zeros(ArmyAttackState.SIZE, dtype=float)
         
         self.enemyArmyGridLoc2ScreenLoc = {}
         self.selfLocCoord = None
@@ -234,9 +229,9 @@ class ArmyAttack(BaseAgent):
     def ChooseAction(self):
 
         if self.playAgent:
-            validActions = self.ValidActions(self.current_scaled_state)
+            validActions = self.ValidActions(self.current_scaled_state) if self.illigalmoveSolveInModel else list(range(ArmyAttackActions.SIZE))
             targetValues = False if self.trainAgent else True
-            action = self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues)
+            action, _ = self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues)
         else:
             action = ArmyAttackActions.DO_NOTHING
 
@@ -244,7 +239,7 @@ class ArmyAttack(BaseAgent):
         return action
 
     def CreateState(self, obs):
-        self.current_state = np.zeros(ArmyAttackState.SIZE, dtype=np.int, order='C')
+        self.current_state = np.zeros(ArmyAttackState.SIZE, dtype=float)
     
         self.GetSelfLoc(obs)
         self.GetEnemyArmyLoc(obs)
@@ -320,21 +315,21 @@ class ArmyAttack(BaseAgent):
         return xScaled + yScaled * GRID_SIZE
     
     def Closest2Self(self, p1, p2):
+        if self.selfLocCoord == None:
+            return p1
+            
         d1 = DistForCmp(p1, self.selfLocCoord)
         d2 = DistForCmp(p2, self.selfLocCoord)
         
         return p1 if d1 < d2 else p2
         
     def ValidActions(self, state):
-        if self.illigalmoveSolveInModel:
-            valid = [ArmyAttackActions.DO_NOTHING]
-            enemiesLoc = (state[ArmyAttackState.START_ENEMY_MAT:ArmyAttackState.END_ENEMY_MAT] > 0).nonzero()
-            for loc in enemiesLoc[0]:
-                valid.append(loc + ArmyAttackActions.START_IDX_ATTACK)
+        valid = [ArmyAttackActions.DO_NOTHING]
+        enemiesLoc = (state[ArmyAttackState.START_ENEMY_MAT:ArmyAttackState.END_ENEMY_MAT] > 0).nonzero()
+        for loc in enemiesLoc[0]:
+            valid.append(loc + ArmyAttackActions.START_IDX_ATTACK)
 
-            return valid
-        else:
-            return list(range(ArmyAttackActions.SIZE))
+        return valid
 
     def PrintState(self):
         print("\n\nstate: timeline =", self.current_scaled_state[ArmyAttackState.TIME_LINE_IDX], "last attack action =", self.lastValidAttackAction)

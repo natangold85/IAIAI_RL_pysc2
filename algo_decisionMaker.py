@@ -232,7 +232,10 @@ class BaseNaiveDecisionMaker(BaseDecisionMaker):
 
             self.resultFile = ResultFile(fullDirectoryName + resultFName, numTrials2Save, agentName)
 
+    def ActionsValues(self, state, validActions, target = True):
+        _, values = self.choose_action(state, validActions)
 
+        return values
 
     def end_run(self, r, score, steps):
         saveFile = False
@@ -262,7 +265,7 @@ class UserPlay(BaseDecisionMaker):
             a = input("insert action: ")
         else:
             a = self.actionDoNothing
-        return int(a)
+        return int(a), None
 
     def learn(self, s, a, r, s_, terminal = False):
         return None

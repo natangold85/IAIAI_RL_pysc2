@@ -100,7 +100,7 @@ class A2C:
         actionProbs = self.ActionsValues(state, validActions)        
         action = np.random.choice(np.arange(len(actionProbs)), p=actionProbs)
 
-        return action
+        return action, actionProbs
 
     def DisperseNonValidValues(self, values, validActions):
         # clean non-valid actions from prob

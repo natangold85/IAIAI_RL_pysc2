@@ -103,20 +103,19 @@ class NaiveDecisionMakerBattleMngr(BaseNaiveDecisionMaker):
         self.numActions = 3
 
     def choose_action(self, state, validActions, targetValues=False):
+        actionValues = -np.ones(BattleMngrActions.SIZE, float)
+        actionValues[validActions] = -0.9
+
         if (state[self.startEnemyMat:self.startBuildingMat] > 0).any():
             action = BattleMngrActions.ARMY_BATTLE
         elif (state[self.startBuildingMat:self.endBuildingMat] > 0).any():
             action = BattleMngrActions.BASE_BATTLE
         else:
             action = BattleMngrActions.DO_NOTHING
-
-        return action if action in validActions else BattleMngrActions.DO_NOTHING
-
-    def ActionsValues(self, state, validActions, target = True):
-        vals = np.zeros(self.numActions,dtype = float)
-        vals[self.choose_action(state, validActions)] = 1.0
-
-        return vals
+        
+        action = action if action in validActions else BattleMngrActions.DO_NOTHING
+        actionValues[action] = 1.0
+        return action, actionValues
 
 
 
@@ -170,7 +169,7 @@ class BattleMngr(BaseAgent):
 
         self.state_size = 3 * GRID_SIZE * GRID_SIZE + 1
 
-        self.terminalState = np.zeros(self.state_size, dtype=np.int, order='C')
+        self.terminalState = np.zeros(self.state_size, float)
     
     def GetDecisionMaker(self):
         return self.decisionMaker
@@ -199,9 +198,9 @@ class BattleMngr(BaseAgent):
     def FirstStep(self, obs):        
         super(BattleMngr, self).FirstStep()
 
-        self.current_state = np.zeros(self.state_size, dtype=np.int, order='C')
-        self.current_scaled_state = np.zeros(self.state_size, dtype=np.int, order='C')
-        self.previous_scaled_state = np.zeros(self.state_size, dtype=np.int, order='C')
+        self.current_state = np.zeros(self.state_size, float)
+        self.current_scaled_state = np.zeros(self.state_size, float)
+        self.previous_scaled_state = np.zeros(self.state_size, float)
         
         self.subAgentsActions = {}
         for sa in range(BattleMngrActions.SIZE):
@@ -236,13 +235,9 @@ class BattleMngr(BaseAgent):
            self.subAgentsActions[sa] = self.subAgents[sa].ChooseAction()       
     
         if self.playAgent:
-            if self.illigalmoveSolveInModel:
-                validActions = self.ValidActions(self.current_scaled_state)
-            else: 
-                validActions = list(range(BattleMngrActions.SIZE))
- 
+            validActions = self.ValidActions(self.current_scaled_state) if self.illigalmoveSolveInModel else list(range(BattleMngrActions.SIZE))
             targetValues = False if self.trainAgent else True
-            action = self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues)
+            action, _  = self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues)
         else:
             action = self.subAgentPlay
 
@@ -277,7 +272,7 @@ class BattleMngr(BaseAgent):
         for sa in ALL_SUB_AGENTS:
             self.subAgents[sa].CreateState(obs)
 
-        self.current_state = np.zeros(self.state_size, dtype=np.int, order='C')
+        self.current_state = np.zeros(self.state_size, float)
         
         self.GetSelfLoc(obs)
         for idx in range(GRID_SIZE * GRID_SIZE):

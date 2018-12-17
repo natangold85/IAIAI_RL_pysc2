@@ -263,8 +263,8 @@ class HistoryMngr(History):
         
         self.FindMaxStateVals(s, s_, transitions)
 
-        s = (s * 2) / transitions["maxStateVals"] - 1.0
-        s_ = (s_ * 2) / transitions["maxStateVals"] - 1.0
+        s = s / transitions["maxStateVals"] 
+        s_ = s_ / transitions["maxStateVals"] 
 
         return s , s_
     

@@ -45,6 +45,8 @@ from utils import GetScreenCorners
 
 AGENT_NAME = "super_agent"
 
+GRID_SIZE = 2
+
 NUM_TRIALS_2_LEARN = 20
 
 STEP_DURATION = 0
@@ -65,16 +67,12 @@ SUBAGENTS_NAMES[SUB_AGENT_ID_ATTACK] = "AttackAgent"
 
 # state details
 class SUPER_STATE:
-
-    BASE = BASE_STATE()
-
-    GRID_SIZE = 2
-
-    BASE_START = 0
-    BASE_END = BASE.SIZE
+    BASE_DEVELOP_SCORE = 0
+    ARMY_POWER = 1
+    BASE_ACTION_ADVANTAGE = 2
 
     # power and fog mat
-    SELF_POWER_START = BASE_END
+    SELF_POWER_START = 3
     SELF_POWER_END = SELF_POWER_START + GRID_SIZE * GRID_SIZE
     FOG_MAT_START = SELF_POWER_END
     FOG_MAT_END = FOG_MAT_START + GRID_SIZE * GRID_SIZE
@@ -100,9 +98,9 @@ class SUPER_ACTIONS:
     ACTION_DO_NOTHING = 0
     ACTION_DEVELOP_BASE = 1
     ACTION_SCOUT_START = 2
-    ACTION_SCOUT_END = ACTION_SCOUT_START + SUPER_STATE.GRID_SIZE * SUPER_STATE.GRID_SIZE
+    ACTION_SCOUT_END = ACTION_SCOUT_START + GRID_SIZE * GRID_SIZE
     ACTION_ATTACK_START = ACTION_SCOUT_END
-    ACTION_ATTACK_END = ACTION_ATTACK_START + SUPER_STATE.GRID_SIZE * SUPER_STATE.GRID_SIZE
+    ACTION_ATTACK_END = ACTION_ATTACK_START + GRID_SIZE * GRID_SIZE
     
     SIZE = ACTION_ATTACK_END
 
@@ -277,15 +275,14 @@ class SuperAgent(BaseAgent):
             self.sharedData.buildingCompleted[Terran.CommandCenter].append(Building(middleCC))
 
         self.sharedData.unitTrainValue = self.unitPower
-        self.sharedData.currBaseState = np.zeros(SUPER_STATE.BASE_END - SUPER_STATE.BASE_START, dtype=np.int32, order='C')
 
         # actions:
         self.current_action = None
 
         # states:
-        self.current_state = np.zeros(SUPER_STATE.SIZE, dtype=np.int32, order='C')
-        self.previous_scaled_state = np.zeros(SUPER_STATE.SIZE, dtype=np.int32, order='C')
-        self.current_scaled_state = np.zeros(SUPER_STATE.SIZE, dtype=np.int32, order='C')
+        self.current_state = np.zeros(SUPER_STATE.SIZE, float)
+        self.previous_scaled_state = np.zeros(SUPER_STATE.SIZE, float)
+        self.current_scaled_state = np.zeros(SUPER_STATE.SIZE, float)
 
         self.accumulatedTrainReward = 0.0
 
@@ -336,14 +333,9 @@ class SuperAgent(BaseAgent):
                 self.subAgentsActions[sa] = self.subAgents[sa].ChooseAction()
 
         if self.playAgent:
-            if self.illigalmoveSolveInModel:
-                # todo: create valid actions for agent
-                validActions = self.ValidActions(self.current_scaled_state)
-            else: 
-                validActions = list(range(SUPER_ACTIONS.SIZE))
- 
+            validActions = self.ValidActions(self.current_scaled_state) if self.illigalmoveSolveInModel else list(range(SUPER_ACTIONS.SIZE))
             targetValues = False if self.trainAgent else True
-            action = self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues)
+            action, _ = self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues)
 
         else:
             if self.subAgentPlay == SUB_AGENT_ID_ATTACK:
@@ -355,17 +347,14 @@ class SuperAgent(BaseAgent):
         return action
     
     def ValidActions(self, state):
-        
         valid = [SUPER_ACTIONS.ACTION_DO_NOTHING, SUPER_ACTIONS.ACTION_DEVELOP_BASE]
 
-        attackAction = False
-        if state[SUPER_STATE.BASE.ARMY_POWER] > 0:
-            for i in range(SUPER_STATE.GRID_SIZE * SUPER_STATE.GRID_SIZE):
+        if state[SUPER_STATE.ARMY_POWER] > 0:
+            for i in range(GRID_SIZE * GRID_SIZE):
                 if state[SUPER_STATE.FOG_MAT_START + i] < SUPER_STATE.VAL_IS_SCOUTED:
                     valid.append(SUPER_ACTIONS.ACTION_SCOUT_START + i)
-                if state[SUPER_STATE.ENEMY_ARMY_MAT_START + i] > 0:
-                    valid.append(SUPER_ACTIONS.ACTION_ATTACK_START + i)
-                    attackAction = True
+                
+                valid.append(SUPER_ACTIONS.ACTION_ATTACK_START + i)
 
         return valid
 
@@ -400,6 +389,8 @@ class SuperAgent(BaseAgent):
     def MonitorObservation(self, obs):
         for sa in self.activeSubAgents:
             self.subAgents[sa].MonitorObservation(obs)
+
+        self.maxSupply = (obs.observation['player'][SC2_Params.SUPPLY_USED] == obs.observation['player'][SC2_Params.SUPPLY_CAP])
                      
     def CreateState(self, obs):
 
@@ -407,13 +398,14 @@ class SuperAgent(BaseAgent):
             subAgent.CreateState(obs)
 
         if self.playAgent:
-            self.maxSupply = (obs.observation['player'][SC2_Params.SUPPLY_USED] == obs.observation['player'][SC2_Params.SUPPLY_CAP])
-            for si in range(SUPER_STATE.BASE_START, SUPER_STATE.BASE_END):
-                self.current_state[si] = self.sharedData.currBaseState[si]
-
-            for y in range(SUPER_STATE.GRID_SIZE):
-                for x in range(SUPER_STATE.GRID_SIZE):
-                    idx = x + y * SUPER_STATE.GRID_SIZE
+            baseMngrAgent = self.subAgents[SUB_AGENT_ID_BASE]
+            self.current_state[SUPER_STATE.BASE_DEVELOP_SCORE] = baseMngrAgent.GetBaseDevelopScore()
+            self.current_state[SUPER_STATE.ARMY_POWER] = baseMngrAgent.GetArmyPower()
+            self.current_state[SUPER_STATE.BASE_ACTION_ADVANTAGE] = baseMngrAgent.GetMngrActionAdvantage()
+            
+            for y in range(GRID_SIZE):
+                for x in range(GRID_SIZE):
+                    idx = x + y * GRID_SIZE
                 
                     self.current_state[idx + SUPER_STATE.ENEMY_ARMY_MAT_START] = self.sharedData.enemyMatObservation[y, x]
                     self.current_state[idx + SUPER_STATE.FOG_MAT_START] = int( self.sharedData.fogRatioMat[y, x] * SUPER_STATE.MAX_SCOUT_VAL)
@@ -465,8 +457,10 @@ class SuperAgent(BaseAgent):
         self.current_scaled_state[:] = self.current_state[:]
 
     def PrintState(self):
-        print ("supply depot buildings =" , self.current_state[SUPER_STATE.BASE.SUPPLY_DEPOT_IDX], "in progress =", self.current_state[SUPER_STATE.BASE.IN_PROGRESS_SUPPLY_DEPOT_IDX])
-        print ("barracks buildings =" , self.current_state[SUPER_STATE.BASE.BARRACKS_IDX], "in progress =", self.current_state[SUPER_STATE.BASE.IN_PROGRESS_BARRACKS_IDX])
+        print ("base score =" , self.current_scaled_state[SUPER_STATE.BASE_DEVELOP_SCORE], 
+        "base action advantage =", self.current_scaled_state[SUPER_STATE.BASE_ACTION_ADVANTAGE], 
+        "army power =", self.current_scaled_state[SUPER_STATE.ARMY_POWER])
+
         # print("barracks: min =",  self.current_state[STATE.BASE.QUEUE_BARRACKS], end = '')
         # barList = self.sharedData.buildingCompleted[Terran.Barracks] 
         # idx = 0

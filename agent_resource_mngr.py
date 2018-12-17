@@ -181,6 +181,9 @@ class NaiveDecisionMakerResource(BaseNaiveDecisionMaker):
         self.maxQSize = 5
 
     def choose_action(self, state, validActions, targetValues=False):
+        actionValues = -np.ones(ACTIONS.NUM_ACTIONS, float)
+        actionValues[validActions] = -0.9
+
         hasRes = state[RESOURCE_STATE.MINERALS_IDX] > RESOURCE_STATE.SCV_MINERALS_PRICE
         minSize = state[RESOURCE_STATE.SCV_GROUP_MINERALS_IDX]
         qSize = state[RESOURCE_STATE.SCV_BUILDING_QUEUE]
@@ -197,8 +200,10 @@ class NaiveDecisionMakerResource(BaseNaiveDecisionMaker):
                 action = ACTIONS.ID_ADD2_GAS2_FROM_MINERALS
         elif sumScv < self.desiredScvSize and hasRes:
             action = ACTIONS.ID_CREATE_SCV
-        
-        return action if action in validActions else ACTIONS.ID_DO_NOTHING
+
+        action = action if action in validActions else ACTIONS.ID_DO_NOTHING
+        actionValues[action] = 1
+        return action, actionValues
 
     def GroupSmaller(self, state):
         for group, stateIdx in RESOURCE_STATE.GROUP2IDX.items():
@@ -212,12 +217,6 @@ class NaiveDecisionMakerResource(BaseNaiveDecisionMaker):
             if state[stateIdx] > self.desiredGroupCnt[group]:
                 return group
         return -1
-
-    def ActionsValues(self, state, validActions, target = True):    
-        vals = np.zeros(ACTIONS.NUM_ACTIONS,dtype = float)
-        vals[self.choose_action(state, validActions)] = 1.0
-
-        return vals
 
 
 
@@ -283,9 +282,9 @@ class ResourceMngrSubAgent(BaseAgent):
         self.numScvAll = obs.observation['player'][SC2_Params.WORKERS_SUPPLY_OCCUPATION]
         self.rallyPointSet = False
 
-        self.current_state = np.zeros(RESOURCE_STATE.SIZE, dtype=np.int32, order='C')
-        self.current_scaled_state = np.zeros(RESOURCE_STATE.SIZE, dtype=np.int32, order='C')
-        self.previous_scaled_state = np.zeros(RESOURCE_STATE.SIZE, dtype=np.int32, order='C')
+        self.current_state = np.zeros(RESOURCE_STATE.SIZE, float)
+        self.current_scaled_state = np.zeros(RESOURCE_STATE.SIZE, float)
+        self.previous_scaled_state = np.zeros(RESOURCE_STATE.SIZE, float)
 
         self.gasGatherTarget = {}
         self.gasGatherTarget[SCV_GROUP_GAS1] = None
@@ -326,14 +325,9 @@ class ResourceMngrSubAgent(BaseAgent):
 
     def ChooseAction(self):
         if self.playAgent:
-            if self.illigalmoveSolveInModel:
-                # todo: create valid actions for agent
-                validActions = self.ValidActions(self.current_scaled_state)
-            else: 
-                validActions = list(range(ACTIONS.NUM_ACTIONS))
- 
+            validActions = self.ValidActions(self.current_scaled_state) if self.illigalmoveSolveInModel else list(range(ACTIONS.NUM_ACTIONS))
             targetValues = False if self.trainAgent else True
-            return self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues)
+            action, _ = self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues)
         else:
             action = self.subAgentPlay
 

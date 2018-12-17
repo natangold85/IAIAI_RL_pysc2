@@ -88,6 +88,8 @@ class NaiveDecisionMakerDoNothing(BaseNaiveDecisionMaker):
         self.outOfResources = False
 
     def choose_action(self, state, validActions, targetValues=False):
+        actionValues = -np.ones(NUM_ACTIONS, float)
+        actionValues[validActions] = -0.9
 
         if state[STATE_INITIAL_GROUPING] == 0:
             action = ACTION_INITIAL_SCV_GROUPING
@@ -117,13 +119,10 @@ class NaiveDecisionMakerDoNothing(BaseNaiveDecisionMaker):
                 self.outOfResources = True
         else:
             self.counterIdleEmployment = 0
-        return action if action in validActions else ACTION_DO_NOTHING
 
-    def ActionsValues(self, state, validActions, target = True):    
-        vals = np.zeros(NUM_ACTIONS, dtype = float)
-        vals[self.choose_action(state, validActions)] = 1.0
-
-        return vals
+        action = action if action in validActions else ACTION_DO_NOTHING
+        actionValues[action] = 1
+        return action, actionValues
 
     def end_run(self, r, score = 0 ,steps = 0):
         super(NaiveDecisionMakerDoNothing, self).end_run(r, score ,steps)
@@ -269,15 +268,14 @@ class DoNothingSubAgent(BaseAgent):
 
     def ChooseAction(self):
         if self.playAgent:
-            if self.illigalmoveSolveInModel:
-                validActions = self.ValidActions(self.current_scaled_state)
-            else: 
-                validActions = list(range(NUM_ACTIONS))
- 
+            validActions = self.ValidActions(self.current_scaled_state) if self.illigalmoveSolveInModel else list(range(NUM_ACTIONS))
             targetValues = False if self.trainAgent else True
-            return self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues)
+            action, _ = self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues)
+            return action
+        
         elif self.subAgentPlay == SUB_AGENT_RESOURCE_MNGR:
             return ACTION_RESOURCE_SUBAGENT
+        
         else:
             return ACTION_DO_NOTHING
     def ValidActions(self, state):
@@ -492,8 +490,7 @@ class DoNothingSubAgent(BaseAgent):
             if target[0] >= 0:
                 self.realBuilding2Check = buildingType
                 return target
-
-            
+                
             wholeRound = prevCheck == self.currBuilding2Check
         
         self.realBuilding2Check = None

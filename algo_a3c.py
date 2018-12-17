@@ -103,8 +103,7 @@ class A3C:
     def choose_action(self, state, validActions, targetValues=False):
         actionProbs = self.ActionsValues(state, validActions, targetValues)
         action = np.random.choice(np.arange(len(actionProbs)), p=actionProbs)
-        #print("action chosen =", action,"action probs =", actionProbs)
-        return action
+        return action, actionProbs
 
     def DisperseNonValidValues(self, values, validActions):
         # clean non-valid actions from prob

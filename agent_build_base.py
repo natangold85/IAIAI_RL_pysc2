@@ -40,6 +40,8 @@ from utils import GatherResource
 
 AGENT_NAME = "build_base"
 
+BUILDING_NOT_BUILT_THRESHOLD_COUNTER = 40
+
 ADDITION_TYPES = [Terran.BarracksReactor, Terran.FactoryTechLab]
 
 ADDITION_2_BUILDING = {}
@@ -53,10 +55,6 @@ QUICK_ADDITION_ACTION[Terran.FactoryTechLab] = SC2_Actions.BUILD_TECHLAB_QUICK
 ADDITION_ACTION = {}
 ADDITION_ACTION[Terran.BarracksReactor] = SC2_Actions.BUILD_REACTOR
 ADDITION_ACTION[Terran.FactoryTechLab] = SC2_Actions.BUILD_TECHLAB
-
-# Model Params
-NUM_TRIALS_2_LEARN = 20
-NUM_TRIALS_4_CMP = 200
 
 class BUILD_ACTIONS:
     ID_DO_NOTHING = 0
@@ -90,10 +88,7 @@ class BUILD_STATE:
     # state details
     MINERALS_MAX = 500
     GAS_MAX = 300
-    MINERALS_BUCKETING = 50
-    GAS_BUCKETING = 50
 
-    SUPPLY_BUCKETING = 8
     SUPPLY_LEFT_MAX = 20
 
     COMMAND_CENTER_IDX = 0
@@ -159,9 +154,6 @@ class ActionRequirement:
         self.gasPrice = gasPrice
         self.buildingDependency = buildingDependency
 
-
-BUILDING_NOT_BUILT_THRESHOLD_COUNTER = 40
-
 class SharedDataBuild(EmptySharedData):
     def __init__(self):
         super(SharedDataBuild, self).__init__()
@@ -221,9 +213,12 @@ class NaiveDecisionMakerBuilder(BaseNaiveDecisionMaker):
         self.CCSupply = 15
 
 
-    def choose_action(self, state, validActions, targetValues=False):
-        action = 0
+    def choose_action(self, state, validActions, targetValues=False):       
+        actionValues = -np.ones(BUILD_ACTIONS.SIZE, float)
+        actionValues[validActions] = -0.9
 
+        action = BUILD_ACTIONS.ID_DO_NOTHING
+        
         numSDAll = state[BUILD_STATE.SUPPLY_DEPOT_IDX] + state[BUILD_STATE.IN_PROGRESS_SUPPLY_DEPOT_IDX]
         numRefAll = state[BUILD_STATE.REFINERY_IDX] + state[BUILD_STATE.IN_PROGRESS_REFINERY_IDX]
         numBaAll = state[BUILD_STATE.BARRACKS_IDX] + state[BUILD_STATE.IN_PROGRESS_BARRACKS_IDX]
@@ -256,13 +251,9 @@ class NaiveDecisionMakerBuilder(BaseNaiveDecisionMaker):
         elif supplyLeft < 6:
             action = BUILD_ACTIONS.ID_BUILD_SUPPLY_DEPOT
 
-        return action if action in validActions else BUILD_ACTIONS.ID_DO_NOTHING
-
-    def ActionsValues(self, state, validActions, target = True):    
-        vals = np.zeros(BUILD_ACTIONS.SIZE,dtype = float)
-        vals[self.choose_action(state, validActions)] = 1.0
-        vals[BUILD_ACTIONS.ID_DO_NOTHING] = 0.1
-        return vals
+        action = action if action in validActions else BUILD_ACTIONS.ID_DO_NOTHING
+        actionValues[action] = 1.0
+        return action, actionValues
 
 
 class BuildBaseSubAgent(BaseAgent):
@@ -277,6 +268,7 @@ class BuildBaseSubAgent(BaseAgent):
         self.inTraining = self.trainAgent
 
         self.illigalmoveSolveInModel = True
+        self.heuristicDm = configDict[AGENT_NAME] == "heuristic"
 
         if decisionMaker != None:
             self.decisionMaker = decisionMaker
@@ -289,7 +281,7 @@ class BuildBaseSubAgent(BaseAgent):
         self.sharedData = sharedData
 
         # states and action:
-        self.terminalState = np.zeros(BUILD_STATE.SIZE, dtype=np.int32, order='C')
+        self.terminalState = np.zeros(BUILD_STATE.SIZE, dtype=float)
 
         self.actionsRequirement = {}
         self.actionsRequirement[BUILD_ACTIONS.ID_BUILD_SUPPLY_DEPOT] = ActionRequirement(100)
@@ -303,9 +295,9 @@ class BuildBaseSubAgent(BaseAgent):
 
         self.notAllowedDirections2CC = [[1, 0], [1, 1], [0, 1]] 
 
-        self.current_state = np.zeros(BUILD_STATE.SIZE, dtype=np.int32, order='C')
-        self.previous_scaled_state = np.zeros(BUILD_STATE.SIZE, dtype=np.int32, order='C')
-        self.current_scaled_state = np.zeros(BUILD_STATE.SIZE, dtype=np.int32, order='C')     
+        self.current_state = np.zeros(BUILD_STATE.SIZE, dtype=float)
+        self.previous_scaled_state = np.zeros(BUILD_STATE.SIZE, dtype=float)
+        self.current_scaled_state = np.zeros(BUILD_STATE.SIZE, dtype=float)     
 
     def GetDecisionMaker(self):
         return self.decisionMaker
@@ -338,9 +330,9 @@ class BuildBaseSubAgent(BaseAgent):
 
         self.current_action = None
 
-        self.current_state = np.zeros(BUILD_STATE.SIZE, dtype=np.int32, order='C')
-        self.previous_scaled_state = np.zeros(BUILD_STATE.SIZE, dtype=np.int32, order='C')
-        self.current_scaled_state = np.zeros(BUILD_STATE.SIZE, dtype=np.int32, order='C')
+        self.current_state = np.zeros(BUILD_STATE.SIZE, float)
+        self.previous_scaled_state = np.zeros(BUILD_STATE.SIZE, float)
+        self.current_scaled_state = np.zeros(BUILD_STATE.SIZE, float)
 
         self.lastActionCommittedStep = 0
         self.lastActionCommittedState = None
@@ -381,8 +373,9 @@ class BuildBaseSubAgent(BaseAgent):
 
         if moveNum == 0:
             if buildingType == Terran.Refinery:
-                numRefinery = self.current_scaled_state[BUILD_STATE.REFINERY_IDX] + self.current_scaled_state[BUILD_STATE.IN_PROGRESS_REFINERY_IDX]               
-                group2Select = self.sharedData.scvGasGroups[numRefinery]
+                # round num refinery for non precision in float value
+                numRefinery = round(self.current_scaled_state[BUILD_STATE.REFINERY_IDX] + self.current_scaled_state[BUILD_STATE.IN_PROGRESS_REFINERY_IDX])
+                group2Select = self.sharedData.scvGasGroups[int(numRefinery)]
             else:
                 if self.NumBeforeProgress(buildingType) == 0:
                     group2Select = self.sharedData.scvMineralGroup
@@ -470,6 +463,12 @@ class BuildBaseSubAgent(BaseAgent):
     def CreateState(self, obs):
         self.UpdateBuildingInProgress(obs)
 
+        unitType = obs.observation['feature_screen'][SC2_Params.UNIT_TYPE]
+        if len(self.sharedData.buildingCompleted[Terran.CommandCenter]) > 0:
+            ccLocation = self.sharedData.buildingCompleted[Terran.CommandCenter][0].m_screenLocation
+            if unitType[ccLocation[0], ccLocation[1]] != Terran.CommandCenter:
+                self.sharedData.buildingCompleted[Terran.CommandCenter] = []
+
         for key, value in BUILD_STATE.BUILDING_2_STATE_TRANSITION.items():
             self.current_state[value[0]] = self.NumBuildings(key)
             if value[1] >= 0:
@@ -502,13 +501,9 @@ class BuildBaseSubAgent(BaseAgent):
 
     def ChooseAction(self):
         if self.playAgent:
-            if self.illigalmoveSolveInModel:
-                validActions = self.ValidActions(self.current_scaled_state)
-            else: 
-                validActions = list(range(BUILD_ACTIONS.SIZE))
- 
+            validActions = self.ValidActions(self.current_scaled_state) if self.illigalmoveSolveInModel else list(range(BUILD_ACTIONS.SIZE))
             targetValues = False if self.trainAgent else True
-            action = self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues)
+            action, _  = self.decisionMaker.choose_action(self.current_scaled_state, validActions, targetValues)
         else:
             action = BUILD_ACTIONS.ID_DO_NOTHING
         
@@ -541,6 +536,26 @@ class BuildBaseSubAgent(BaseAgent):
                     valid.remove(action)
 
         return valid
+
+    def GetBaseDevelopScore(self):
+        if self.current_state[BUILD_STATE.COMMAND_CENTER_IDX] == 0:
+            return -1
+
+        if self.heuristicDm:
+            score = 0
+            score += self.current_state[BUILD_STATE.SUPPLY_DEPOT_IDX] > 0
+            score += self.current_state[BUILD_STATE.REFINERY_IDX] > 0
+            score += self.current_state[BUILD_STATE.SUPPLY_DEPOT_IDX] > 2
+            score += self.current_state[BUILD_STATE.BARRACKS_IDX] + self.current_state[BUILD_STATE.IN_PROGRESS_REACTORS_IDX]
+            score += 2 * (self.current_state[BUILD_STATE.FACTORY_IDX] + self.current_state[BUILD_STATE.IN_PROGRESS_TECHLAB_IDX])
+            score += 2 * self.current_state[BUILD_STATE.REACTORS_IDX]
+            score += 4 * self.current_state[BUILD_STATE.TECHLAB_IDX]
+
+            score += 0 if self.current_state[BUILD_STATE.SUPPLY_LEFT_IDX] > 2 else -2 *self.current_state[BUILD_STATE.SUPPLY_LEFT_IDX]
+        else:
+            score = np.sum(self.current_state[BUILD_STATE.SUPPLY_DEPOT_IDX:BUILD_STATE.IN_PROGRESS_TECHLAB_IDX + 1])
+
+        return score
 
     def ValidSingleAction(self, state, requirement):
         hasMinerals = state[BUILD_STATE.MINERALS_IDX] >= requirement.mineralsPrice
