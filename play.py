@@ -8,6 +8,7 @@ from pysc2.agents import base_agent
 from pysc2.lib import actions
 from pysc2.lib import features
 
+from utils import CountSelectedLocationMat
 from utils import TerranUnit
 from utils import SC2_Params
 from utils import SC2_Actions
@@ -30,7 +31,10 @@ class Play(base_agent.BaseAgent):
         sc2Action = DO_NOTHING_SC2_ACTION
         
         time.sleep(STEP_DURATION)
-    
+        mat = np.zeros((2,2), int)
+        CountSelectedLocationMat(obs, 2, mat)
+        print("\n", mat)
+        
         return DO_NOTHING_SC2_ACTION
 
 

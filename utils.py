@@ -889,3 +889,17 @@ def GetSelectedUnits(obs):
 
 def SupplyCap(buildingCompleted):
     return 15 * len(buildingCompleted[Terran.CommandCenter]) + 8 * len(buildingCompleted[Terran.SupplyDepot])
+
+def CountSelectedLocationMat(obs, gridSize, mat):
+    boundaries = list(range(0, SC2_Params.MINIMAP_SIZE, int(SC2_Params.MINIMAP_SIZE / gridSize)))
+    boundaries.append(SC2_Params.MINIMAP_SIZE)
+
+    matSelected = np.array(obs.observation['feature_minimap'][SC2_Params.SELECTED_IN_MINIMAP], bool)
+    for y in range(len(boundaries) - 1):
+        startY = boundaries[y]
+        endY = boundaries[y + 1]
+        for x in range(len(boundaries) - 1):
+            startX = boundaries[x]
+            endX = boundaries[x + 1]
+            mat[y, x] = np.sum(matSelected[startY:endY, startX:endX])
+

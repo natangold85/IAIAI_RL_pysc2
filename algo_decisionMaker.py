@@ -68,7 +68,6 @@ def CreateDecisionMaker(agentName, configDict, isMultiThreaded, dmCopy, heuristi
         
         runType["params"].stateSize = stateSize
         runType["params"].numActions = numActions
-
         decisionMaker = dmClass(modelType=runType["algo_type"], modelParams = runType["params"], decisionMakerName = runType["dm_name"], agentName=agentName,  
                             resultFileName=runType["results"], historyFileName=runType["history"], directory=directory, isMultiThreaded=isMultiThreaded)
 

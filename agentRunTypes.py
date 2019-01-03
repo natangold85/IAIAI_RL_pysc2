@@ -7,16 +7,17 @@ from algo_a3c import A3C_PARAMS
 # possible types of decision maker
 QTABLE = 'qtable'
 DQN = 'dqn'
-DQN2L = 'dqn_2l'
-DQN2L_EXPLORATION_CHANGE = 'dqn_2l_explorationChange'
 A2C = 'A2C'
-A2C_EXP = 'A2C_Exp'
-A2C_EXP_ADJUSTED = 'A2C_ExpAdjusted'
 A3C = 'A3C'
-DQN_EMBEDDING_LOCATIONS = 'dqn_Embedding'
 HEURISTIC = 'heuristic' 
-
 USER_PLAY = 'play'
+
+# layers num options
+TWO_LAYERS = '2l'
+
+# A2C options
+ACCUMULATE_HISTORY = 'Exp'
+ADJUSTED_MODEL_2_ACCUMULATION = 'Adjusted'
 
 # data for run type
 ALGO_TYPE = "algo_type"
@@ -64,71 +65,68 @@ def GetAgentParams(agentName):
 
 def GetRunType(agentName, configDict):
     runType = {}
-    if configDict[agentName] == "none":
+    runArg = configDict[agentName]
+    if runArg == "none":
         return runType
     
     runType[HISTORY] = "history"
     runType[RESULTS] = "results"
     runType[DIRECTORY] = ""
+    
+    learningRate = None
+    if "learning_rate" in configDict.keys():
+        learningRate = configDict["learning_rate"]
+    elif "learning_ratePower" in configDict.keys():
+        learningRate = 10 ** configDict["learning_ratePower"]
 
-    if configDict[agentName] == QTABLE:
+    if runArg == QTABLE:
         runType[DECISION_MAKER_TYPE] = "DecisionMakerExperienceReplay"
         runType[ALGO_TYPE] = "QLearningTable"
         runType[DIRECTORY] = agentName + "_qtable"
         runType[PARAMS] = QTableParamsExplorationDecay(0, 0, numTrials2Save=AGENTS_PARAMS[agentName]['numTrials2Save'])
+        runType[PARAMS].learning_rate = runType[PARAMS].learning_rate if learningRate == None else learningRate
         runType[DECISION_MAKER_NAME] = agentName + "_qtable"
 
-    elif configDict[agentName] == DQN:
-        runType[DECISION_MAKER_TYPE] = "DecisionMakerExperienceReplay"
-        runType[ALGO_TYPE] = "DQN_WithTarget"
-        runType[DIRECTORY] = agentName + "_dqn"
-        runType[PARAMS] = DQN_PARAMS(0, 0, numTrials2Save=AGENTS_PARAMS[agentName]['numTrials2Save'], numTrials2CmpResults=AGENTS_PARAMS[agentName]['numTrials4Cmp'])
-        runType[DECISION_MAKER_NAME] = agentName + "_dqn"
-
-    elif configDict[agentName] == DQN2L:
-        runType[DECISION_MAKER_TYPE] = "DecisionMakerExperienceReplay"
-        runType[ALGO_TYPE] = "DQN_WithTarget"
-        runType[DIRECTORY] = agentName + "_dqn"
-        runType[PARAMS] = DQN_PARAMS(0, 0, layersNum=2, numTrials2Save=AGENTS_PARAMS[agentName]['numTrials2Save'], numTrials2CmpResults=AGENTS_PARAMS[agentName]['numTrials4Cmp'])
-        runType[DECISION_MAKER_NAME] = agentName + "_dqn"
-
-    elif configDict[agentName] == A2C:
-        runType[DECISION_MAKER_TYPE] = "DecisionMakerExperienceReplay"
-        runType[ALGO_TYPE] = "A2C"
-        runType[DIRECTORY] = agentName + "_A2C"
-        runType[PARAMS] = A2C_PARAMS(0, 0, numTrials2Save=AGENTS_PARAMS[agentName]['numTrials2Save'])
-        runType[DECISION_MAKER_NAME] = agentName + "_A2C"
-    
-    elif configDict[agentName] == A2C_EXP:
-        runType[DECISION_MAKER_TYPE] = "DecisionMakerExperienceReplay"
-        runType[ALGO_TYPE] = "A2C"
-        runType[DIRECTORY] = agentName + "_A2C"
-        runType[PARAMS] = A2C_PARAMS(0, 0, numTrials2Save=AGENTS_PARAMS[agentName]['numTrials2Save'], accumulateHistory=True)
-        runType[DECISION_MAKER_NAME] = agentName + "_A2C"        
-
-    elif configDict[agentName] == A2C_EXP_ADJUSTED:
-        runType[DECISION_MAKER_TYPE] = "DecisionMakerExperienceReplay"
-        runType[ALGO_TYPE] = "A2C"
-        runType[DIRECTORY] = agentName + "_A2C"
-        runType[PARAMS] = A2C_PARAMS(0, 0, numTrials2Save=AGENTS_PARAMS[agentName]['numTrials2Save'], accumulateHistory=True)
-        runType[DECISION_MAKER_NAME] = agentName + "_A2C"        
-
-    elif configDict[agentName] == A3C:
-        runType[DECISION_MAKER_TYPE] = "DecisionMakerOnlineAsync"
-        runType[ALGO_TYPE] = "A3C"
-        runType[DIRECTORY] = agentName + "_A3C"
-        runType[PARAMS] = A3C_PARAMS(0, 0, numTrials2Learn=1, numTrials2Save=AGENTS_PARAMS[agentName]['numTrials2Save'])
-        runType[DECISION_MAKER_NAME] = agentName + "_A3C"
-
-    elif configDict[agentName] == HEURISTIC:
+    elif runArg == HEURISTIC:
         runType[HISTORY] = ""
-        runType[RESULTS] = ""
         runType[DIRECTORY] = agentName + "_heuristic"
 
-    elif configDict[agentName] == USER_PLAY:
+    elif runArg == USER_PLAY:
         runType[HISTORY] = ""
         runType[RESULTS] = ""
         runType[DECISION_MAKER_TYPE] = "UserPlay"
+
+    else:
+        # neural nets model: 
+        layersNum = 2 if runArg.find(TWO_LAYERS) >= 0 else 1
+        runType[DECISION_MAKER_TYPE] = "DecisionMakerExperienceReplay"
+        numTrials2Save = numTrials2Save=AGENTS_PARAMS[agentName]['numTrials2Save']
+
+        if runArg.find(DQN) >= 0:
+            runType[ALGO_TYPE] = "DQN_WithTarget"
+            typeStr = DQN
+            runType[PARAMS] = DQN_PARAMS(0, 0, layersNum=layersNum, numTrials2Save=numTrials2Save, numTrials2CmpResults=AGENTS_PARAMS[agentName]['numTrials4Cmp'])
+            runType[PARAMS].learning_rate = runType[PARAMS].learning_rate if learningRate == None else learningRate
+
+        elif runArg.find(A2C) >= 0:
+            typeStr = A2C
+            runType[ALGO_TYPE] = "A2C"
+            accumulateHistory = True if runArg.find(ACCUMULATE_HISTORY) >= 0 else False
+
+            runType[PARAMS] = A2C_PARAMS(0, 0, accumulateHistory=accumulateHistory, layersNum=2, numTrials2Save=numTrials2Save)
+            runType[PARAMS].learning_rateActor = runType[PARAMS].learning_rateActor if learningRate == None else learningRate
+            runType[PARAMS].learning_rateCritic = runType[PARAMS].learning_rateCritic if learningRate == None else learningRate
+
+        elif runArg.find(A3C):
+            typeStr = A3C
+            runType[DECISION_MAKER_TYPE] = "DecisionMakerOnlineAsync"
+            runType[ALGO_TYPE] = "A3C"
+            runType[PARAMS] = A3C_PARAMS(0, 0, numTrials2Learn=1, numTrials2Save=numTrials2Save)
+            runType[PARAMS].learning_rate = runType[PARAMS].learning_rate if learningRate == None else learningRate
+            runType[DECISION_MAKER_NAME] = agentName + "_A2C"
+
+        runType[DIRECTORY] = agentName + "_" + typeStr
+        runType[DECISION_MAKER_NAME] = agentName + "_" + typeStr
 
     return runType
 

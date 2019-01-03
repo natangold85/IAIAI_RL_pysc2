@@ -24,6 +24,7 @@ from agent_battle_mngr import BattleMngr
 from agent_battle_mngr import SharedDataBattle
 
 # params
+from utils import CountSelectedLocationMat
 from utils import SwapPnt
 from utils import DistForCmp
 from utils import CenterPoints
@@ -182,7 +183,7 @@ class AttackAgent(BaseAgent):
             elif moveNum == 1:
 
                 self.sharedData.armyInAttack = self.ArmySelected(obs)
-                
+                CountSelectedLocationMat(obs, self.sharedData.superGridSize, self.sharedData.selfArmyMat)
                 if len(self.sharedData.armyInAttack) > 0:
                     coordBattle = self.InBattle(obs)
                     if self.sharedData.inBattle:
@@ -233,22 +234,26 @@ class AttackAgent(BaseAgent):
         return unitCount
 
     def AttackCoord(self, action, obs):
-        enemyMat = obs.observation["feature_minimap"][SC2_Params.PLAYER_RELATIVE_MINIMAP] == SC2_Params.PLAYER_HOSTILE
-        minDist = 100000
-
         coordStart = self.action2Start[action]
-        minCoord = coordStart
-        for y in range(self.action2Start[action][SC2_Params.Y_IDX], self.action2End[action][SC2_Params.Y_IDX]):
-            for x in range(self.action2Start[action][SC2_Params.X_IDX], self.action2End[action][SC2_Params.X_IDX]):
-                if enemyMat[y][x]:
-                    diffY = y - coordStart[0]
-                    diffX = x - coordStart[1]
-                    dist = diffY * diffY + diffX * diffX
-                    if dist < minDist:
-                        minDist = dist
-                        minCoord = [y, x]
+        coordEnd = self.action2End[action]
+        coord2Go = np.add(coordStart, coordEnd) / 2
+        
+        enemyMat = obs.observation["feature_minimap"][SC2_Params.PLAYER_RELATIVE_MINIMAP] == SC2_Params.PLAYER_HOSTILE
+        if enemyMat.any():
+            miniMapCoordRange = np.zeros((SC2_Params.MINIMAP_SIZE, SC2_Params.MINIMAP_SIZE), bool)
+            miniMapCoordRange[coordStart[SC2_Params.Y_IDX]:coordEnd[SC2_Params.Y_IDX], coordStart[SC2_Params.X_IDX]:coordEnd[SC2_Params.X_IDX]] = True
+            enemy_y, enemy_x = (enemyMat & miniMapCoordRange).nonzero()
+            minDist = 100000
 
-        return minCoord
+            for i in range(len(enemy_y)):
+                diffY = enemy_y[i] - coordStart[0]
+                diffX = enemy_x[i] - coordStart[1]
+                dist = diffY * diffY + diffX * diffX
+                if dist < minDist:
+                    minDist = dist
+                    coord2Go = [enemy_y[i], enemy_x[i]]
+
+        return coord2Go
 
     def InBattle(self, obs):
         s_y, s_x = obs.observation['feature_minimap'][SC2_Params.SELECTED_IN_MINIMAP].nonzero()

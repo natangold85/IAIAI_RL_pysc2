@@ -30,6 +30,7 @@ from utils import TerranUnit
 from utils import SC2_Params
 from utils import SC2_Actions
 
+from utils import CountSelectedLocationMat
 from utils import GetScreenCorners
 from utils import GetLocationForBuilding
 from utils import SwapPnt
@@ -371,6 +372,7 @@ class DoNothingSubAgent(BaseAgent):
         elif moveNum == 1 and not self.isActionFailed:
             # possible to exploit this move for another check
             actionSucceed = self.UpdateSoldiersCompletion(obs)
+            CountSelectedLocationMat(obs, self.sharedData.superGridSize, self.sharedData.selfArmyMat)
             self.isActionFailed = not actionSucceed
             return SC2_Actions.DO_NOTHING_SC2_ACTION, True
 
@@ -490,7 +492,7 @@ class DoNothingSubAgent(BaseAgent):
             if target[0] >= 0:
                 self.realBuilding2Check = buildingType
                 return target
-                
+
             wholeRound = prevCheck == self.currBuilding2Check
         
         self.realBuilding2Check = None
@@ -547,7 +549,7 @@ class DoNothingSubAgent(BaseAgent):
             #     print("\n\n\n\nError in calculation of building completion\n\n\n")
 
         return True
-    
+
     def UpdateSoldiersCompletion(self, obs):
         unitStatus = obs.observation['multi_select']
         

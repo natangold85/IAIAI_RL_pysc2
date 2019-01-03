@@ -89,21 +89,10 @@ class PlotMngr:
         self.scriptName = self.scriptName.replace(".\\", "")
         self.scriptName = self.scriptName.replace(".py", "")
 
-        if directory2Save != '':
-            if not os.path.isdir("./" + directory2Save):
-                os.makedirs("./" + directory2Save)
-            self.plotFName = './' + directory2Save + '/' + self.scriptName + "_resultsPlot"
-        else:
-            self.plotFName = self.scriptName + "_resultsPlot"
-
-        for group in groupNames:
-            self.plotFName += "_" + group 
-        
-        self.plotFName += ".png"
 
         # read results from files
 
-        self.legendList = []
+        groups = []
         for i in range(len(resultFilesNamesList)):
             # read from each group all instances
             name = './' + resultFilesDirectories[i]
@@ -127,12 +116,37 @@ class PlotMngr:
             # insert to list Results instances
             if multipleDm:
                 self.resultFileList.append(resultsInstances)
-                self.legendList += [groupNames[i]]
+                groups += [groupNames[i]]
             else:
                 self.resultFileList += resultsInstances
                 legendResultGroup = [groupNames[i] + ins for ins in instanceName]
-                self.legendList += legendResultGroup
+                groups += legendResultGroup
+        
+        self.title = groups[0]
+        self.legend = []
+        if len(groups) > 1:
+            for g in groups[1:]:
+                while not g.startswith(self.title):
+                    self.title = self.title[:-1]
 
+            for g in groups:
+                self.legend.append(g[len(self.title):])
+        else:
+            self.legend.append("run")
+
+            
+
+        if directory2Save != '':
+            if not os.path.isdir("./" + directory2Save):
+                os.makedirs("./" + directory2Save)
+            self.plotFName = './' + directory2Save + '/' + self.scriptName + "_resultsPlot_" + self.title
+        else:
+            self.plotFName = self.scriptName + "_resultsPlot_" + self.title
+
+        for group in self.legend:
+            self.plotFName += "_" + group 
+        
+        self.plotFName += ".png"
 
 
     def Plot(self, grouping, additionPlots, maxTrials2Plots, multipleDm):
@@ -162,9 +176,9 @@ class PlotMngr:
                 if len(groupIdx) > 0:
                     # append sub group names to legend
                     if subAgentGroup != "":
-                        legend.append(self.legendList[idxResults] + "_" + subAgentGroup)
+                        legend.append(self.legend[idxResults] + "_" + subAgentGroup)
                     else:
-                        legend.append(self.legendList[idxResults])
+                        legend.append(self.legend[idxResults])
 
                     resultsTmp = np.zeros(len(results), float)
                     resultsTmp[:] = np.nan
@@ -186,7 +200,7 @@ class PlotMngr:
                 
             plt.ylabel('avg reward for ' + str(grouping) + ' trials')
             plt.xlabel('#trials')
-            plt.title('Average Reward')
+            plt.title('Average Reward For ' + self.title)
             plt.grid(True)
             plt.legend(legend, loc='best')
 

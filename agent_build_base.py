@@ -543,13 +543,21 @@ class BuildBaseSubAgent(BaseAgent):
 
         if self.heuristicDm:
             score = 0
-            score += self.current_state[BUILD_STATE.SUPPLY_DEPOT_IDX] > 0
-            score += self.current_state[BUILD_STATE.REFINERY_IDX] > 0
-            score += self.current_state[BUILD_STATE.SUPPLY_DEPOT_IDX] > 2
-            score += self.current_state[BUILD_STATE.BARRACKS_IDX] + self.current_state[BUILD_STATE.IN_PROGRESS_REACTORS_IDX]
-            score += 2 * (self.current_state[BUILD_STATE.FACTORY_IDX] + self.current_state[BUILD_STATE.IN_PROGRESS_TECHLAB_IDX])
-            score += 2 * self.current_state[BUILD_STATE.REACTORS_IDX]
-            score += 4 * self.current_state[BUILD_STATE.TECHLAB_IDX]
+            if self.current_state[BUILD_STATE.SUPPLY_DEPOT_IDX] > 0:
+                score += 2
+            elif self.current_state[BUILD_STATE.IN_PROGRESS_SUPPLY_DEPOT_IDX] > 0:
+                score += 1
+            
+            if self.current_state[BUILD_STATE.REFINERY_IDX] > 0:
+                score += 2
+            elif self.current_state[BUILD_STATE.IN_PROGRESS_REFINERY_IDX] > 0:
+                score += 1
+
+            score += self.current_state[BUILD_STATE.SUPPLY_DEPOT_IDX]
+            score += 2 * (self.current_state[BUILD_STATE.BARRACKS_IDX] + self.current_state[BUILD_STATE.IN_PROGRESS_REACTORS_IDX])
+            score += 4 * (self.current_state[BUILD_STATE.FACTORY_IDX] + self.current_state[BUILD_STATE.IN_PROGRESS_TECHLAB_IDX])
+            score += 4 * self.current_state[BUILD_STATE.REACTORS_IDX]
+            score += 8 * self.current_state[BUILD_STATE.TECHLAB_IDX]
 
             score += 0 if self.current_state[BUILD_STATE.SUPPLY_LEFT_IDX] > 2 else -2 *self.current_state[BUILD_STATE.SUPPLY_LEFT_IDX]
         else:

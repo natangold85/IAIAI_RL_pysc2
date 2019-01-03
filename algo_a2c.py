@@ -16,8 +16,8 @@ from utils import EmptyLock
 # dqn params
 class A2C_PARAMS(ParamsBase):
     def __init__(self, stateSize, numActions, discountFactor = 0.95, batchSize = 32, maxReplaySize = 500000, minReplaySize = 1000, 
-                learning_rateActor=0.00001, learning_rateCritic=0.00001, numTrials2CmpResults=1000, outputGraph=True, accumulateHistory=False, 
-                numTrials2Learn=None, numTrials2Save=100):
+                learning_rateActor=1e-05, learning_rateCritic=1e-05, outputGraph=True, accumulateHistory=False, 
+                numTrials2Learn=None, numTrials2Save=100, layersNum=1, neuronsInLayerNum=256):
 
         super(A2C_PARAMS, self).__init__(stateSize=stateSize, numActions=numActions, discountFactor=discountFactor, numTrials2Learn=numTrials2Learn,
                                         numTrials2Save=numTrials2Save, maxReplaySize=maxReplaySize, minReplaySize=minReplaySize, 
@@ -28,9 +28,10 @@ class A2C_PARAMS(ParamsBase):
         self.learning_rateCritic = learning_rateCritic
         self.batchSize = batchSize
         self.type = "A2C"
-        self.numTrials2CmpResults = numTrials2CmpResults
         self.outputGraph = outputGraph
         self.normalizeState = True
+        self.layersNum = layersNum
+        self.neuronsInLayerNum = neuronsInLayerNum
 
 
 class A2C:
@@ -45,10 +46,10 @@ class A2C:
             self.numRuns =tf.get_variable("numRuns", shape=(), initializer=tf.zeros_initializer(), dtype=tf.int32)
 
         with tf.variable_scope("critic"):
-            self.critic = AC_Critic(modelParams.stateSize, modelParams.numActions, self.params.learning_rateCritic)
+            self.critic = AC_Critic(modelParams)
         
         with tf.variable_scope("actor"):
-            self.actor = AC_Actor(modelParams.stateSize, modelParams.numActions, self.params.learning_rateActor)
+            self.actor = AC_Actor(modelParams)
 
         summary_ops = tf.get_collection(tf.GraphKeys.SUMMARIES)
         self.summaries = [s for s in summary_ops if self.directoryName in s.name]
@@ -154,12 +155,11 @@ class A2C:
         return self.params.discountFactor
 
 class AC_Actor:
-    def __init__(self, stateSize, numActions, learningRate):
+    def __init__(self, params):
         # Network Parameters
-        self.num_input = stateSize
-        self.numActions = numActions        
+        self.params = params    
 
-        self.states = tf.placeholder(tf.float32, shape=[None, self.num_input], name="state")  # (None, 84, 84, 4)
+        self.states = tf.placeholder(tf.float32, shape=[None, params.stateSize], name="state")  # (None, 84, 84, 4)
         # The TD target value
         self.targets = tf.placeholder(shape=[None], dtype=tf.float32, name="targets")
         # Integer id of which action was selected
@@ -181,7 +181,7 @@ class AC_Actor:
         self.losses = - (tf.log(self.picked_action_probs) * self.targets + 0.01 * self.entropy)
 
         self.loss = tf.reduce_sum(self.losses, name="loss")
-        self.optimizer = tf.train.RMSPropOptimizer(learningRate, 0.99, 0.0, 1e-6)
+        self.optimizer = tf.train.RMSPropOptimizer(params.learning_rateActor, 0.99, 0.0, 1e-6)
         self.grads_and_vars = self.optimizer.compute_gradients(self.loss)
         self.grads_and_vars = [[grad, var] for grad, var in self.grads_and_vars if grad is not None]
 
@@ -194,30 +194,28 @@ class AC_Actor:
 
 
     # Define the neural network
-    def create_actor_nn(self, numLayers=2, numNeuronsInLayer=256):
-        
+    def create_actor_nn(self):
         currInput = self.states
-        for i in range(numLayers):
-            fc = tf.contrib.layers.fully_connected(currInput, numNeuronsInLayer)
+        for i in range(self.params.layersNum):
+            fc = tf.contrib.layers.fully_connected(currInput, self.params.neuronsInLayerNum)
             currInput = fc
 
-        output = tf.contrib.layers.fully_connected(currInput, self.numActions, activation_fn=None)
+        output = tf.contrib.layers.fully_connected(currInput, self.params.numActions, activation_fn=None)
         softmax = tf.nn.softmax(output) + 1e-8
 
         return softmax
 
     def ActionsValues(self, state, sess):
-        probs = self.actionProb.eval({ self.states: state.reshape(1,self.num_input) }, session=sess)        
+        probs = self.actionProb.eval({ self.states: state.reshape(1,self.params.stateSize) }, session=sess)        
         return probs[0]
 
 
 class AC_Critic:
-    def __init__(self, stateSize, numActions, learningRate):
+    def __init__(self, params):
         # Network Parameters
-        self.num_input = stateSize
-        self.numActions = numActions        
+        self.params = params     
         
-        self.states = tf.placeholder(tf.float32, shape=[None, self.num_input], name="state")  # (None, 84, 84, 4)
+        self.states = tf.placeholder(tf.float32, shape=[None, params.stateSize], name="state")  # (None, 84, 84, 4)
         # The TD target value
         self.targets = tf.placeholder(shape=[None], dtype=tf.float32, name="y")
 
@@ -227,23 +225,23 @@ class AC_Critic:
         self.losses = tf.squared_difference(self.output, self.targets)
         self.loss = tf.reduce_sum(self.losses, name="loss")
         
-        self.optimizer = tf.train.RMSPropOptimizer(learningRate, 0.99, 0.0, 1e-6)
+        self.optimizer = tf.train.RMSPropOptimizer(params.learning_rateCritic, 0.99, 0.0, 1e-6)
         self.grads_and_vars = self.optimizer.compute_gradients(self.loss)
         self.grads_and_vars = [[grad, var] for grad, var in self.grads_and_vars if grad is not None]
         self.train_op = self.optimizer.apply_gradients(self.grads_and_vars)
 
     # Define the neural network
-    def create_critic_nn(self, numLayers=2, numNeuronsInLayer=256):
+    def create_critic_nn(self):
         currInput = self.states
-        for i in range(numLayers):
-            fc = tf.contrib.layers.fully_connected(currInput, numNeuronsInLayer)
+        for i in range(self.params.layersNum):
+            fc = tf.contrib.layers.fully_connected(currInput, self.params.neuronsInLayerNum)
             currInput = fc
 
         output = tf.contrib.layers.fully_connected(currInput, 1, activation_fn=None)
-        output = tf.squeeze(output, squeeze_dims=[1], name="logits")
+        output = tf.squeeze(output, squeeze_dims=[1], name="value")
         return output
 
     
     def StatesValue(self, states, size, sess):
-        return self.output.eval({self.states: states.reshape(size, self.num_input)}, session=sess)
+        return self.output.eval({self.states: states.reshape(size, self.params.stateSize)}, session=sess)
 

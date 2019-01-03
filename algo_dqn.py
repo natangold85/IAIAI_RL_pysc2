@@ -17,7 +17,7 @@ from utils import EmptyLock
 class DQN_PARAMS(ParamsBase):
     def __init__(self, stateSize, numActions, layersNum=1, neuronsInLayerNum=256, numTrials2CmpResults=1000, nn_Func=None, numTrials2Learn=None, numTrials2Save=100,
                 outputGraph=True, discountFactor=0.95, batchSize=32, maxReplaySize=500000, minReplaySize=1000, 
-                explorationProb=0.1, descendingExploration=True, exploreChangeRate=0.001, learning_rate=0.00001, 
+                explorationProb=0.1, descendingExploration=True, exploreChangeRate=0.001, learning_rate=1e-05, 
                 normalizeRewards=False, normalizeState=True, numRepeatsTerminalLearning=10, accumulateHistory=True):
 
         super(DQN_PARAMS, self).__init__(stateSize=stateSize, numActions=numActions, discountFactor=discountFactor, 

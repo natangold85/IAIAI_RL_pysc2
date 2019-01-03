@@ -578,6 +578,10 @@ def main(argv):
             gp_train_single()
         elif flags.FLAGS.gpAct == "testSingle":
             gp_test_single()
+        else:
+            print("ERROR: invalid gpAct arg")
+    else:
+        print("ERROR: invalid act arg")
 
 
 

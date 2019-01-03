@@ -81,11 +81,8 @@ class SUPER_STATE:
 
     ENEMY_ARMY_MAT_START = FOG_COUNTER_MAT_END
     ENEMY_ARMY_MAT_END = ENEMY_ARMY_MAT_START + GRID_SIZE * GRID_SIZE
-    
-    ENEMY_BUILDING_MAT_START = ENEMY_ARMY_MAT_END
-    ENEMY_BUILDING_MAT_END = ENEMY_BUILDING_MAT_START + GRID_SIZE * GRID_SIZE  
 
-    TIME_LINE_IDX = ENEMY_BUILDING_MAT_END
+    TIME_LINE_IDX = ENEMY_ARMY_MAT_END
 
     SIZE = TIME_LINE_IDX + 1
 
@@ -129,6 +126,8 @@ UNIT_VALUE_TABLE_NAME = 'unit_value_table.gz'
 class SharedDataSuper(SharedDataBase, SharedDataAttack, SharedDataScout, SharedDataDoNothing):
     def __init__(self):
         super(SharedDataSuper, self).__init__()
+        self.selfArmyMat = np.zeros((GRID_SIZE,GRID_SIZE), int)
+        self.superGridSize = GRID_SIZE
         self.numStep = 0
         self.numAgentStep = 0
 
@@ -406,7 +405,7 @@ class SuperAgent(BaseAgent):
             for y in range(GRID_SIZE):
                 for x in range(GRID_SIZE):
                     idx = x + y * GRID_SIZE
-                
+                    self.current_state[idx + SUPER_STATE.SELF_POWER_START] = self.sharedData.selfArmyMat[y, x]
                     self.current_state[idx + SUPER_STATE.ENEMY_ARMY_MAT_START] = self.sharedData.enemyMatObservation[y, x]
                     self.current_state[idx + SUPER_STATE.FOG_MAT_START] = int( self.sharedData.fogRatioMat[y, x] * SUPER_STATE.MAX_SCOUT_VAL)
                     self.current_state[idx + SUPER_STATE.FOG_COUNTER_MAT_START] = self.sharedData.fogCounterMat[y, x]
